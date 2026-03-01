@@ -10,9 +10,7 @@
    - `ResultStoreAdapter`（local/reference）
    - `Provider`（reference，可用于本地完整跑通）
    - `Observer`（optional，但提供最小 console 实现）
-3. 可通过 interactive CLI（作为 interface adapter 的具体实现）完成一次可复现评测 run，并可读取 run/trial/summary。
-
----
+   - `InterfaceAdapter`: 可通过 interactive CLI 完成一次可复现评测 run，并可读取 run/trial/summary。
 
 ## 2. Done Definition (v1)
 
@@ -25,14 +23,12 @@
 5. Core 判定不依赖 observer 成功写入。
 6. `passRate`、`pass@k`、`pass^k` 可计算并输出。
 7. 有至少一套本地 reference adapters 组合可端到端执行。
-8. `streamRun` 与 CLI（interactive interface adapter 具体实现）可用，且交互模式语义与 batch 一致。
+8. `streamRun` 与 Interactive CLI（interface adapter 具体实现）可用，且交互模式语义与 batch 一致。
 9. `compareBaseline` 支持 `passRate`/`pass^k`/`latency`/`token budget breach` 回归判定，阈值由调用方传入。
-
----
 
 ## 3. Execution Rules
 
-1. 按 milestone 顺序推进，遵循 YAGNI，不实现 milestone 外能力。
+1. 按 milestone 顺序推进，不实现 milestone 外能力。
 2. 每完成一个任务，立即将对应 checkbox 从 `[ ]` 改为 `[x]`。
 3. 仅当 milestone 下任务与验收项全部完成后，勾选 milestone 标题。
 4. 若契约有变更，必须同步更新：
@@ -40,8 +36,6 @@
    - `apps/youeval/docs/core-contracts-v1.md`
    - 本文件
 5. 每次代码变更后，只检查变更文件/目录的类型错误。
-
----
 
 ## 4. Milestones（执行时逐项勾选）
 
