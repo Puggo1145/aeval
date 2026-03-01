@@ -1,0 +1,217 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "files": {
+    "ignoreUnknown": true,
+    "includes": [
+      "**",
+      "!**/_generated",
+      "!**/generated",
+      "!!**/dist",
+      "!!**/out",
+      "!!**/.next",
+      "!!**/.vercel",
+      "!!**/.turbo",
+      "!!**/build",
+      "!!**/coverage",
+      "!!**/.serverless",
+      "!!**/.esbuild",
+      "!!**/globals.css"
+    ]
+  },
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "javascript": {
+    "parser": {
+      "unsafeParameterDecoratorsEnabled": true
+    },
+    "formatter": {
+      "quoteStyle": "single",
+      "jsxQuoteStyle": "double"
+    }
+  },
+  "formatter": {
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "linter": {
+    "rules": {
+      "recommended": true,
+      "a11y": "off",
+      "correctness": {
+        "noUnusedImports": "warn",
+        "noUnusedVariables": "off",
+        "useExhaustiveDependencies": {
+          "level": "warn",
+          "fix": "none"
+        }
+      },
+      "style": {
+        "useImportType": "off",
+        "noNonNullAssertion": "off"
+      },
+      "suspicious": {
+        "noArrayIndexKey": "off",
+        "noAssignInExpressions": "warn",
+        "noImplicitAnyLet": "warn",
+        "noDebugger": "off",
+        "useIterableCallbackReturn": "off",
+        "noControlCharactersInRegex": "warn",
+        "noNonNullAssertedOptionalChain": "warn"
+      },
+      "security": {
+        "noDangerouslySetInnerHtml": "warn",
+        "noBlankTarget": "warn"
+      },
+      "complexity": {
+        "noUselessSwitchCase": "off"
+      }
+    }
+  },
+  "css": {
+    "linter": {
+      "enabled": false
+    },
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["apps/youapi/**/*"],
+      "linter": {
+        "rules": {
+          "style": {
+            "useImportType": "off"
+          },
+          "correctness": {
+            "useHookAtTopLevel": "off",
+            "noUnusedImports": {
+              "level": "error",
+              "fix": "safe"
+            },
+            "noUnusedPrivateClassMembers": {
+              "level": "warn",
+              "fix": "none"
+            },
+            "noUnreachable": "warn",
+            "useYield": "warn",
+            "noUnknownProperty": "warn"
+          },
+          "suspicious": {
+            "noImplicitAnyLet": "off",
+            "noAssignInExpressions": "warn",
+            "noArrayIndexKey": "warn",
+            "noDoubleEquals": "warn",
+            "noDuplicateProperties": "warn",
+            "noControlCharactersInRegex": "warn"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/ui/**/*"],
+      "linter": {
+        "rules": {
+          "style": {
+            "useImportType": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/di/**/*"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noStaticOnlyClass": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/youhome/**/*"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noImplicitAnyLet": "warn",
+            "noArrayIndexKey": "off"
+          },
+          "security": {
+            "noDangerouslySetInnerHtml": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/api/**/*"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "off",
+            "noImplicitAnyLet": "off"
+          },
+          "correctness": {
+            "noUnusedImports": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/youweb/**/*", "packages/ui-business-editor/**/*"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noShadowRestrictedNames": "warn",
+            "noDuplicateProperties": "warn",
+            "noControlCharactersInRegex": "warn",
+            "noDebugger": "off"
+          },
+          "correctness": {
+            "noUnusedImports": {
+              "fix": "none",
+              "level": "error"
+            },
+            "noUnreachable": "warn"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "apps/youweb/**/*",
+        "apps/yousite/**/*",
+        "apps/youhome/**/*",
+        "packages/ui-business-chat/**/*",
+        "packages/ui-business-snip/**/*",
+        "packages/ui-business-editor/**/*"
+      ]
+    },
+    {
+      "includes": ["packages/ui-business-editor/**/*", "packages/editor-common/**/*"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnusedImports": {
+              "fix": "none",
+              "level": "error"
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/api/**"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noStaticOnlyClass": "off"
+          }
+        }
+      }
+    }
+  ]
+}

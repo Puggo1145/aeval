@@ -1,0 +1,31 @@
+{
+  "name": "youeval",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Evaluation toolkit for YouMind services",
+  "bin": {
+    "youeval": "dist/cli.js"
+  },
+  "dependencies": {
+    "yaml": "^2.8.2",
+    "zod": "^3.24.1"
+  },
+  "scripts": {
+    "dev": "node --import tsx src/cli.ts",
+    "start": "node dist/cli.js",
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "biome check . --diagnostic-level=error",
+    "lint:fix": "biome check . --write --diagnostic-level=error",
+    "format": "biome format . --write",
+    "format:check": "biome format .",
+    "test": "node --import tsx --test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.4",
+    "@types/node": "^25.3.3",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.3"
+  }
+}
