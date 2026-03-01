@@ -33,6 +33,15 @@ export interface OrchestratorInput {
 
 const OBSERVER_NOTIFY_TIMEOUT_MS = 300;
 
+interface GraderConfigValidationResult {
+  valid: boolean;
+  reason?: string;
+}
+
+interface GraderWithConfigValidator {
+  validateConfig?: (config: Record<string, unknown>) => GraderConfigValidationResult;
+}
+
 /**
  * 以异步事件流方式执行一次完整的评测 run。
  *
@@ -83,8 +92,23 @@ export async function* orchestrateRun(
 
   // 校验所有 task 的 grader type 都可解析
   for (const task of tasks) {
-    for (const layer of task.graders.layers) {
-      resolveGraderOrThrow(layer.type, deps.graderRegistry);
+    for (const [layerIndex, layer] of task.graders.layers.entries()) {
+      const grader = resolveGraderOrThrow(layer.type, deps.graderRegistry);
+      const configValidator = (grader as typeof grader & GraderWithConfigValidator).validateConfig;
+      const validation = configValidator?.(cloneAndDeepFreezeRecord(layer.config));
+      if (validation && !validation.valid) {
+        throw new ValidationError(
+          `Invalid config for grader '${layer.type}' on task '${task.id}': ${validation.reason ?? 'Unknown config error.'}`,
+          {
+            details: {
+              field: `task.graders.layers[${layerIndex}].config`,
+              taskId: task.id,
+              graderType: layer.type,
+              layerName: layer.name,
+            },
+          },
+        );
+      }
     }
   }
 

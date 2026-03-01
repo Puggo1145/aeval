@@ -1,5 +1,21 @@
+import { z } from 'zod';
 import type { ExecutionResult } from '../../core/contracts/execution.js';
 import type { GraderResult } from '../../core/contracts/trial.js';
+import {
+  type GraderConfigValidationResult,
+  parseGraderConfig,
+  validateGraderConfig,
+} from '../config-validation.js';
+
+const ExactMatchConfigSchema = z
+  .object({
+    expected: z.string(),
+    caseSensitive: z.boolean().optional(),
+    trim: z.boolean().optional(),
+  })
+  .strict();
+
+type ExactMatchConfig = z.infer<typeof ExactMatchConfigSchema>;
 
 /**
  * Exact-match grader — compares `output` against an expected string.
@@ -13,16 +29,20 @@ export async function exactMatch(
   result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
-  const expected = config.expected;
-  if (typeof expected !== 'string') {
-    return { pass: false, reason: "Config 'expected' must be a string." };
+  const parsed = parseGraderConfig(ExactMatchConfigSchema, config);
+  if (!parsed.ok) {
+    return {
+      pass: false,
+      reason: parsed.reason,
+    };
   }
+  const parsedConfig: ExactMatchConfig = parsed.config;
 
-  const caseSensitive = config.caseSensitive !== false;
-  const trim = config.trim === true;
+  const caseSensitive = parsedConfig.caseSensitive !== false;
+  const trim = parsedConfig.trim === true;
 
   let actual = result.output;
-  let exp = expected;
+  let exp = parsedConfig.expected;
 
   if (trim) {
     actual = actual.trim();
@@ -39,6 +59,13 @@ export async function exactMatch(
     pass,
     reason: pass
       ? 'Output exactly matches expected value.'
-      : `Output does not match. Expected: "${expected}", got: "${result.output}".`,
+      : `Output does not match. Expected: "${parsedConfig.expected}", got: "${result.output}".`,
   };
 }
+
+(
+  exactMatch as typeof exactMatch & {
+    validateConfig: (config: Record<string, unknown>) => GraderConfigValidationResult;
+  }
+).validateConfig = (config: Record<string, unknown>) =>
+  validateGraderConfig(ExactMatchConfigSchema, config);

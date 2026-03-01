@@ -1,179 +1,128 @@
+import { Ajv } from 'ajv';
+import { z } from 'zod';
 import type { ExecutionResult } from '../../core/contracts/execution.js';
 import type { GraderResult } from '../../core/contracts/trial.js';
+import { type GraderConfigValidationResult, parseGraderConfig } from '../config-validation.js';
+
+const ajv = new Ajv({
+  allErrors: true,
+  strict: false,
+  validateSchema: true,
+});
+
+const JsonSchemaConfigSchema = z
+  .object({
+    schema: z.record(z.unknown()),
+  })
+  .strict();
+
+type JsonSchemaConfig = z.infer<typeof JsonSchemaConfigSchema>;
+
+function getAjvErrorsText(): string {
+  const reason = ajv.errorsText(ajv.errors, { separator: '; ' });
+  return reason.length > 0 ? reason : 'Invalid JSON Schema.';
+}
+
+function validateJsonSchemaDefinition(schema: Record<string, unknown>): string | null {
+  const valid = ajv.validateSchema(schema);
+  if (valid) {
+    return null;
+  }
+
+  return `Invalid JSON Schema: ${getAjvErrorsText()}`;
+}
+
+function compileJsonSchema(
+  schema: Record<string, unknown>,
+): { ok: true; validate: ReturnType<typeof ajv.compile> } | { ok: false; reason: string } {
+  try {
+    const validate = ajv.compile(schema);
+    return { ok: true, validate };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: `Invalid JSON Schema: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
 
 /**
- * JSON schema grader — validates `structuredOutput` against a JSON Schema subset.
+ * JSON schema grader — validates `structuredOutput` against JSON Schema via Ajv.
  *
  * Config:
- *   schema: object — JSON Schema (supports type, properties, required, items, enum,
- *                    minimum, maximum, minLength, maxLength, pattern, additionalProperties)
- *
- * This is a lightweight validator covering the most common JSON Schema draft-07 keywords.
- * For full spec compliance, consider using an external validator (e.g., ajv).
+ *   schema: object — JSON Schema object
  */
 export async function jsonSchema(
   result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
-  const schema = config.schema;
-  if (typeof schema !== 'object' || schema === null) {
-    return { pass: false, reason: "Config 'schema' must be a non-null object." };
+  const parsed = parseGraderConfig(JsonSchemaConfigSchema, config);
+  if (!parsed.ok) {
+    return {
+      pass: false,
+      reason: parsed.reason,
+    };
+  }
+  const parsedConfig: JsonSchemaConfig = parsed.config;
+
+  const schemaError = validateJsonSchemaDefinition(parsedConfig.schema);
+  if (schemaError) {
+    return { pass: false, reason: schemaError };
+  }
+
+  const compiled = compileJsonSchema(parsedConfig.schema);
+  if (!compiled.ok) {
+    return { pass: false, reason: compiled.reason };
   }
 
   if (result.structuredOutput === undefined) {
     return { pass: false, reason: 'structuredOutput is undefined.' };
   }
 
-  const errors = validateValue(result.structuredOutput, schema as SchemaNode, '');
-  if (errors.length > 0) {
-    return { pass: false, reason: errors.join('; ') };
+  const valid = compiled.validate(result.structuredOutput);
+  if (!valid) {
+    const reason = ajv.errorsText(compiled.validate.errors, { separator: '; ' });
+    return {
+      pass: false,
+      reason: reason.length > 0 ? reason : 'structuredOutput does not match schema.',
+    };
   }
 
   return { pass: true, reason: 'structuredOutput matches schema.' };
 }
 
-// -- Lightweight JSON Schema validator --
+function validateJsonSchemaConfig(
+  config: Record<string, unknown>,
+): GraderConfigValidationResult {
+  const parsed = parseGraderConfig(JsonSchemaConfigSchema, config);
+  if (!parsed.ok) {
+    return {
+      valid: false,
+      reason: parsed.reason,
+    };
+  }
 
-interface SchemaNode {
-  type?: string | string[];
-  properties?: Record<string, SchemaNode>;
-  required?: string[];
-  additionalProperties?: boolean;
-  items?: SchemaNode;
-  enum?: unknown[];
-  minimum?: number;
-  maximum?: number;
-  minLength?: number;
-  maxLength?: number;
-  pattern?: string;
-  const?: unknown;
+  const schemaError = validateJsonSchemaDefinition(parsed.config.schema);
+  if (schemaError) {
+    return {
+      valid: false,
+      reason: schemaError,
+    };
+  }
+
+  const compiled = compileJsonSchema(parsed.config.schema);
+  if (!compiled.ok) {
+    return {
+      valid: false,
+      reason: compiled.reason,
+    };
+  }
+
+  return { valid: true };
 }
 
-function jsonType(value: unknown): string {
-  if (value === null) return 'null';
-  if (Array.isArray(value)) return 'array';
-  return typeof value; // 'string' | 'number' | 'boolean' | 'object' | 'undefined'
-}
-
-function matchesType(value: unknown, expected: string): boolean {
-  const actual = jsonType(value);
-  if (expected === 'integer') {
-    return typeof value === 'number' && Number.isInteger(value);
+(
+  jsonSchema as typeof jsonSchema & {
+    validateConfig: (config: Record<string, unknown>) => GraderConfigValidationResult;
   }
-  return actual === expected;
-}
-
-function validateValue(value: unknown, schema: SchemaNode, path: string): string[] {
-  const errors: string[] = [];
-  const prefix = path || '$';
-
-  // type check
-  if (schema.type !== undefined) {
-    const types = Array.isArray(schema.type) ? schema.type : [schema.type];
-    if (!types.some((t) => matchesType(value, t))) {
-      errors.push(`${prefix}: expected type ${types.join('|')}, got ${jsonType(value)}`);
-      return errors; // short-circuit on type mismatch
-    }
-  }
-
-  // const check
-  if (schema.const !== undefined) {
-    if (!deepEqual(value, schema.const)) {
-      errors.push(`${prefix}: value does not match const`);
-    }
-  }
-
-  // enum check
-  if (schema.enum !== undefined) {
-    if (!schema.enum.some((e) => deepEqual(value, e))) {
-      errors.push(`${prefix}: value not in enum [${schema.enum.map(String).join(', ')}]`);
-    }
-  }
-
-  // string constraints
-  if (typeof value === 'string') {
-    if (schema.minLength !== undefined && value.length < schema.minLength) {
-      errors.push(`${prefix}: string length ${value.length} < minLength ${schema.minLength}`);
-    }
-    if (schema.maxLength !== undefined && value.length > schema.maxLength) {
-      errors.push(`${prefix}: string length ${value.length} > maxLength ${schema.maxLength}`);
-    }
-    if (schema.pattern !== undefined) {
-      const re = new RegExp(schema.pattern);
-      if (!re.test(value)) {
-        errors.push(`${prefix}: string does not match pattern /${schema.pattern}/`);
-      }
-    }
-  }
-
-  // number constraints
-  if (typeof value === 'number') {
-    if (schema.minimum !== undefined && value < schema.minimum) {
-      errors.push(`${prefix}: ${value} < minimum ${schema.minimum}`);
-    }
-    if (schema.maximum !== undefined && value > schema.maximum) {
-      errors.push(`${prefix}: ${value} > maximum ${schema.maximum}`);
-    }
-  }
-
-  // object constraints
-  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-    const obj = value as Record<string, unknown>;
-
-    if (schema.required) {
-      for (const key of schema.required) {
-        if (!(key in obj)) {
-          errors.push(`${prefix}: missing required property '${key}'`);
-        }
-      }
-    }
-
-    if (schema.properties) {
-      for (const [key, propSchema] of Object.entries(schema.properties)) {
-        if (key in obj) {
-          errors.push(...validateValue(obj[key], propSchema, `${prefix}.${key}`));
-        }
-      }
-
-      if (schema.additionalProperties === false) {
-        const allowedKeys = new Set(Object.keys(schema.properties));
-        for (const key of Object.keys(obj)) {
-          if (!allowedKeys.has(key)) {
-            errors.push(`${prefix}: unexpected property '${key}'`);
-          }
-        }
-      }
-    }
-  }
-
-  // array constraints
-  if (Array.isArray(value) && schema.items) {
-    for (let i = 0; i < value.length; i++) {
-      errors.push(...validateValue(value[i], schema.items, `${prefix}[${i}]`));
-    }
-  }
-
-  return errors;
-}
-
-function deepEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (a === null || b === null) return false;
-  if (typeof a !== typeof b) return false;
-
-  if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) return false;
-    return a.every((v, i) => deepEqual(v, b[i]));
-  }
-
-  if (typeof a === 'object' && typeof b === 'object') {
-    const aObj = a as Record<string, unknown>;
-    const bObj = b as Record<string, unknown>;
-    const aKeys = Object.keys(aObj);
-    const bKeys = Object.keys(bObj);
-    if (aKeys.length !== bKeys.length) return false;
-    return aKeys.every((key) => key in bObj && deepEqual(aObj[key], bObj[key]));
-  }
-
-  return false;
-}
+).validateConfig = validateJsonSchemaConfig;

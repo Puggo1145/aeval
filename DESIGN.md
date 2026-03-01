@@ -272,7 +272,7 @@ export interface GraderRegistry {
 }
 ```
 
-内置 grader 在 registry 初始化时自动注册；`custom` 类型通过 `register` 动态注册。Task DSL 中 `graders.layers[].type` 必须在 `GraderRegistry` 中可解析。
+内置 grader 在应用组合根通过 `registerBuiltinGraders` 预注册到 `GraderRegistry`（注册仅声明可用实现，不代表执行）；`custom` 类型通过 `register` 动态注册。Task DSL 中 `graders.layers[].type` 必须在 `GraderRegistry` 中可解析，实际执行严格由 task 的 `graders.layers` 决定。
 
 ### 4.5 Trial / Run 聚合结构
 

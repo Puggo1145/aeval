@@ -1,22 +1,35 @@
+import { z } from 'zod';
 import type { ExecutionResult } from '../../core/contracts/execution.js';
 import type { GraderResult } from '../../core/contracts/trial.js';
+import {
+  type GraderConfigValidationResult,
+  parseGraderConfig,
+  validateGraderConfig,
+} from '../config-validation.js';
 
-interface ContainsPattern {
-  pattern: string;
-  caseSensitive?: boolean;
-}
+const ContainsPatternSchema = z
+  .object({
+    pattern: z.string(),
+    caseSensitive: z.boolean().optional(),
+  })
+  .strict();
 
-function isPatternArray(value: unknown): value is ContainsPattern[] {
-  return (
-    Array.isArray(value) &&
-    value.every(
-      (item) =>
-        typeof item === 'object' &&
-        item !== null &&
-        typeof (item as ContainsPattern).pattern === 'string',
-    )
-  );
-}
+const ContainsConfigSchema = z
+  .object({
+    mustInclude: z.array(ContainsPatternSchema).min(1).optional(),
+    mustNotInclude: z.array(ContainsPatternSchema).min(1).optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.mustInclude === undefined && value.mustNotInclude === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Config must provide 'mustInclude' or 'mustNotInclude'.",
+      });
+    }
+  });
+
+type ContainsConfig = z.infer<typeof ContainsConfigSchema>;
 
 /**
  * Contains grader — checks that output includes/excludes specified patterns.
@@ -31,32 +44,20 @@ export async function contains(
   result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
-  const mustInclude = config.mustInclude;
-  const mustNotInclude = config.mustNotInclude;
-
-  if (!mustInclude && !mustNotInclude) {
-    return { pass: false, reason: "Config must provide 'mustInclude' or 'mustNotInclude'." };
-  }
-
-  if (mustInclude !== undefined && !isPatternArray(mustInclude)) {
+  const parsed = parseGraderConfig(ContainsConfigSchema, config);
+  if (!parsed.ok) {
     return {
       pass: false,
-      reason: "'mustInclude' must be an array of { pattern: string; caseSensitive?: boolean }.",
+      reason: parsed.reason,
     };
   }
-
-  if (mustNotInclude !== undefined && !isPatternArray(mustNotInclude)) {
-    return {
-      pass: false,
-      reason: "'mustNotInclude' must be an array of { pattern: string; caseSensitive?: boolean }.",
-    };
-  }
+  const parsedConfig: ContainsConfig = parsed.config;
 
   const output = result.output;
   const failures: string[] = [];
 
-  if (mustInclude) {
-    for (const item of mustInclude) {
+  if (parsedConfig.mustInclude) {
+    for (const item of parsedConfig.mustInclude) {
       const sensitive = item.caseSensitive !== false;
       const haystack = sensitive ? output : output.toLowerCase();
       const needle = sensitive ? item.pattern : item.pattern.toLowerCase();
@@ -66,8 +67,8 @@ export async function contains(
     }
   }
 
-  if (mustNotInclude) {
-    for (const item of mustNotInclude) {
+  if (parsedConfig.mustNotInclude) {
+    for (const item of parsedConfig.mustNotInclude) {
       const sensitive = item.caseSensitive !== false;
       const haystack = sensitive ? output : output.toLowerCase();
       const needle = sensitive ? item.pattern : item.pattern.toLowerCase();
@@ -83,3 +84,10 @@ export async function contains(
 
   return { pass: true, reason: 'All contains checks passed.' };
 }
+
+(
+  contains as typeof contains & {
+    validateConfig: (config: Record<string, unknown>) => GraderConfigValidationResult;
+  }
+).validateConfig = (config: Record<string, unknown>) =>
+  validateGraderConfig(ContainsConfigSchema, config);

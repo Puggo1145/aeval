@@ -1,26 +1,47 @@
+import { z } from 'zod';
 import type { ExecutionResult } from '../../core/contracts/execution.js';
 import type { GraderResult } from '../../core/contracts/trial.js';
+import {
+  type GraderConfigValidationResult,
+  parseGraderConfig,
+  validateGraderConfig,
+} from '../config-validation.js';
 
-interface RegexPattern {
-  pattern: string;
-  flags?: string;
-}
+const RegexPatternSchema = z
+  .object({
+    pattern: z.string(),
+    flags: z.string().optional(),
+  })
+  .strict()
+  .superRefine((item, ctx) => {
+    try {
+      new RegExp(item.pattern, item.flags ?? '');
+    } catch (error) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Invalid regex /${item.pattern}/${item.flags ?? ''}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      });
+    }
+  });
 
-function isRegexPatternArray(value: unknown): value is RegexPattern[] {
-  return (
-    Array.isArray(value) &&
-    value.every(
-      (item) =>
-        typeof item === 'object' &&
-        item !== null &&
-        typeof (item as RegexPattern).pattern === 'string',
-    )
-  );
-}
+const RegexConfigSchema = z
+  .object({
+    mustMatch: z.array(RegexPatternSchema).min(1).optional(),
+    mustNotMatch: z.array(RegexPatternSchema).min(1).optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.mustMatch === undefined && value.mustNotMatch === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Config must provide 'mustMatch' or 'mustNotMatch'.",
+      });
+    }
+  });
 
-function buildRegex(item: RegexPattern): RegExp {
-  return new RegExp(item.pattern, item.flags ?? '');
-}
+type RegexConfig = z.infer<typeof RegexConfigSchema>;
 
 /**
  * Regex grader — validates output against regex patterns.
@@ -35,33 +56,21 @@ export async function regex(
   result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
-  const mustMatch = config.mustMatch;
-  const mustNotMatch = config.mustNotMatch;
-
-  if (!mustMatch && !mustNotMatch) {
-    return { pass: false, reason: "Config must provide 'mustMatch' or 'mustNotMatch'." };
-  }
-
-  if (mustMatch !== undefined && !isRegexPatternArray(mustMatch)) {
+  const parsed = parseGraderConfig(RegexConfigSchema, config);
+  if (!parsed.ok) {
     return {
       pass: false,
-      reason: "'mustMatch' must be an array of { pattern: string; flags?: string }.",
+      reason: parsed.reason,
     };
   }
-
-  if (mustNotMatch !== undefined && !isRegexPatternArray(mustNotMatch)) {
-    return {
-      pass: false,
-      reason: "'mustNotMatch' must be an array of { pattern: string; flags?: string }.",
-    };
-  }
+  const parsedConfig: RegexConfig = parsed.config;
 
   const output = result.output;
   const failures: string[] = [];
 
-  if (mustMatch) {
-    for (const item of mustMatch) {
-      const re = buildRegex(item);
+  if (parsedConfig.mustMatch) {
+    for (const item of parsedConfig.mustMatch) {
+      const re = new RegExp(item.pattern, item.flags ?? '');
       if (!re.test(output)) {
         failures.push(
           `Output does not match required pattern: /${item.pattern}/${item.flags ?? ''}.`,
@@ -70,9 +79,9 @@ export async function regex(
     }
   }
 
-  if (mustNotMatch) {
-    for (const item of mustNotMatch) {
-      const re = buildRegex(item);
+  if (parsedConfig.mustNotMatch) {
+    for (const item of parsedConfig.mustNotMatch) {
+      const re = new RegExp(item.pattern, item.flags ?? '');
       if (re.test(output)) {
         failures.push(`Output matches forbidden pattern: /${item.pattern}/${item.flags ?? ''}.`);
       }
@@ -85,3 +94,10 @@ export async function regex(
 
   return { pass: true, reason: 'All regex checks passed.' };
 }
+
+(
+  regex as typeof regex & {
+    validateConfig: (config: Record<string, unknown>) => GraderConfigValidationResult;
+  }
+).validateConfig = (config: Record<string, unknown>) =>
+  validateGraderConfig(RegexConfigSchema, config);

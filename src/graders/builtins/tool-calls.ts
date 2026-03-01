@@ -1,19 +1,53 @@
+import { z } from 'zod';
 import type { ExecutionResult, ToolCallRecord } from '../../core/contracts/execution.js';
 import type { GraderResult } from '../../core/contracts/trial.js';
+import {
+  type GraderConfigValidationResult,
+  parseGraderConfig,
+  validateGraderConfig,
+} from '../config-validation.js';
 
-interface ToolSpec {
-  tool: string;
-}
+const ToolSpecSchema = z
+  .object({
+    tool: z.string().min(1, "Field 'tool' must be a non-empty string."),
+  })
+  .strict();
 
-function isToolSpecArray(value: unknown): value is ToolSpec[] {
-  return (
-    Array.isArray(value) &&
-    value.every(
-      (item) =>
-        typeof item === 'object' && item !== null && typeof (item as ToolSpec).tool === 'string',
-    )
-  );
-}
+const ToolCallsConfigSchema = z
+  .object({
+    required: z.array(ToolSpecSchema).min(1).optional(),
+    forbidden: z.array(ToolSpecSchema).min(1).optional(),
+    maxCalls: z.number().int().finite().nonnegative().optional(),
+    minCalls: z.number().int().finite().nonnegative().optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const hasAnyConstraint =
+      value.required !== undefined ||
+      value.forbidden !== undefined ||
+      value.maxCalls !== undefined ||
+      value.minCalls !== undefined;
+    if (!hasAnyConstraint) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Config must provide 'required', 'forbidden', 'maxCalls', or 'minCalls'.",
+      });
+    }
+
+    if (
+      value.minCalls !== undefined &&
+      value.maxCalls !== undefined &&
+      value.minCalls > value.maxCalls
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['minCalls'],
+        message: "Field 'minCalls' must be less than or equal to 'maxCalls'.",
+      });
+    }
+  });
+
+type ToolCallsConfig = z.infer<typeof ToolCallsConfigSchema>;
 
 /**
  * Tool-calls grader — validates tool call behavior from trace.turns[].toolCalls.
@@ -30,25 +64,14 @@ export async function toolCalls(
   result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
-  const required = config.required;
-  const forbidden = config.forbidden;
-  const maxCalls = config.maxCalls;
-  const minCalls = config.minCalls;
-
-  if (!required && !forbidden && maxCalls === undefined && minCalls === undefined) {
+  const parsed = parseGraderConfig(ToolCallsConfigSchema, config);
+  if (!parsed.ok) {
     return {
       pass: false,
-      reason: "Config must provide 'required', 'forbidden', 'maxCalls', or 'minCalls'.",
+      reason: parsed.reason,
     };
   }
-
-  if (required !== undefined && !isToolSpecArray(required)) {
-    return { pass: false, reason: "'required' must be an array of { tool: string }." };
-  }
-
-  if (forbidden !== undefined && !isToolSpecArray(forbidden)) {
-    return { pass: false, reason: "'forbidden' must be an array of { tool: string }." };
-  }
+  const parsedConfig: ToolCallsConfig = parsed.config;
 
   // Collect all tool calls from trace turns
   const allCalls: ToolCallRecord[] = [];
@@ -63,31 +86,35 @@ export async function toolCalls(
   const calledTools = new Set(allCalls.map((tc) => tc.tool));
   const failures: string[] = [];
 
-  if (required) {
-    for (const spec of required) {
+  if (parsedConfig.required) {
+    for (const spec of parsedConfig.required) {
       if (!calledTools.has(spec.tool)) {
         failures.push(`Required tool '${spec.tool}' was not called.`);
       }
     }
   }
 
-  if (forbidden) {
-    for (const spec of forbidden) {
+  if (parsedConfig.forbidden) {
+    for (const spec of parsedConfig.forbidden) {
       if (calledTools.has(spec.tool)) {
         failures.push(`Forbidden tool '${spec.tool}' was called.`);
       }
     }
   }
 
-  if (minCalls !== undefined && typeof minCalls === 'number') {
-    if (allCalls.length < minCalls) {
-      failures.push(`Total tool calls ${allCalls.length} is below minimum ${minCalls}.`);
+  if (parsedConfig.minCalls !== undefined) {
+    if (allCalls.length < parsedConfig.minCalls) {
+      failures.push(
+        `Total tool calls ${allCalls.length} is below minimum ${parsedConfig.minCalls}.`,
+      );
     }
   }
 
-  if (maxCalls !== undefined && typeof maxCalls === 'number') {
-    if (allCalls.length > maxCalls) {
-      failures.push(`Total tool calls ${allCalls.length} exceeds maximum ${maxCalls}.`);
+  if (parsedConfig.maxCalls !== undefined) {
+    if (allCalls.length > parsedConfig.maxCalls) {
+      failures.push(
+        `Total tool calls ${allCalls.length} exceeds maximum ${parsedConfig.maxCalls}.`,
+      );
     }
   }
 
@@ -101,3 +128,10 @@ export async function toolCalls(
     meta: { totalCalls: allCalls.length, calledTools: [...calledTools] },
   };
 }
+
+(
+  toolCalls as typeof toolCalls & {
+    validateConfig: (config: Record<string, unknown>) => GraderConfigValidationResult;
+  }
+).validateConfig = (config: Record<string, unknown>) =>
+  validateGraderConfig(ToolCallsConfigSchema, config);

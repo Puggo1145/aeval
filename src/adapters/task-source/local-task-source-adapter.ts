@@ -413,12 +413,7 @@ async function resolveSelectorRevision(
       datasetDirPath,
       normalizedRevision,
       input.ref,
-    ).catch((cause) => {
-      if (cause instanceof ValidationError) {
-        return datasetDirPath;
-      }
-      throw cause;
-    });
+    );
     return {
       revision: normalizedRevision,
       tasksDirPath: revisionTasksDirPath,

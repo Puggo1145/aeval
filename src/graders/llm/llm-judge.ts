@@ -1,7 +1,28 @@
+import { z } from 'zod';
 import type { ExecutionResult } from '../../core/contracts/execution.js';
 import type { Grader } from '../../core/contracts/runtime.js';
 import type { GraderResult } from '../../core/contracts/trial.js';
+import {
+  type GraderConfigValidationResult,
+  parseGraderConfig,
+  validateGraderConfig,
+} from '../config-validation.js';
 import type { JudgeProvider } from './judge-provider.js';
+
+const LlmJudgeConfigSchema = z
+  .object({
+    dimension: z
+      .string()
+      .refine((value) => value.trim().length > 0, "Config 'dimension' must be a non-empty string."),
+    rubric: z
+      .string()
+      .refine((value) => value.trim().length > 0, "Config 'rubric' must be a non-empty string."),
+    contextFrom: z.string().optional(),
+    model: z.string().optional(),
+  })
+  .strict();
+
+type LlmJudgeConfig = z.infer<typeof LlmJudgeConfigSchema>;
 
 /**
  * Resolves a dot-separated path against the ExecutionResult to extract context.
@@ -31,25 +52,26 @@ function resolveContextPath(result: ExecutionResult, path: string): unknown {
  *   model?: string            — hint for which judge model to use (passed through to provider)
  */
 export function createLlmJudgeGrader(judgeProvider: JudgeProvider): Grader {
-  return async (
+  const grader: Grader = async (
     result: ExecutionResult,
     config: Record<string, unknown>,
   ): Promise<GraderResult> => {
-    const dimension = config.dimension;
-    const rubric = config.rubric;
-
-    if (typeof dimension !== 'string' || dimension.trim().length === 0) {
-      return { pass: false, reason: "Config 'dimension' must be a non-empty string." };
+    const parsed = parseGraderConfig(LlmJudgeConfigSchema, config);
+    if (!parsed.ok) {
+      return {
+        pass: false,
+        reason: parsed.reason,
+      };
     }
+    const parsedConfig: LlmJudgeConfig = parsed.config;
 
-    if (typeof rubric !== 'string' || rubric.trim().length === 0) {
-      return { pass: false, reason: "Config 'rubric' must be a non-empty string." };
-    }
+    const dimension = parsedConfig.dimension;
+    const rubric = parsedConfig.rubric;
 
     // Resolve optional context from ExecutionResult
     let context: unknown;
-    if (typeof config.contextFrom === 'string') {
-      context = resolveContextPath(result, config.contextFrom);
+    if (parsedConfig.contextFrom !== undefined) {
+      context = resolveContextPath(result, parsedConfig.contextFrom);
     }
 
     const judgeResult = await judgeProvider.evaluate({
@@ -66,8 +88,17 @@ export function createLlmJudgeGrader(judgeProvider: JudgeProvider): Grader {
       meta: {
         label: judgeResult.label,
         dimension,
-        model: config.model,
+        model: parsedConfig.model,
       },
     };
   };
+
+  (
+    grader as typeof grader & {
+      validateConfig: (config: Record<string, unknown>) => GraderConfigValidationResult;
+    }
+  ).validateConfig = (config: Record<string, unknown>) =>
+    validateGraderConfig(LlmJudgeConfigSchema, config);
+
+  return grader;
 }

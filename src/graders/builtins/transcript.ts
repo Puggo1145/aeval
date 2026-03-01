@@ -1,5 +1,49 @@
+import { z } from 'zod';
 import type { ExecutionResult } from '../../core/contracts/execution.js';
 import type { GraderResult } from '../../core/contracts/trial.js';
+import {
+  type GraderConfigValidationResult,
+  parseGraderConfig,
+  validateGraderConfig,
+} from '../config-validation.js';
+
+const TranscriptConfigSchema = z
+  .object({
+    maxTurns: z.number().int().finite().nonnegative().optional(),
+    minTurns: z.number().int().finite().nonnegative().optional(),
+    mustStartWith: z.enum(['user', 'assistant']).optional(),
+    mustEndWith: z.enum(['user', 'assistant']).optional(),
+    maxConsecutiveSameRole: z.number().int().finite().nonnegative().optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const hasAnyConstraint =
+      value.maxTurns !== undefined ||
+      value.minTurns !== undefined ||
+      value.mustStartWith !== undefined ||
+      value.mustEndWith !== undefined ||
+      value.maxConsecutiveSameRole !== undefined;
+    if (!hasAnyConstraint) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Config must provide at least one transcript constraint.',
+      });
+    }
+
+    if (
+      value.minTurns !== undefined &&
+      value.maxTurns !== undefined &&
+      value.minTurns > value.maxTurns
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['minTurns'],
+        message: "Field 'minTurns' must be less than or equal to 'maxTurns'.",
+      });
+    }
+  });
+
+type TranscriptConfig = z.infer<typeof TranscriptConfigSchema>;
 
 /**
  * Transcript grader — validates multi-turn behavior from trace.turns.
@@ -17,57 +61,62 @@ export async function transcript(
   result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
-  const { maxTurns, minTurns, mustStartWith, mustEndWith, maxConsecutiveSameRole } = config;
-
-  if (
-    maxTurns === undefined &&
-    minTurns === undefined &&
-    mustStartWith === undefined &&
-    mustEndWith === undefined &&
-    maxConsecutiveSameRole === undefined
-  ) {
-    return { pass: false, reason: 'Config must provide at least one transcript constraint.' };
+  const parsed = parseGraderConfig(TranscriptConfigSchema, config);
+  if (!parsed.ok) {
+    return {
+      pass: false,
+      reason: parsed.reason,
+    };
   }
+  const parsedConfig: TranscriptConfig = parsed.config;
 
   const turns = result.trace?.turns ?? [];
   const failures: string[] = [];
 
-  if (minTurns !== undefined && typeof minTurns === 'number') {
-    if (turns.length < minTurns) {
-      failures.push(`Turn count ${turns.length} is below minimum ${minTurns}.`);
+  if (parsedConfig.minTurns !== undefined) {
+    if (turns.length < parsedConfig.minTurns) {
+      failures.push(`Turn count ${turns.length} is below minimum ${parsedConfig.minTurns}.`);
     }
   }
 
-  if (maxTurns !== undefined && typeof maxTurns === 'number') {
-    if (turns.length > maxTurns) {
-      failures.push(`Turn count ${turns.length} exceeds maximum ${maxTurns}.`);
+  if (parsedConfig.maxTurns !== undefined) {
+    if (turns.length > parsedConfig.maxTurns) {
+      failures.push(`Turn count ${turns.length} exceeds maximum ${parsedConfig.maxTurns}.`);
     }
   }
 
-  if (mustStartWith !== undefined && typeof mustStartWith === 'string') {
+  if (parsedConfig.mustStartWith !== undefined) {
     const first = turns[0];
-    if (first && first.role !== mustStartWith) {
-      failures.push(`First turn role is '${first.role}', expected '${mustStartWith}'.`);
+    if (!first) {
+      failures.push(
+        `First turn is missing, expected first turn role '${parsedConfig.mustStartWith}'.`,
+      );
+    } else if (first.role !== parsedConfig.mustStartWith) {
+      failures.push(
+        `First turn role is '${first.role}', expected '${parsedConfig.mustStartWith}'.`,
+      );
     }
   }
 
-  if (mustEndWith !== undefined && typeof mustEndWith === 'string') {
+  if (parsedConfig.mustEndWith !== undefined) {
     const last = turns.at(-1);
-    if (last && last.role !== mustEndWith) {
-      failures.push(`Last turn role is '${last.role}', expected '${mustEndWith}'.`);
+    if (!last) {
+      failures.push(`Last turn is missing, expected last turn role '${parsedConfig.mustEndWith}'.`);
+    } else if (last.role !== parsedConfig.mustEndWith) {
+      failures.push(`Last turn role is '${last.role}', expected '${parsedConfig.mustEndWith}'.`);
     }
   }
 
-  if (maxConsecutiveSameRole !== undefined && typeof maxConsecutiveSameRole === 'number') {
+  if (parsedConfig.maxConsecutiveSameRole !== undefined) {
     let consecutive = 1;
     for (let i = 1; i < turns.length; i++) {
       const current = turns[i]!;
       const prev = turns[i - 1]!;
       if (current.role === prev.role) {
         consecutive++;
-        if (consecutive > maxConsecutiveSameRole) {
+        if (consecutive > parsedConfig.maxConsecutiveSameRole) {
           failures.push(
-            `Found ${consecutive} consecutive '${current.role}' turns, max allowed is ${maxConsecutiveSameRole}.`,
+            `Found ${consecutive} consecutive '${current.role}' turns, max allowed is ${parsedConfig.maxConsecutiveSameRole}.`,
           );
           break;
         }
@@ -87,3 +136,10 @@ export async function transcript(
     meta: { turnCount: turns.length },
   };
 }
+
+(
+  transcript as typeof transcript & {
+    validateConfig: (config: Record<string, unknown>) => GraderConfigValidationResult;
+  }
+).validateConfig = (config: Record<string, unknown>) =>
+  validateGraderConfig(TranscriptConfigSchema, config);

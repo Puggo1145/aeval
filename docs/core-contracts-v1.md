@@ -170,7 +170,7 @@ Required fields:
 
 Required behaviors:
 
-1. 内置 grader 在 registry 初始化时自动注册。
+1. 内置 grader 在应用组合根通过 `registerBuiltinGraders` 预注册到 `GraderRegistry`（仅声明可用实现，不代表执行）。
 2. `custom` 类型 grader 通过 `register` 动态注册。
 3. Task DSL 中 `graders.layers[].type` 必须在 `GraderRegistry` 中可解析，否则 fail fast。
 
@@ -385,7 +385,7 @@ Aggregation records:
 
 - [ ] Task/Experiment schema version validation implemented.
 - [ ] ProviderRegistry (`register/get/has/list`) implemented.
-- [ ] GraderRegistry (`register/get/has/list`) implemented; built-in graders auto-registered.
+- [ ] GraderRegistry (`register/get/has/list`) implemented; built-in graders pre-registered in composition root.
 - [ ] Task DSL `graders.layers[].type` validated against GraderRegistry.
 - [ ] Experiment `runs[]` validated (`name` unique, at least one RunConfig).
 - [ ] Task source resolution to immutable revision before run starts.

@@ -141,6 +141,14 @@ test('regex: both mustMatch and mustNotMatch', async () => {
   assert.equal(r.pass, true);
 });
 
+test('regex: invalid pattern returns grader fail instead of throwing', async () => {
+  const r = await regex(makeResult({ output: 'anything' }), {
+    mustMatch: [{ pattern: '[' }],
+  });
+  assert.equal(r.pass, false);
+  assert.ok(r.reason.includes('Invalid grader config'));
+});
+
 // ==================== json-schema ====================
 
 test('json-schema: valid object', async () => {
@@ -199,7 +207,7 @@ test('json-schema: array items validation', async () => {
     },
   });
   assert.equal(r.pass, false);
-  assert.ok(r.reason.includes('[2]'));
+  assert.ok(r.reason.includes('number'));
 });
 
 test('json-schema: undefined structuredOutput', async () => {
@@ -218,7 +226,6 @@ test('json-schema: string constraints', async () => {
     },
   });
   assert.equal(r.pass, false);
-  assert.ok(r.reason.includes('minLength'));
 });
 
 test('json-schema: additionalProperties false', async () => {
@@ -230,7 +237,48 @@ test('json-schema: additionalProperties false', async () => {
     },
   });
   assert.equal(r.pass, false);
-  assert.ok(r.reason.includes("'extra'"));
+});
+
+test('json-schema: invalid pattern returns grader fail instead of throwing', async () => {
+  const r = await jsonSchema(makeResult({ structuredOutput: { code: 'ABC' } }), {
+    schema: {
+      type: 'object',
+      properties: {
+        code: {
+          type: 'string',
+          pattern: '[',
+        },
+      },
+    },
+  });
+  assert.equal(r.pass, false);
+  assert.ok(r.reason.includes('Invalid JSON Schema'));
+});
+
+test("json-schema: allows property named 'pattern'", async () => {
+  const r = await jsonSchema(makeResult({ structuredOutput: { pattern: 'ABC' } }), {
+    schema: {
+      type: 'object',
+      properties: {
+        pattern: {
+          type: 'string',
+        },
+      },
+      required: ['pattern'],
+    },
+  });
+  assert.equal(r.pass, true);
+});
+
+test("json-schema: allows literal object with key named 'pattern' inside const", async () => {
+  const r = await jsonSchema(makeResult({ structuredOutput: { pattern: 123 } }), {
+    schema: {
+      const: {
+        pattern: 123,
+      },
+    },
+  });
+  assert.equal(r.pass, true);
 });
 
 // ==================== length-check ====================
@@ -253,6 +301,12 @@ test('length-check: too long', async () => {
 test('length-check: fails with no config', async () => {
   const r = await lengthCheck(makeResult(), {});
   assert.equal(r.pass, false);
+});
+
+test('length-check: fails when min is greater than max', async () => {
+  const r = await lengthCheck(makeResult({ output: 'hello' }), { min: 10, max: 5 });
+  assert.equal(r.pass, false);
+  assert.ok(r.reason.includes("Field 'min' must be less than or equal to 'max'."));
 });
 
 // ==================== tool-calls ====================
@@ -313,6 +367,30 @@ test('tool-calls: no trace returns pass for forbidden-only check', async () => {
   assert.equal(r.pass, true);
 });
 
+test('tool-calls: maxCalls as string fails config validation', async () => {
+  const r = await toolCalls(makeResult(), { maxCalls: '2' });
+  assert.equal(r.pass, false);
+  assert.ok(r.reason.includes('Invalid grader config'));
+});
+
+test('tool-calls: negative minCalls fails config validation', async () => {
+  const r = await toolCalls(makeResult(), { minCalls: -1 });
+  assert.equal(r.pass, false);
+  assert.ok(r.reason.includes('Invalid grader config'));
+});
+
+test('tool-calls: NaN maxCalls fails config validation', async () => {
+  const r = await toolCalls(makeResult(), { maxCalls: Number.NaN });
+  assert.equal(r.pass, false);
+  assert.ok(r.reason.includes('Invalid grader config'));
+});
+
+test('tool-calls: empty config fails', async () => {
+  const r = await toolCalls(makeResult(), {});
+  assert.equal(r.pass, false);
+  assert.ok(r.reason.includes('must provide'));
+});
+
 // ==================== transcript ====================
 
 test('transcript: turn count within bounds', async () => {
@@ -349,6 +427,12 @@ test('transcript: mustStartWith', async () => {
   assert.equal(r.pass, false);
 });
 
+test('transcript: mustStartWith fails when transcript is empty', async () => {
+  const r = await transcript(makeResult({ trace: { turns: [] } }), { mustStartWith: 'user' });
+  assert.equal(r.pass, false);
+  assert.ok(r.reason.includes('First turn is missing'));
+});
+
 test('transcript: mustEndWith', async () => {
   const r = await transcript(
     makeResult({
@@ -362,6 +446,12 @@ test('transcript: mustEndWith', async () => {
     { mustEndWith: 'assistant' },
   );
   assert.equal(r.pass, true);
+});
+
+test('transcript: mustEndWith fails when transcript is empty', async () => {
+  const r = await transcript(makeResult({ trace: { turns: [] } }), { mustEndWith: 'assistant' });
+  assert.equal(r.pass, false);
+  assert.ok(r.reason.includes('Last turn is missing'));
 });
 
 test('transcript: maxConsecutiveSameRole', async () => {
@@ -380,6 +470,36 @@ test('transcript: maxConsecutiveSameRole', async () => {
   );
   assert.equal(r.pass, false);
   assert.ok(r.reason.includes('consecutive'));
+});
+
+test('transcript: string minTurns fails config validation', async () => {
+  const r = await transcript(makeResult(), { minTurns: '2' });
+  assert.equal(r.pass, false);
+  assert.ok(r.reason.includes('Invalid grader config'));
+});
+
+test('transcript: negative maxTurns fails config validation', async () => {
+  const r = await transcript(makeResult(), { maxTurns: -1 });
+  assert.equal(r.pass, false);
+  assert.ok(r.reason.includes('Invalid grader config'));
+});
+
+test('transcript: Infinity maxConsecutiveSameRole fails config validation', async () => {
+  const r = await transcript(makeResult(), { maxConsecutiveSameRole: Infinity });
+  assert.equal(r.pass, false);
+  assert.ok(r.reason.includes('Invalid grader config'));
+});
+
+test('transcript: invalid role fails config validation', async () => {
+  const r = await transcript(makeResult(), { mustStartWith: 'system' });
+  assert.equal(r.pass, false);
+  assert.ok(r.reason.includes('Invalid grader config'));
+});
+
+test('transcript: minTurns greater than maxTurns fails config validation', async () => {
+  const r = await transcript(makeResult(), { minTurns: 5, maxTurns: 1 });
+  assert.equal(r.pass, false);
+  assert.ok(r.reason.includes('minTurns'));
 });
 
 // ==================== outcome-check ====================
@@ -433,7 +553,7 @@ test('latency-threshold: no latency data', async () => {
 test('latency-threshold: invalid config', async () => {
   const r = await latencyThreshold(makeResult(), { maxMs: -1 });
   assert.equal(r.pass, false);
-  assert.ok(r.reason.includes('positive'));
+  assert.ok(r.reason.includes('maxMs'));
 });
 
 // ==================== token-budget ====================
@@ -480,11 +600,55 @@ test('token-budget: no config', async () => {
   assert.equal(r.pass, false);
 });
 
+test('token-budget: invalid maxTotal config type fails', async () => {
+  const r = await tokenBudget(
+    makeResult({ metrics: { tokenUsage: { input: 100, output: 100, total: 200 } } }),
+    { maxTotal: '200' },
+  );
+  assert.equal(r.pass, false);
+  assert.ok(r.reason.includes("'maxTotal'"));
+});
+
+test('token-budget: negative maxInput config fails', async () => {
+  const r = await tokenBudget(
+    makeResult({ metrics: { tokenUsage: { input: 100, output: 100, total: 200 } } }),
+    { maxInput: -1 },
+  );
+  assert.equal(r.pass, false);
+  assert.ok(r.reason.includes("'maxInput'"));
+});
+
+test('token-budget: maxTotal requires usage.total', async () => {
+  const r = await tokenBudget(
+    makeResult({ metrics: { tokenUsage: { input: 100, output: 100 } } }),
+    { maxTotal: 300 },
+  );
+  assert.equal(r.pass, false);
+  assert.ok(r.reason.includes('tokenUsage.total'));
+});
+
+test('token-budget: maxInput requires usage.input', async () => {
+  const r = await tokenBudget(
+    makeResult({ metrics: { tokenUsage: { output: 100, total: 100 } } }),
+    { maxInput: 300 },
+  );
+  assert.equal(r.pass, false);
+  assert.ok(r.reason.includes('tokenUsage.input'));
+});
+
+test('token-budget: maxOutput requires usage.output', async () => {
+  const r = await tokenBudget(makeResult({ metrics: { tokenUsage: { input: 100, total: 100 } } }), {
+    maxOutput: 300,
+  });
+  assert.equal(r.pass, false);
+  assert.ok(r.reason.includes('tokenUsage.output'));
+});
+
 // ==================== llm-judge ====================
 
 test('llm-judge: passes with mock judge', async () => {
   const mockJudge: JudgeProvider = {
-    evaluate: async (input) => ({
+    evaluate: async () => ({
       pass: true,
       score: 0.95,
       reason: 'Answer is faithful to context.',

@@ -1,5 +1,33 @@
+import { z } from 'zod';
 import type { ExecutionResult } from '../../core/contracts/execution.js';
 import type { GraderResult } from '../../core/contracts/trial.js';
+import {
+  type GraderConfigValidationResult,
+  parseGraderConfig,
+  validateGraderConfig,
+} from '../config-validation.js';
+
+const TokenBudgetConfigSchema = z
+  .object({
+    maxTotal: z.number().int().finite().nonnegative().optional(),
+    maxInput: z.number().int().finite().nonnegative().optional(),
+    maxOutput: z.number().int().finite().nonnegative().optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (
+      value.maxTotal === undefined &&
+      value.maxInput === undefined &&
+      value.maxOutput === undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Config must provide 'maxTotal', 'maxInput', or 'maxOutput'.",
+      });
+    }
+  });
+
+type TokenBudgetConfig = z.infer<typeof TokenBudgetConfigSchema>;
 
 /**
  * Token-budget grader — validates cost constraints from metrics.tokenUsage only.
@@ -15,13 +43,14 @@ export async function tokenBudget(
   result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
-  const maxTotal = config.maxTotal;
-  const maxInput = config.maxInput;
-  const maxOutput = config.maxOutput;
-
-  if (maxTotal === undefined && maxInput === undefined && maxOutput === undefined) {
-    return { pass: false, reason: "Config must provide 'maxTotal', 'maxInput', or 'maxOutput'." };
+  const parsed = parseGraderConfig(TokenBudgetConfigSchema, config);
+  if (!parsed.ok) {
+    return {
+      pass: false,
+      reason: parsed.reason,
+    };
   }
+  const parsedConfig: TokenBudgetConfig = parsed.config;
 
   const usage = result.metrics?.tokenUsage;
   if (!usage) {
@@ -30,24 +59,30 @@ export async function tokenBudget(
 
   const failures: string[] = [];
 
-  if (maxTotal !== undefined && typeof maxTotal === 'number') {
+  if (parsedConfig.maxTotal !== undefined) {
     const total = usage.total;
-    if (total !== undefined && total > maxTotal) {
-      failures.push(`Total tokens ${total} exceeds budget ${maxTotal}.`);
+    if (typeof total !== 'number') {
+      failures.push("metrics.tokenUsage.total is required when 'maxTotal' is configured.");
+    } else if (total > parsedConfig.maxTotal) {
+      failures.push(`Total tokens ${total} exceeds budget ${parsedConfig.maxTotal}.`);
     }
   }
 
-  if (maxInput !== undefined && typeof maxInput === 'number') {
+  if (parsedConfig.maxInput !== undefined) {
     const input = usage.input;
-    if (input !== undefined && input > maxInput) {
-      failures.push(`Input tokens ${input} exceeds budget ${maxInput}.`);
+    if (typeof input !== 'number') {
+      failures.push("metrics.tokenUsage.input is required when 'maxInput' is configured.");
+    } else if (input > parsedConfig.maxInput) {
+      failures.push(`Input tokens ${input} exceeds budget ${parsedConfig.maxInput}.`);
     }
   }
 
-  if (maxOutput !== undefined && typeof maxOutput === 'number') {
+  if (parsedConfig.maxOutput !== undefined) {
     const output = usage.output;
-    if (output !== undefined && output > maxOutput) {
-      failures.push(`Output tokens ${output} exceeds budget ${maxOutput}.`);
+    if (typeof output !== 'number') {
+      failures.push("metrics.tokenUsage.output is required when 'maxOutput' is configured.");
+    } else if (output > parsedConfig.maxOutput) {
+      failures.push(`Output tokens ${output} exceeds budget ${parsedConfig.maxOutput}.`);
     }
   }
 
@@ -57,3 +92,10 @@ export async function tokenBudget(
 
   return { pass: true, reason: 'Token usage within budget.', meta: { tokenUsage: usage } };
 }
+
+(
+  tokenBudget as typeof tokenBudget & {
+    validateConfig: (config: Record<string, unknown>) => GraderConfigValidationResult;
+  }
+).validateConfig = (config: Record<string, unknown>) =>
+  validateGraderConfig(TokenBudgetConfigSchema, config);

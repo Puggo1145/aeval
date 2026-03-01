@@ -26,6 +26,7 @@ import { aggregateGraders } from '../src/core/orchestrator/grader-aggregate.js';
 import { orchestrateRun } from '../src/core/orchestrator/run-orchestrator.js';
 import { InMemoryGraderRegistry, InMemoryProviderRegistry } from '../src/core/runtime/index.js';
 import { validateExperimentDefinition } from '../src/core/validation/index.js';
+import { registerBuiltinGraders } from '../src/graders/register-builtins.js';
 
 // --- Test helpers ---
 
@@ -863,7 +864,7 @@ test('observer notify clears timeout when observer returns early', async () => {
     );
     activeTimeouts.add(timeoutId);
     return timeoutId;
-  }) as typeof setTimeout;
+  }) as unknown as typeof setTimeout;
 
   globalThis.clearTimeout = ((id: ReturnType<typeof setTimeout> | undefined) => {
     if (id !== undefined && activeTimeouts.delete(id)) {
@@ -960,6 +961,199 @@ test('dataset resolve failure terminates run before trial execution', async () =
       return true;
     },
   );
+});
+
+test('run fails fast before execution when regex grader config is invalid', async () => {
+  const task = makeTask({
+    graders: {
+      strategy: 'ALL',
+      passThreshold: null,
+      layers: [
+        {
+          name: 'regex-invalid',
+          type: 'regex',
+          weight: 1.0,
+          config: {
+            mustMatch: [{ pattern: '[' }],
+          },
+        },
+      ],
+    },
+  });
+
+  const resultStore = new InMemoryResultStoreAdapter();
+  const providerRegistry = new InMemoryProviderRegistry();
+  providerRegistry.register('mock-provider', createPassingProvider());
+  const graderRegistry = new InMemoryGraderRegistry();
+  registerBuiltinGraders(graderRegistry);
+
+  const core = createCore({
+    taskSourceAdapters: { local: createMockTaskSource([task]) },
+    resultStoreAdapters: { 'local-store': resultStore },
+    providerRegistry,
+    graderRegistry,
+  });
+
+  await assert.rejects(
+    async () => core.runExperiment({ experiment: makeExperiment(), runName: 'default' }),
+    (error: unknown) => {
+      assert.ok(error instanceof ValidationError);
+      assert.ok(error.message.includes("Invalid config for grader 'regex'"));
+      assert.ok(error.message.includes("task 'test-task-1'"));
+      return true;
+    },
+  );
+
+  assert.equal(resultStore.runManifests.size, 0);
+  assert.equal(resultStore.trialRecords.size, 0);
+});
+
+test('run fails fast before execution when json-schema grader pattern is invalid', async () => {
+  const task = makeTask({
+    graders: {
+      strategy: 'ALL',
+      passThreshold: null,
+      layers: [
+        {
+          name: 'json-schema-invalid',
+          type: 'json-schema',
+          weight: 1.0,
+          config: {
+            schema: {
+              type: 'object',
+              properties: {
+                code: {
+                  type: 'string',
+                  pattern: '[',
+                },
+              },
+            },
+          },
+        },
+      ],
+    },
+  });
+
+  const resultStore = new InMemoryResultStoreAdapter();
+  const providerRegistry = new InMemoryProviderRegistry();
+  providerRegistry.register('mock-provider', createPassingProvider());
+  const graderRegistry = new InMemoryGraderRegistry();
+  registerBuiltinGraders(graderRegistry);
+
+  const core = createCore({
+    taskSourceAdapters: { local: createMockTaskSource([task]) },
+    resultStoreAdapters: { 'local-store': resultStore },
+    providerRegistry,
+    graderRegistry,
+  });
+
+  await assert.rejects(
+    async () => core.runExperiment({ experiment: makeExperiment(), runName: 'default' }),
+    (error: unknown) => {
+      assert.ok(error instanceof ValidationError);
+      assert.ok(error.message.includes("Invalid config for grader 'json-schema'"));
+      assert.ok(error.message.includes('Invalid JSON Schema'));
+      return true;
+    },
+  );
+
+  assert.equal(resultStore.runManifests.size, 0);
+  assert.equal(resultStore.trialRecords.size, 0);
+});
+
+test("run does not fail fast when json-schema has a property named 'pattern'", async () => {
+  const task = makeTask({
+    graders: {
+      strategy: 'ALL',
+      passThreshold: null,
+      layers: [
+        {
+          name: 'json-schema-pattern-property',
+          type: 'json-schema',
+          weight: 1.0,
+          config: {
+            schema: {
+              type: 'object',
+              properties: {
+                pattern: {
+                  type: 'string',
+                },
+              },
+              required: ['pattern'],
+            },
+          },
+        },
+      ],
+    },
+  });
+
+  const resultStore = new InMemoryResultStoreAdapter();
+  const providerRegistry = new InMemoryProviderRegistry();
+  providerRegistry.register('mock-provider', async () => ({
+    schemaVersion: SCHEMA_VERSIONS.EXECUTION_RESULT,
+    output: 'ok',
+    structuredOutput: { pattern: 'hello' },
+  }));
+  const graderRegistry = new InMemoryGraderRegistry();
+  registerBuiltinGraders(graderRegistry);
+
+  const core = createCore({
+    taskSourceAdapters: { local: createMockTaskSource([task]) },
+    resultStoreAdapters: { 'local-store': resultStore },
+    providerRegistry,
+    graderRegistry,
+  });
+
+  const summary = await core.runExperiment({ experiment: makeExperiment(), runName: 'default' });
+  assert.equal(summary.totalTrials, 1);
+  assert.equal(summary.passRate, 1);
+  assert.equal(resultStore.trialRecords.size, 1);
+});
+
+test('run fails fast before execution when length-check min is greater than max', async () => {
+  const task = makeTask({
+    graders: {
+      strategy: 'ALL',
+      passThreshold: null,
+      layers: [
+        {
+          name: 'length-check-invalid',
+          type: 'length-check',
+          weight: 1.0,
+          config: {
+            min: 10,
+            max: 5,
+          },
+        },
+      ],
+    },
+  });
+
+  const resultStore = new InMemoryResultStoreAdapter();
+  const providerRegistry = new InMemoryProviderRegistry();
+  providerRegistry.register('mock-provider', createPassingProvider());
+  const graderRegistry = new InMemoryGraderRegistry();
+  registerBuiltinGraders(graderRegistry);
+
+  const core = createCore({
+    taskSourceAdapters: { local: createMockTaskSource([task]) },
+    resultStoreAdapters: { 'local-store': resultStore },
+    providerRegistry,
+    graderRegistry,
+  });
+
+  await assert.rejects(
+    async () => core.runExperiment({ experiment: makeExperiment(), runName: 'default' }),
+    (error: unknown) => {
+      assert.ok(error instanceof ValidationError);
+      assert.ok(error.message.includes("Invalid config for grader 'length-check'"));
+      assert.ok(error.message.includes("Field 'min' must be less than or equal to 'max'."));
+      return true;
+    },
+  );
+
+  assert.equal(resultStore.runManifests.size, 0);
+  assert.equal(resultStore.trialRecords.size, 0);
 });
 
 test('orchestrateRun throws validation error when runName is not defined', async () => {

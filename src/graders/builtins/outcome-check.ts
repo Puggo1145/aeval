@@ -1,5 +1,19 @@
+import { z } from 'zod';
 import type { ExecutionResult } from '../../core/contracts/execution.js';
 import type { GraderResult } from '../../core/contracts/trial.js';
+import {
+  type GraderConfigValidationResult,
+  parseGraderConfig,
+  validateGraderConfig,
+} from '../config-validation.js';
+
+const OutcomeCheckConfigSchema = z
+  .object({
+    expect: z.record(z.unknown()),
+  })
+  .strict();
+
+type OutcomeCheckConfig = z.infer<typeof OutcomeCheckConfigSchema>;
 
 /**
  * Outcome-check grader — validates real environment results from outcome.
@@ -14,10 +28,14 @@ export async function outcomeCheck(
   result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
-  const expect = config.expect;
-  if (typeof expect !== 'object' || expect === null || Array.isArray(expect)) {
-    return { pass: false, reason: "Config 'expect' must be a non-null object." };
+  const parsed = parseGraderConfig(OutcomeCheckConfigSchema, config);
+  if (!parsed.ok) {
+    return {
+      pass: false,
+      reason: parsed.reason,
+    };
   }
+  const parsedConfig: OutcomeCheckConfig = parsed.config;
 
   const outcome = result.outcome;
   if (!outcome) {
@@ -25,7 +43,7 @@ export async function outcomeCheck(
   }
 
   const failures: string[] = [];
-  const expectations = expect as Record<string, unknown>;
+  const expectations = parsedConfig.expect;
 
   for (const [key, expectedValue] of Object.entries(expectations)) {
     const actualValue = outcome[key];
@@ -64,3 +82,10 @@ function deepEqual(a: unknown, b: unknown): boolean {
 
   return false;
 }
+
+(
+  outcomeCheck as typeof outcomeCheck & {
+    validateConfig: (config: Record<string, unknown>) => GraderConfigValidationResult;
+  }
+).validateConfig = (config: Record<string, unknown>) =>
+  validateGraderConfig(OutcomeCheckConfigSchema, config);

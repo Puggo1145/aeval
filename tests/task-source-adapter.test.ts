@@ -144,8 +144,9 @@ test('resolveDataset uses selector.revision when provided', async () => {
   const tempDir = await createTempDatasetDir();
   try {
     const suiteDir = join(tempDir, 'suite');
-    await mkdir(suiteDir, { recursive: true });
-    await writeTaskFile(suiteDir, 'task.yaml', MINIMAL_TASK_YAML);
+    const revisionDir = join(suiteDir, 'revisions', 'rev-2026-02-28-001');
+    await mkdir(revisionDir, { recursive: true });
+    await writeTaskFile(revisionDir, 'task.yaml', MINIMAL_TASK_YAML);
 
     const adapter = createLocalTaskSourceAdapter({ datasetsRoot: tempDir });
     const result = await adapter.resolveDataset({
@@ -154,6 +155,33 @@ test('resolveDataset uses selector.revision when provided', async () => {
     });
 
     assert.equal(result.source.revision, 'rev-2026-02-28-001');
+    assert.equal(result.tasks.length, 1);
+  } finally {
+    await rm(tempDir, { recursive: true });
+  }
+});
+
+test('resolveDataset fails fast when selector.revision cannot be resolved', async () => {
+  const tempDir = await createTempDatasetDir();
+  try {
+    const suiteDir = join(tempDir, 'suite');
+    await mkdir(suiteDir, { recursive: true });
+    await writeTaskFile(suiteDir, 'task.yaml', MINIMAL_TASK_YAML);
+
+    const adapter = createLocalTaskSourceAdapter({ datasetsRoot: tempDir });
+
+    await assert.rejects(
+      () =>
+        adapter.resolveDataset({
+          ref: 'dataset://suite',
+          selector: { revision: 'rev-missing-001' },
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof ValidationError);
+        assert.ok(error.message.includes('not found'));
+        return true;
+      },
+    );
   } finally {
     await rm(tempDir, { recursive: true });
   }

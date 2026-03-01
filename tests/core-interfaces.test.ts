@@ -13,6 +13,7 @@ import { createCore } from '../src/core/api/index.js';
 import { type ExperimentDefinition, SCHEMA_VERSIONS } from '../src/core/contracts/index.js';
 import type { RunManifest } from '../src/core/contracts/run-manifest.js';
 import type { RunSummaryRecord } from '../src/core/contracts/run-summary.js';
+import type { RunEvent } from '../src/core/contracts/runtime.js';
 import type { TrialResultRecord } from '../src/core/contracts/trial.js';
 import {
   ContractError,
@@ -380,7 +381,7 @@ test('streamRun emits run:started and run:completed events', async () => {
     graderRegistry: new InMemoryGraderRegistry(),
   });
 
-  const events = [];
+  const events: RunEvent[] = [];
   for await (const event of core.streamRun({
     experiment: createExperimentDefinition(),
     runName: 'baseline',

@@ -1,5 +1,36 @@
+import { z } from 'zod';
 import type { ExecutionResult } from '../../core/contracts/execution.js';
 import type { GraderResult } from '../../core/contracts/trial.js';
+import {
+  type GraderConfigValidationResult,
+  parseGraderConfig,
+  validateGraderConfig,
+} from '../config-validation.js';
+
+const LengthCheckConfigSchema = z
+  .object({
+    min: z.number().finite().nonnegative().optional(),
+    max: z.number().finite().nonnegative().optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.min === undefined && value.max === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Config must provide 'min' or 'max'.",
+      });
+    }
+
+    if (value.min !== undefined && value.max !== undefined && value.min > value.max) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['min'],
+        message: "Field 'min' must be less than or equal to 'max'.",
+      });
+    }
+  });
+
+type LengthCheckConfig = z.infer<typeof LengthCheckConfigSchema>;
 
 /**
  * Length-check grader — validates output string length.
@@ -14,30 +45,24 @@ export async function lengthCheck(
   result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
-  const min = config.min;
-  const max = config.max;
-
-  if (min === undefined && max === undefined) {
-    return { pass: false, reason: "Config must provide 'min' or 'max'." };
+  const parsed = parseGraderConfig(LengthCheckConfigSchema, config);
+  if (!parsed.ok) {
+    return {
+      pass: false,
+      reason: parsed.reason,
+    };
   }
-
-  if (min !== undefined && (typeof min !== 'number' || !Number.isFinite(min) || min < 0)) {
-    return { pass: false, reason: "'min' must be a finite non-negative number." };
-  }
-
-  if (max !== undefined && (typeof max !== 'number' || !Number.isFinite(max) || max < 0)) {
-    return { pass: false, reason: "'max' must be a finite non-negative number." };
-  }
+  const parsedConfig: LengthCheckConfig = parsed.config;
 
   const length = result.output.length;
   const failures: string[] = [];
 
-  if (min !== undefined && length < (min as number)) {
-    failures.push(`Output length ${length} is below minimum ${min}.`);
+  if (parsedConfig.min !== undefined && length < parsedConfig.min) {
+    failures.push(`Output length ${length} is below minimum ${parsedConfig.min}.`);
   }
 
-  if (max !== undefined && length > (max as number)) {
-    failures.push(`Output length ${length} exceeds maximum ${max}.`);
+  if (parsedConfig.max !== undefined && length > parsedConfig.max) {
+    failures.push(`Output length ${length} exceeds maximum ${parsedConfig.max}.`);
   }
 
   if (failures.length > 0) {
@@ -46,3 +71,10 @@ export async function lengthCheck(
 
   return { pass: true, reason: `Output length ${length} is within bounds.` };
 }
+
+(
+  lengthCheck as typeof lengthCheck & {
+    validateConfig: (config: Record<string, unknown>) => GraderConfigValidationResult;
+  }
+).validateConfig = (config: Record<string, unknown>) =>
+  validateGraderConfig(LengthCheckConfigSchema, config);
