@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { Stats } from 'node:fs';
 import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
@@ -359,7 +360,7 @@ async function resolveTasksDirectoryByRevision(
   const revisionDirPath = resolve(datasetDirPath, 'revisions', revision);
   assertPathInsideRoot(datasetDirPath, revisionDirPath, ref);
 
-  let dirStat;
+  let dirStat: Stats | null = null;
   try {
     dirStat = await stat(revisionDirPath);
   } catch (cause) {

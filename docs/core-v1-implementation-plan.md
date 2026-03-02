@@ -131,13 +131,13 @@
   - [x] 将 CLI 查询统一走 `ResultStoreAdapter` 读取，不依赖 observer。
   - [x] 验收：执行一次 run 后，CLI 可查看实时进度与结果（summary/trials）。
 
-- [ ] **Milestone 8: E2E Verification, Docs, and Handover**
-  - [ ] 提供最小可运行样例数据（task + experiment）。
-  - [ ] 增加 smoke 场景：从 `taskSource.resolve` 到 `resultStore.read` 全链路验证（`llm-judge` 使用 mock judge，仅验证协议链路）。
-  - [ ] 对照 `core-contracts-v1.md` 第 8 节检查清单逐项闭环并勾选。
-  - [ ] 更新 `README.md` 的 quickstart（仅包含 v1 已实现能力）。
-  - [ ] 输出已知限制（post-v1）清单，防止 scope creep。
-  - [ ] 验收：新同学按文档可在本地独立跑通并复现同一 run 结果。
+- [x] **Milestone 8: E2E Verification, Docs, and Handover**
+  - [x] 提供最小可运行样例数据（task + experiment）。
+  - [x] 增加 smoke 场景：从 `taskSource.resolve` 到 `resultStore.read` 全链路验证（`llm-judge` 使用 mock judge，仅验证协议链路）。
+  - [x] 对照 `core-contracts-v1.md` 第 8 节检查清单逐项闭环并勾选。
+  - [x] 更新 `README.md` 的 quickstart（仅包含 v1 已实现能力）。
+  - [x] 输出已知限制（post-v1）清单，防止 scope creep。
+  - [x] 验收：新同学按文档可在本地独立跑通并复现同一 run 结果。
 
 ---
 
@@ -165,3 +165,4 @@
 - `2026-03-01`: completed `Milestone 5`, added 10 built-in graders (exact-match, contains, regex, json-schema, length-check, tool-calls, transcript, outcome-check, latency-threshold, token-budget), JudgeProvider protocol with llm-judge grader factory, registerBuiltinGraders composition-root pre-registration, bootstrap wiring, and 60 grader unit tests.
 - `2026-03-01`: completed `Milestone 6`, added local/reference `ResultStoreAdapter` (filesystem-based, JSON per run/trial), strict-only write failure handling, baseline persistence, bootstrap wiring with configurable `runsRoot`, and 17 unit tests.
 - `2026-03-01`: completed `Milestone 7`, added reference provider (deterministic echo for E2E testing), console observer adapter, full CLI command implementations (run/report/runs/trials/baseline), `listRunIds` on ResultStoreAdapter, `listRuns` on CoreApi, and 26 new tests.
+- `2026-03-01`: completed `Milestone 8`, fixed sample task data (added `params.output`), added experiment YAML, created E2E smoke test (full chain + llm-judge protocol), closed `core-contracts-v1.md` §8 checklist, updated README quickstart, documented post-v1 known limitations.

@@ -387,20 +387,20 @@ Aggregation records:
 
 ## 8. 实施检查清单
 
-- [ ] Task/Experiment schema version validation implemented.
-- [ ] ProviderRegistry (`register/get/has/list`) implemented.
-- [ ] GraderRegistry (`register/get/has/list`) implemented; built-in graders pre-registered in composition root.
-- [ ] Task DSL `graders.layers[].type` validated against GraderRegistry.
-- [ ] Experiment `runs[]` validated (`name` unique, at least one RunConfig).
-- [ ] Task source resolution to immutable revision before run starts.
-- [ ] `token-budget` grader reads only `metrics.tokenUsage`.
-- [ ] Reference ResultStore fully usable without external platform.
-- [ ] RunManifest captures full required fields (`runId/experimentName/taskSource/datasetHash/configHash/startedAt`).
-- [ ] `configHash` computed per §5.5 rules.
-- [ ] Core pass/fail does not depend on observer write success.
-- [ ] CI reads summary/trials via `ResultStoreAdapter` only.
-- [ ] Query API `listRuns` implemented via `ResultStoreAdapter` aggregation with duplicate runId fail-fast.
-- [ ] Baseline `setBaseline`/`compareBaseline` implemented per §4.8.
-- [ ] Baseline regression evaluation covers `passRate`/`pass^k`/`latency`/`token budget breach` with caller-provided thresholds.
-- [ ] `streamRun` implemented and consumed by at least one interactive interface adapter implementation (v1 can use CLI).
-- [ ] `llm-judge` protocol verified with mock judge (quality verification is post-v1).
+- [x] Task/Experiment schema version validation implemented.
+- [x] ProviderRegistry (`register/get/has/list`) implemented.
+- [x] GraderRegistry (`register/get/has/list`) implemented; built-in graders pre-registered in composition root.
+- [x] Task DSL `graders.layers[].type` validated against GraderRegistry.
+- [x] Experiment `runs[]` validated (`name` unique, at least one RunConfig).
+- [x] Task source resolution to immutable revision before run starts.
+- [x] `token-budget` grader reads only `metrics.tokenUsage`.
+- [x] Reference ResultStore fully usable without external platform.
+- [x] RunManifest captures full required fields (`runId/experimentName/taskSource/datasetHash/configHash/startedAt`).
+- [x] `configHash` computed per §5.5 rules.
+- [x] Core pass/fail does not depend on observer write success.
+- [x] CI reads summary/trials via `ResultStoreAdapter` only.
+- [x] Query API `listRuns` implemented via `ResultStoreAdapter` aggregation with duplicate runId fail-fast.
+- [x] Baseline `setBaseline`/`compareBaseline` implemented per §4.8.
+- [x] Baseline regression evaluation covers `passRate`/`pass^k`/`latency`/`token budget breach` with caller-provided thresholds.
+- [x] `streamRun` implemented and consumed by at least one interactive interface adapter implementation (v1 can use CLI).
+- [x] `llm-judge` protocol verified with mock judge (quality verification is post-v1).

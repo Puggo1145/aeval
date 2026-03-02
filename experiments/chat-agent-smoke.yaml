@@ -1,0 +1,10 @@
+schemaVersion: "experiment.v1"
+name: "chat-agent-smoke"
+taskSource:
+  adapter: "local"
+  ref: "dataset://chat-agent/smoke"
+runs:
+  - name: "smoke"
+maxConcurrency: 2
+resultStore:
+  adapter: "local"
