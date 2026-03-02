@@ -339,8 +339,8 @@ Aggregation records:
 
 ### 5.3 Write Failure Policy
 
-1. `strict`: terminate run on write failure.
-2. `fallback-local`: degrade to local write and continue.
+1. `strict-only`: terminate run on write failure.
+2. v1 does not define any fallback write path (including fallback-to-local).
 
 ### 5.4 Adapter Scope
 

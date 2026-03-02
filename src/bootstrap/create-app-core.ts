@@ -1,3 +1,4 @@
+import { createLocalResultStoreAdapter } from '../adapters/result-store/index.js';
 import { createLocalTaskSourceAdapter } from '../adapters/task-source/index.js';
 import { type CoreApi, createCore } from '../core/api/index.js';
 import { ValidationError } from '../core/errors/index.js';
@@ -8,26 +9,32 @@ import { registerBuiltinGraders } from '../graders/register-builtins.js';
 
 export interface AppCoreOptions {
   datasetsRoot: string;
+  /** Root directory for storing run results. Defaults to '.youeval/runs'. */
+  runsRoot?: string;
   /** Optional JudgeProvider for the llm-judge grader. */
   judgeProvider?: JudgeProvider;
 }
 
-function ensureDatasetsRoot(value: string): string {
+function ensureNonEmptyString(value: string, field: string): string {
   const normalized = value.trim();
   if (normalized.length > 0) {
     return normalized;
   }
 
-  throw new ValidationError("Field 'datasetsRoot' must be a non-empty string.", {
+  throw new ValidationError(`Field '${field}' must be a non-empty string.`, {
     details: {
-      field: 'datasetsRoot',
+      field,
       value,
     },
   });
 }
 
 export function createAppCore(options: AppCoreOptions): CoreApi {
-  const datasetsRoot = ensureDatasetsRoot(options.datasetsRoot);
+  const datasetsRoot = ensureNonEmptyString(options.datasetsRoot, 'datasetsRoot');
+  const runsRoot =
+    options.runsRoot === undefined
+      ? '.youeval/runs'
+      : ensureNonEmptyString(options.runsRoot, 'runsRoot');
 
   const graderRegistry = new InMemoryGraderRegistry();
   registerBuiltinGraders(graderRegistry, { judgeProvider: options.judgeProvider });
@@ -36,7 +43,9 @@ export function createAppCore(options: AppCoreOptions): CoreApi {
     taskSourceAdapters: {
       local: createLocalTaskSourceAdapter({ datasetsRoot }),
     },
-    resultStoreAdapters: {},
+    resultStoreAdapters: {
+      local: createLocalResultStoreAdapter({ rootDir: runsRoot }),
+    },
     providerRegistry: new InMemoryProviderRegistry(),
     graderRegistry,
   });

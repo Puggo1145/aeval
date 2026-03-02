@@ -585,9 +585,8 @@ LOADED -> SETUP -> RUNNING -> GRADING -> FINALIZED
 2. `error.type=system`：系统异常，重试策略由 `error.retryable` 与配置共同决定。
 3. `timeout` 归类为 `system` 且默认 `retryable=false`（不重试）。
 4. 非 timeout 的 `system` 错误默认可按 `retryOnError` 重试。
-5. ResultStore 写入失败按配置处理：
-   - `strict`：终止 run 并报错
-   - `fallback-local`：降级写本地并继续
+5. ResultStore 写入失败采用 `strict-only`：
+   - 直接终止 run 并报错，不做任何 fallback 写入
 
 ---
 
@@ -658,7 +657,7 @@ Core 只关心 `ResultStoreAdapter` 接口，不关心存储介质：
 ### 8.3 ResultStoreAdapter 设计约束
 
 1. 必须完整支持 `save/get/list/baseline` 契约，不暴露底层介质细节到 Core。
-2. 写入失败语义由统一策略控制（如 `strict` / `fallback`）。
+2. 写入失败语义为 `strict-only`：写入失败即报错并终止当前 run，不做降级写入。
 3. 大对象分层存储属于扩展能力，不进入 v1 必选契约。
 
 ### 8.4 基线管理规则

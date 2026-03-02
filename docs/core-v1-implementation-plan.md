@@ -68,7 +68,7 @@
     - [x] `ResultStoreAdapter`
     - [x] `ObserverAdapter`（optional）
   - [x] 实现运行时依赖解析器（adapter/provider 缺失时明确报错）。
-  - [x] 验收：可通过配置解析全部依赖，不存在静默 fallback。
+  - [x] 验收：可通过配置解析全部依赖，不存在静默降级。
 
 - [x] **Milestone 3: Task Source Resolution (Reference Adapter)**
   - [x] 实现 local/reference `TaskSourceAdapter`（从本地 dataset 读取任务集合）。
@@ -105,19 +105,19 @@
   - [x] 实现组合策略：`ALL` / `ANY` / `WEIGHTED`。
   - [x] 验收：grader 层执行结果可追踪，aggregate 可复现。`llm-judge` 仅验证协议调用链路正确。
 
-- [ ] **Milestone 6: Result Store (Reference Adapter)**
-  - [ ] 实现 local/reference `ResultStoreAdapter`。
-  - [ ] 实现写入接口：
-    - [ ] `saveRunManifest`
-    - [ ] `saveRunSummary`
-    - [ ] `saveTrial`
-  - [ ] 实现读取接口：
-    - [ ] `getRunManifest`
-    - [ ] `getRunSummary`
-    - [ ] `listTrials`
-  - [ ] 实现写入失败策略：`strict` / `fallback-local`。
-  - [ ] 验收：`RunManifest.taskSource` 包含 `adapter/ref/revision/datasetHash`。
-  - [ ] 验收：无需外部平台即可完整保存并读取 run 全量信息。
+- [x] **Milestone 6: Result Store (Reference Adapter)**
+  - [x] 实现 local/reference `ResultStoreAdapter`。
+  - [x] 实现写入接口：
+    - [x] `saveRunManifest`
+    - [x] `saveRunSummary`
+    - [x] `saveTrial`
+  - [x] 实现读取接口：
+    - [x] `getRunManifest`
+    - [x] `getRunSummary`
+    - [x] `listTrials`
+  - [x] 实现写入失败策略：`strict-only`（写失败即终止，不做 fallback）。
+  - [x] 验收：`RunManifest.taskSource` 包含 `adapter/ref/revision/datasetHash`。
+  - [x] 验收：无需外部平台即可完整保存并读取 run 全量信息。
 
 - [ ] **Milestone 7: Minimal Runnable Adapters & Interface Adapters**
   - [ ] 实现 reference `Provider`（用于本地端到端跑通 execution/trace/outcome/metrics）。
@@ -163,3 +163,4 @@
 - `2026-02-28`: completed `Milestone 3`, added local TaskSourceAdapter with YAML parsing, deterministic datasetHash (SHA-256), ref+selector→revision resolution, adapter-level fail-fast validation, sample dataset fixtures, and 16 unit tests.
 - `2026-02-28`: completed `Milestone 4`, added trial engine (timeout/AbortSignal, error semantics, retry), run orchestrator (concurrent execution, dataset resolve, manifest/summary persistence), grader aggregation (ALL/ANY/WEIGHTED), configHash computation, pass@k/pass^k metrics, and 23 orchestrator unit tests.
 - `2026-03-01`: completed `Milestone 5`, added 10 built-in graders (exact-match, contains, regex, json-schema, length-check, tool-calls, transcript, outcome-check, latency-threshold, token-budget), JudgeProvider protocol with llm-judge grader factory, registerBuiltinGraders composition-root pre-registration, bootstrap wiring, and 60 grader unit tests.
+- `2026-03-01`: completed `Milestone 6`, added local/reference `ResultStoreAdapter` (filesystem-based, JSON per run/trial), strict-only write failure handling, baseline persistence, bootstrap wiring with configurable `runsRoot`, and 17 unit tests.
