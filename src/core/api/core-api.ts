@@ -1,6 +1,6 @@
 import type { ResultStoreAdapter } from '../adapters/result-store-adapter.js';
 import type { ExperimentDefinition } from '../contracts/experiment.js';
-import type { RunSummary } from '../contracts/run-summary.js';
+import type { RunSummary, RunSummaryRecord } from '../contracts/run-summary.js';
 import type { BaselineComparison, BaselineThresholds, RunEvent } from '../contracts/runtime.js';
 import { SCHEMA_VERSIONS } from '../contracts/schema-versions.js';
 import type { TrialResultRecord } from '../contracts/trial.js';
@@ -292,6 +292,7 @@ export interface CoreApi {
     currentRunId: string,
     options?: CompareBaselineOptions,
   ): Promise<BaselineComparison>;
+  listRuns(): Promise<RunSummaryRecord[]>;
 }
 
 export function createCore(dependencies: RuntimeDependencyContainer): CoreApi {
@@ -455,6 +456,40 @@ export function createCore(dependencies: RuntimeDependencyContainer): CoreApi {
       );
 
       return comparison;
+    },
+
+    async listRuns(): Promise<RunSummaryRecord[]> {
+      const entries = Object.entries(dependencies.resultStoreAdapters);
+      const allRecords = new Map<string, RunSummaryRecord>();
+      const runIdToAdapter = new Map<string, string>();
+
+      for (const [adapterId, resultStore] of entries) {
+        const runIds = await resultStore.listRunIds();
+        for (const runId of runIds) {
+          const existingAdapter = runIdToAdapter.get(runId);
+          if (existingAdapter && existingAdapter !== adapterId) {
+            throw new RuntimeError(
+              `Run '${runId}' was found in multiple result stores and cannot be resolved unambiguously.`,
+              {
+                code: ERROR_CODES.RUNTIME_DEPENDENCY_AMBIGUOUS,
+                details: {
+                  field: 'runId',
+                  runId,
+                  matchedAdapters: [existingAdapter, adapterId].sort(),
+                },
+              },
+            );
+          }
+
+          const record = await resultStore.getRunSummary(runId);
+          if (record) {
+            runIdToAdapter.set(runId, adapterId);
+            allRecords.set(runId, record);
+          }
+        }
+      }
+
+      return [...allRecords.values()].sort((a, b) => a.runId.localeCompare(b.runId));
     },
   };
 }

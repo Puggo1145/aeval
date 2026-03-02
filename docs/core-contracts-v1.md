@@ -249,6 +249,7 @@ Required behaviors:
 
 1. `core.getRunSummary(runId) -> RunSummary | null` — 通过 `ResultStoreAdapter` 读取。
 2. `core.listTrials(runId) -> TrialResultRecord[]` — 通过 `ResultStoreAdapter` 读取。
+3. `core.listRuns() -> RunSummaryRecord[]` — 聚合已注入 `ResultStoreAdapter` 的 run summaries。
 
 Required behaviors:
 
@@ -256,6 +257,8 @@ Required behaviors:
 2. 当 `runId` 在多个 store 同时命中时，必须 fail fast。
 3. `core.getRunSummary` 在未命中时返回 `null`。
 4. `core.listTrials` 在未命中时返回空数组。
+5. `core.listRuns` 仅返回存在 run summary 的 `runId`。
+6. `core.listRuns` 若发现同一 `runId` 在多个 store 命中，必须 fail fast。
 
 ### 4.8 Baseline Contracts
 
@@ -310,8 +313,9 @@ Required methods:
 4. `getRunManifest`
 5. `getRunSummary`
 6. `listTrials`
-7. `saveBaseline`
-8. `getBaselineRunId`
+7. `listRunIds`
+8. `saveBaseline`
+9. `getBaselineRunId`
 
 ### 5.2 Manifest / Records
 
@@ -395,6 +399,7 @@ Aggregation records:
 - [ ] `configHash` computed per §5.5 rules.
 - [ ] Core pass/fail does not depend on observer write success.
 - [ ] CI reads summary/trials via `ResultStoreAdapter` only.
+- [ ] Query API `listRuns` implemented via `ResultStoreAdapter` aggregation with duplicate runId fail-fast.
 - [ ] Baseline `setBaseline`/`compareBaseline` implemented per §4.8.
 - [ ] Baseline regression evaluation covers `passRate`/`pass^k`/`latency`/`token budget breach` with caller-provided thresholds.
 - [ ] `streamRun` implemented and consumed by at least one interactive interface adapter implementation (v1 can use CLI).

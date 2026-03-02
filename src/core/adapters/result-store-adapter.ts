@@ -16,4 +16,5 @@ export interface ResultStoreAdapter {
   listTrials(runId: string): Promise<TrialResultRecord[]>;
   saveBaseline(input: BaselineRecord): Promise<void>;
   getBaselineRunId(): Promise<string | null>;
+  listRunIds(): Promise<string[]>;
 }

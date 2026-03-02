@@ -69,6 +69,10 @@ class InMemoryResultStoreAdapter implements ResultStoreAdapter {
   async getBaselineRunId(): Promise<string | null> {
     return this.baselineRunId;
   }
+
+  async listRunIds(): Promise<string[]> {
+    return [...this.runSummaries.keys()].sort();
+  }
 }
 
 function createExperimentDefinition(): ExperimentDefinition {
@@ -469,6 +473,45 @@ test('runId routing fails fast when the same run is found in multiple stores', a
 
   await assert.rejects(
     async () => core.getRunSummary('run-dup'),
+    (error: unknown) => {
+      assert.ok(error instanceof RuntimeError);
+      assert.equal(error.code, ERROR_CODES.RUNTIME_DEPENDENCY_AMBIGUOUS);
+      return true;
+    },
+  );
+});
+
+test('listRuns aggregates run summaries across stores and returns sorted runIds', async () => {
+  const storeA = new InMemoryResultStoreAdapter();
+  const storeB = new InMemoryResultStoreAdapter();
+  await storeA.saveRunSummary(createRunSummaryRecord('run-b', 'run-b'));
+  await storeB.saveRunSummary(createRunSummaryRecord('run-a', 'run-a'));
+
+  const core = createCoreWithStores({
+    a: storeA,
+    b: storeB,
+  });
+
+  const runs = await core.listRuns();
+  assert.deepEqual(
+    runs.map((record) => record.runId),
+    ['run-a', 'run-b'],
+  );
+});
+
+test('listRuns fails fast when the same runId exists in multiple stores', async () => {
+  const storeA = new InMemoryResultStoreAdapter();
+  const storeB = new InMemoryResultStoreAdapter();
+  await storeA.saveRunSummary(createRunSummaryRecord('run-dup', 'run-dup'));
+  await storeB.saveRunSummary(createRunSummaryRecord('run-dup', 'run-dup'));
+
+  const core = createCoreWithStores({
+    a: storeA,
+    b: storeB,
+  });
+
+  await assert.rejects(
+    () => core.listRuns(),
     (error: unknown) => {
       assert.ok(error instanceof RuntimeError);
       assert.equal(error.code, ERROR_CODES.RUNTIME_DEPENDENCY_AMBIGUOUS);

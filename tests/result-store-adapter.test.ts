@@ -4,9 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import {
-  createLocalResultStoreAdapter,
-} from '../src/adapters/result-store/local-result-store-adapter.js';
+import { createLocalResultStoreAdapter } from '../src/adapters/result-store/local-result-store-adapter.js';
 import type { TaskSourceAdapter } from '../src/core/adapters/task-source-adapter.js';
 import { createCore } from '../src/core/api/index.js';
 import { SCHEMA_VERSIONS } from '../src/core/contracts/index.js';
@@ -216,6 +214,32 @@ test('listTrials returns empty array when trials dir exists but is empty', async
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
+});
+
+// --- listRunIds ---
+
+test('listRunIds returns sorted runIds for runs with summary records', async () => {
+  const rootDir = await createTempDir();
+  try {
+    const store = createLocalResultStoreAdapter({ rootDir });
+
+    await store.saveRunSummary(makeSummaryRecord('run-b'));
+    await store.saveRunSummary(makeSummaryRecord('run-a'));
+    await store.saveRunManifest(makeManifest('run-manifest-only'));
+
+    const runIds = await store.listRunIds();
+    assert.deepStrictEqual(runIds, ['run-a', 'run-b']);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('listRunIds returns empty array when root directory does not exist', async () => {
+  const rootDir = join(tmpdir(), `youeval-result-store-missing-${Date.now()}`);
+  const store = createLocalResultStoreAdapter({ rootDir });
+
+  const runIds = await store.listRunIds();
+  assert.deepStrictEqual(runIds, []);
 });
 
 // --- saveBaseline / getBaselineRunId ---

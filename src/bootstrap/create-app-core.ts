@@ -1,3 +1,4 @@
+import { createConsoleObserverAdapter } from '../adapters/observer/index.js';
 import { createLocalResultStoreAdapter } from '../adapters/result-store/index.js';
 import { createLocalTaskSourceAdapter } from '../adapters/task-source/index.js';
 import { type CoreApi, createCore } from '../core/api/index.js';
@@ -6,6 +7,7 @@ import { InMemoryGraderRegistry } from '../core/runtime/grader-registry.js';
 import { InMemoryProviderRegistry } from '../core/runtime/provider-registry.js';
 import type { JudgeProvider } from '../graders/llm/judge-provider.js';
 import { registerBuiltinGraders } from '../graders/register-builtins.js';
+import { registerReferenceProvider } from '../providers/index.js';
 
 export interface AppCoreOptions {
   datasetsRoot: string;
@@ -39,6 +41,9 @@ export function createAppCore(options: AppCoreOptions): CoreApi {
   const graderRegistry = new InMemoryGraderRegistry();
   registerBuiltinGraders(graderRegistry, { judgeProvider: options.judgeProvider });
 
+  const providerRegistry = new InMemoryProviderRegistry();
+  registerReferenceProvider(providerRegistry);
+
   return createCore({
     taskSourceAdapters: {
       local: createLocalTaskSourceAdapter({ datasetsRoot }),
@@ -46,7 +51,10 @@ export function createAppCore(options: AppCoreOptions): CoreApi {
     resultStoreAdapters: {
       local: createLocalResultStoreAdapter({ rootDir: runsRoot }),
     },
-    providerRegistry: new InMemoryProviderRegistry(),
+    providerRegistry,
     graderRegistry,
+    observerAdapters: {
+      console: createConsoleObserverAdapter(),
+    },
   });
 }

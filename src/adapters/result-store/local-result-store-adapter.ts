@@ -312,5 +312,36 @@ export function createLocalResultStoreAdapter(
       const record = await readJsonFileOrNull<BaselineRecord>(join(rootDirPath, BASELINE_FILE));
       return record?.runId ?? null;
     },
+
+    async listRunIds(): Promise<string[]> {
+      let entries: string[];
+      try {
+        entries = await readdir(rootDirPath, { withFileTypes: true })
+          .then((dirents) =>
+            dirents.filter((d) => d.isDirectory()).map((d) => d.name),
+          );
+      } catch (cause) {
+        const errorCode = extractFsErrorCode(cause);
+        if (errorCode === 'ENOENT') {
+          return [];
+        }
+
+        throw new StoreError(`Failed to list run directories in '${rootDirPath}'.`, {
+          details: { rootDir: rootDirPath },
+          cause,
+        });
+      }
+
+      const runIds: string[] = [];
+      for (const dirName of entries) {
+        const summaryPath = join(rootDirPath, dirName, SUMMARY_FILE);
+        const summary = await readJsonFileOrNull(summaryPath);
+        if (summary !== null) {
+          runIds.push(dirName);
+        }
+      }
+
+      return runIds.sort();
+    },
   };
 }

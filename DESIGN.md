@@ -157,8 +157,9 @@ Core 对外只暴露稳定的程序化 API，交互模式作为 interface adapte
 1. `createCore(deps) -> CoreApi`：在组合根一次性注入依赖。
 2. `core.runExperiment(input) -> Promise<RunSummary>`：批处理执行一次 run。
 3. `core.streamRun(input) -> AsyncIterable<RunEvent>`：返回事件流，供交互模式实时展示进度。
-4. `core.getRunSummary(runId)` / `core.listTrials(runId)`：统一读取结果，来源仅 `ResultStoreAdapter`。
-5. `core.setBaseline(runId)` / `core.compareBaseline(currentRunId, baselineRunId?)`：基线管理。
+4. `core.getRunSummary(runId)` / `core.listTrials(runId)`：按 `runId` 查询结果，来源仅 `ResultStoreAdapter`。
+5. `core.listRuns() -> Promise<RunSummaryRecord[]>`：列出所有已落盘 run summary。
+6. `core.setBaseline(runId)` / `core.compareBaseline(currentRunId, baselineRunId?)`：基线管理。
 
 连接规则：
 
@@ -166,6 +167,7 @@ Core 对外只暴露稳定的程序化 API，交互模式作为 interface adapte
 2. v1 至少提供一个可用的 interactive interface adapter 具体实现（可由 CLI 承担）。
 3. 未来 HTTP/TUI 作为其他 interface adapter，复用同一组 Core API，不复制 orchestration 逻辑。
 4. Query/Baseline API 按 `runId` 自动路由到目标 `ResultStoreAdapter`；未命中时 query 返回空值，冲突命中 fail fast。
+5. `listRuns()` 聚合所有 `ResultStoreAdapter` 的 run summary；若同一 `runId` 在多个 store 命中，必须 fail fast。
 
 ---
 
@@ -326,6 +328,7 @@ export interface ResultStoreAdapter {
   getRunManifest(runId: string): Promise<RunManifest | null>
   getRunSummary(runId: string): Promise<RunSummaryRecord | null>
   listTrials(runId: string): Promise<TrialResultRecord[]>
+  listRunIds(): Promise<string[]>
   saveBaseline(input: BaselineRecord): Promise<void>
   getBaselineRunId(): Promise<string | null>
 }

@@ -74,6 +74,9 @@ function createLazyCore(): CoreApi {
     compareBaseline(currentRunId, options) {
       return getCore().compareBaseline(currentRunId, options);
     },
+    listRuns() {
+      return getCore().listRuns();
+    },
   };
 }
 

@@ -62,6 +62,9 @@ class InMemoryResultStoreAdapter implements ResultStoreAdapter {
   async getBaselineRunId(): Promise<string | null> {
     return this.baselineRunId;
   }
+  async listRunIds(): Promise<string[]> {
+    return [...this.runSummaries.keys()].sort();
+  }
 }
 
 function makeTask(overrides: Partial<TaskDefinition> = {}): TaskDefinition {
