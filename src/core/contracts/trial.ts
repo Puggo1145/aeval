@@ -23,6 +23,7 @@ export interface TrialResult {
   trialIndex: number;
   execution: ExecutionResult;
   graderResults: TrialGraderResult[];
+  // 根据 grader 配置给出的最终综合结果
   aggregate: {
     pass: boolean;
     score?: number;

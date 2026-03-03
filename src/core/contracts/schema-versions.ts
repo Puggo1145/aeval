@@ -1,3 +1,6 @@
+/**
+ * 定义当前各个 contracts schema 所使用的版本号，应对未来做版本兼容和迁移
+ */
 export const SCHEMA_VERSIONS = {
   TASK: 'task.v1',
   EXPERIMENT: 'experiment.v1',

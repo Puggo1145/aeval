@@ -1,12 +1,8 @@
 import { z } from 'zod';
-
-import { SCHEMA_VERSIONS, type TaskSchemaVersion } from './schema-versions.js';
+import { NonEmptyStringSchema, UnknownRecordSchema } from '../utils/zod.js';
+import { SCHEMA_VERSIONS } from './schema-versions.js';
 
 export const GRADER_STRATEGIES = ['ALL', 'ANY', 'WEIGHTED'] as const;
-
-const UnknownRecordSchema = z.object({}).catchall(z.unknown());
-
-const NonEmptyStringSchema = z.string().trim().min(1);
 
 const OptionalMetadataStringSchema = z.string().optional();
 
@@ -100,7 +96,9 @@ export type TaskGradersConfig = z.infer<typeof TaskGradersConfigSchema>;
 export const TaskExecutionConfigSchema = z
   .object({
     timeoutMs: z.number().int().gt(0),
+    // 执行出错时的重试次数
     retryOnError: z.number().int().min(0).optional(),
+    // 每个 task 执行的 trial 次数，null 为显式的回退覆盖（回退 experiment 的全局配置）
     trialsPerTask: z.union([z.number().int().gt(0), z.null()]).optional(),
   })
   .strict();
@@ -110,6 +108,7 @@ export const TaskSchema = z
   .object({
     schemaVersion: z.literal(SCHEMA_VERSIONS.TASK),
     id: NonEmptyStringSchema,
+    // -- 描述性字段，不参与执行逻辑 --
     desc: OptionalMetadataStringSchema,
     category: OptionalMetadataStringSchema,
     capability: OptionalMetadataStringSchema,
@@ -117,13 +116,13 @@ export const TaskSchema = z
     difficulty: OptionalMetadataStringSchema,
     tags: TaskTagsSchema.optional(),
     lifecycle: UnknownRecordSchema.optional(),
+    // task 的真实执行逻辑：Agent Harness
     provider: TaskProviderConfigSchema,
     graders: TaskGradersConfigSchema,
+    // 自定义的指标，只用于 per task 统计和跟踪，由使用者自行提供和定义
     trackedMetrics: UnknownRecordSchema.optional(),
     execution: TaskExecutionConfigSchema,
   })
   .strict();
 
-export type TaskDefinition = z.infer<typeof TaskSchema> & {
-  schemaVersion: TaskSchemaVersion;
-};
+export type TaskDefinition = z.infer<typeof TaskSchema>;

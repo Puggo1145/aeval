@@ -1,3 +1,5 @@
+// 一次评测运行（run）的元数据记录
+
 import type { RunManifestSchemaVersion } from './schema-versions.js';
 
 export interface RunManifestTaskSourceRecord {

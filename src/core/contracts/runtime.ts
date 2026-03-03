@@ -2,15 +2,20 @@ import type { ExecutionResult } from './execution.js';
 import type { RunSummary } from './run-summary.js';
 import type { GraderResult } from './trial.js';
 
+/**
+ * Provider 执行时收到的只读上下文
+ */
 export interface TaskContext {
   taskId: string;
   trialIndex: number;
   runName: string;
   runId: string;
+  // run 级的参数覆盖
   overrides: Readonly<Record<string, unknown>>;
   signal: AbortSignal;
 }
 
+// Provider 执行函数
 export type TaskProvider = (
   ctx: TaskContext,
   params: Readonly<Record<string, unknown>>,
@@ -23,6 +28,7 @@ export interface ProviderRegistry {
   list(): string[];
 }
 
+// Grader 评分函数
 export type Grader = (
   result: ExecutionResult,
   config: Record<string, unknown>,
@@ -56,10 +62,13 @@ export type RunEvent =
 
 export interface BaselineThresholds {
   passRateDrop?: number;
+  // pass^K drop
+  // pass^k: k 次全部通过
   passHatKDrop?: number;
   avgLatencyIncrease?: number;
 }
 
+type TaskId = string;
 export interface BaselineComparison {
   baselineRunId: string;
   currentRunId: string;
@@ -67,7 +76,7 @@ export interface BaselineComparison {
   passHatKDelta?: number;
   avgLatencyDelta?: number;
   tokenBudgetBreached?: boolean;
-  regressions: string[];
-  improvements: string[];
+  regressions: TaskId[]; // 相比 baseline 变差的 task id 列表
+  improvements: TaskId[]; // 相比 baseline 变好的 task id 列表
   verdict: 'pass' | 'regressed' | 'improved';
 }

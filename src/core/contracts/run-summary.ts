@@ -1,3 +1,5 @@
+// 一次评测运行（run）的结论
+
 import type { RunSummarySchemaVersion } from './schema-versions.js';
 
 export interface RunSummary {

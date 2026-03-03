@@ -1,9 +1,6 @@
 import { z } from 'zod';
-
-import { type ExperimentSchemaVersion, SCHEMA_VERSIONS } from './schema-versions.js';
-
-const UnknownRecordSchema = z.object({}).catchall(z.unknown());
-const NonEmptyStringSchema = z.string().trim().min(1);
+import { NonEmptyStringSchema, UnknownRecordSchema } from '../utils/zod.js';
+import { SCHEMA_VERSIONS } from './schema-versions.js';
 
 export const ExperimentTaskSourceSelectorSchema = z
   .object({
@@ -13,6 +10,9 @@ export const ExperimentTaskSourceSelectorSchema = z
   .strict();
 export type ExperimentTaskSourceSelector = z.infer<typeof ExperimentTaskSourceSelectorSchema>;
 
+/**
+ * 实验的 task source 配置
+ */
 export const ExperimentTaskSourceConfigSchema = z
   .object({
     adapter: NonEmptyStringSchema,
@@ -51,9 +51,11 @@ export const ExperimentSchema = z
     schemaVersion: z.literal(SCHEMA_VERSIONS.EXPERIMENT),
     name: NonEmptyStringSchema,
     taskSource: ExperimentTaskSourceConfigSchema,
+    // 一次实验所有要执行的 task runs 的配置
     runs: z.array(ExperimentRunConfigSchema).min(1, {
       message: "Field 'experiment.runs' must contain at least one run.",
     }),
+    // 全局默认配置，对所有 task 生效：每个 task 实验几次（可以被 task 覆盖）
     trialsPerTask: z.number().int().gt(0).optional(),
     maxConcurrency: z.number().int().gt(0),
     timeoutMs: z.number().int().gt(0).optional(),
@@ -77,6 +79,4 @@ export const ExperimentSchema = z
     });
   });
 
-export type ExperimentDefinition = z.infer<typeof ExperimentSchema> & {
-  schemaVersion: ExperimentSchemaVersion;
-};
+export type ExperimentDefinition = z.infer<typeof ExperimentSchema>;
