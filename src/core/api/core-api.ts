@@ -274,6 +274,8 @@ function computeVerdict(
 export interface RunExperimentInput {
   experiment: ExperimentDefinition;
   runName: string;
+  /** Root directory for resolving local dataset refs. Required when the experiment uses a local task source. */
+  datasetsRoot?: string;
 }
 
 export interface CompareBaselineOptions {
@@ -296,12 +298,47 @@ export interface CoreApi {
 }
 
 export function createCore(dependencies: RuntimeDependencyContainer): CoreApi {
+  function normalizeDatasetsRoot(datasetsRoot: string | undefined): string | undefined {
+    if (datasetsRoot === undefined) {
+      return undefined;
+    }
+
+    const normalized = datasetsRoot.trim();
+    if (normalized.length > 0) {
+      return normalized;
+    }
+
+    throw new ValidationError("Field 'datasetsRoot' must be a non-empty string when provided.", {
+      details: {
+        field: 'datasetsRoot',
+        value: datasetsRoot,
+      },
+    });
+  }
+
+  function resolveEffectiveDeps(datasetsRoot: string | undefined): RuntimeDependencyContainer {
+    const normalizedDatasetsRoot = normalizeDatasetsRoot(datasetsRoot);
+    if (!normalizedDatasetsRoot || !dependencies.createTaskSourceAdapters) {
+      return dependencies;
+    }
+    return {
+      ...dependencies,
+      taskSourceAdapters: {
+        ...dependencies.taskSourceAdapters,
+        ...dependencies.createTaskSourceAdapters(normalizedDatasetsRoot),
+      },
+    };
+  }
+
   return {
     async runExperiment(input): Promise<RunSummary> {
       const runName = ensureNonEmptyString(input.runName, 'runName');
       ensureRunExists(runName, input.experiment);
 
-      const resolved = resolveRuntimeDependencies(input.experiment, dependencies);
+      const resolved = resolveRuntimeDependencies(
+        input.experiment,
+        resolveEffectiveDeps(input.datasetsRoot),
+      );
 
       let summary: RunSummary | undefined;
       for await (const event of orchestrateRun(
@@ -327,7 +364,10 @@ export function createCore(dependencies: RuntimeDependencyContainer): CoreApi {
       const runName = ensureNonEmptyString(input.runName, 'runName');
       ensureRunExists(runName, input.experiment);
 
-      const resolved = resolveRuntimeDependencies(input.experiment, dependencies);
+      const resolved = resolveRuntimeDependencies(
+        input.experiment,
+        resolveEffectiveDeps(input.datasetsRoot),
+      );
 
       return orchestrateRun({ experiment: input.experiment, runName }, resolved);
     },

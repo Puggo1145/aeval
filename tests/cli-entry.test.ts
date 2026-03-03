@@ -15,7 +15,7 @@ function runCliProcess(args: string[]): Promise<CliProcessResult> {
     delete env.YOUEVAL_DATASETS_ROOT;
 
     const appRoot = join(import.meta.dirname, '..');
-    const cliEntry = join(appRoot, 'src', 'cli.ts');
+    const cliEntry = join(appRoot, 'src', 'interfaces', 'cli', 'entry.ts');
     const child = spawn(process.execPath, ['--import', 'tsx', cliEntry, ...args], {
       cwd: appRoot,
       env,
@@ -42,18 +42,17 @@ function runCliProcess(args: string[]): Promise<CliProcessResult> {
   });
 }
 
-test('cli entry prints help without dataset env when no args are provided', async () => {
-  const result = await runCliProcess([]);
+test('cli entry prints help when --help is provided', async () => {
+  const result = await runCliProcess(['--help']);
 
   assert.equal(result.exitCode, 0);
   assert.match(result.stdout, /YouEval CLI/);
   assert.equal(result.stderr, '');
 });
 
-test('cli entry prints help without dataset env when --help is provided', async () => {
-  const result = await runCliProcess(['--help']);
+test('cli entry exits with error for unknown command', async () => {
+  const result = await runCliProcess(['unknown-cmd']);
 
-  assert.equal(result.exitCode, 0);
-  assert.match(result.stdout, /YouEval CLI/);
-  assert.equal(result.stderr, '');
+  assert.equal(result.exitCode, 1);
+  assert.match(result.stderr, /unknown-cmd/);
 });

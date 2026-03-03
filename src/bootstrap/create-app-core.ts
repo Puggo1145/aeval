@@ -10,7 +10,6 @@ import { registerBuiltinGraders } from '../graders/register-builtins.js';
 import { registerReferenceProvider } from '../providers/index.js';
 
 export interface AppCoreOptions {
-  datasetsRoot: string;
   /** Root directory for storing run results. Defaults to '.youeval/runs'. */
   runsRoot?: string;
   /** Optional JudgeProvider for the llm-judge grader. */
@@ -31,8 +30,7 @@ function ensureNonEmptyString(value: string, field: string): string {
   });
 }
 
-export function createAppCore(options: AppCoreOptions): CoreApi {
-  const datasetsRoot = ensureNonEmptyString(options.datasetsRoot, 'datasetsRoot');
+export function createAppCore(options: AppCoreOptions = {}): CoreApi {
   const runsRoot =
     options.runsRoot === undefined
       ? '.youeval/runs'
@@ -45,9 +43,10 @@ export function createAppCore(options: AppCoreOptions): CoreApi {
   registerReferenceProvider(providerRegistry);
 
   return createCore({
-    taskSourceAdapters: {
+    taskSourceAdapters: {},
+    createTaskSourceAdapters: (datasetsRoot) => ({
       local: createLocalTaskSourceAdapter({ datasetsRoot }),
-    },
+    }),
     resultStoreAdapters: {
       local: createLocalResultStoreAdapter({ rootDir: runsRoot }),
     },

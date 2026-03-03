@@ -4,10 +4,8 @@ import test from 'node:test';
 import { createAppCore } from '../src/bootstrap/create-app-core.js';
 import { ValidationError } from '../src/core/errors/index.js';
 
-test('createAppCore accepts undefined runsRoot and uses default root', () => {
-  const core = createAppCore({
-    datasetsRoot: '/tmp',
-  });
+test('createAppCore accepts no arguments and uses defaults', () => {
+  const core = createAppCore();
 
   assert.ok(core);
 });
@@ -16,7 +14,6 @@ test('createAppCore rejects empty runsRoot string', () => {
   assert.throws(
     () =>
       createAppCore({
-        datasetsRoot: '/tmp',
         runsRoot: '   ',
       }),
     (error: unknown) => {

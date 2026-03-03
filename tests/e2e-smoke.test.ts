@@ -31,7 +31,6 @@ test('E2E smoke: full chain from taskSource.resolve to resultStore.read', async 
   const tmpDir = await mkdtemp(join(tmpdir(), 'youeval-e2e-'));
   try {
     const core = createAppCore({
-      datasetsRoot: DATASETS_ROOT,
       runsRoot: tmpDir,
     });
 
@@ -39,7 +38,7 @@ test('E2E smoke: full chain from taskSource.resolve to resultStore.read', async 
     const events: RunEvent[] = [];
 
     // 1. Stream the run
-    for await (const event of core.streamRun({ experiment, runName: 'smoke' })) {
+    for await (const event of core.streamRun({ experiment, runName: 'smoke', datasetsRoot: DATASETS_ROOT })) {
       events.push(event);
     }
 
@@ -169,8 +168,8 @@ test('E2E smoke: llm-judge protocol chain with mock JudgeProvider', async () => 
       },
     };
 
+    const datasetsRoot = join(tmpDir, 'datasets');
     const core = createAppCore({
-      datasetsRoot: join(tmpDir, 'datasets'),
       runsRoot: runsDir,
       judgeProvider: mockJudgeProvider,
     });
@@ -190,7 +189,7 @@ test('E2E smoke: llm-judge protocol chain with mock JudgeProvider', async () => 
     };
 
     const events: RunEvent[] = [];
-    for await (const event of core.streamRun({ experiment, runName: 'judge-run' })) {
+    for await (const event of core.streamRun({ experiment, runName: 'judge-run', datasetsRoot })) {
       events.push(event);
     }
 

@@ -27,7 +27,7 @@ pnpm build
 ### Run the smoke experiment
 
 ```bash
-YOUEVAL_DATASETS_ROOT=.datasets node --import tsx src/cli.ts run \
+YOUEVAL_DATASETS_ROOT=.datasets node --import tsx src/interfaces/cli/entry.ts run \
   --experiment experiments/chat-agent-smoke.yaml --run smoke
 
 # Reuse for all following commands in this shell
@@ -38,23 +38,23 @@ export YOUEVAL_DATASETS_ROOT=.datasets
 
 ```bash
 # List all runs
-node --import tsx src/cli.ts runs
+node --import tsx src/interfaces/cli/entry.ts runs
 
 # Show run summary
-node --import tsx src/cli.ts report <runId>
+node --import tsx src/interfaces/cli/entry.ts report <runId>
 
 # Show individual trials
-node --import tsx src/cli.ts trials <runId>
+node --import tsx src/interfaces/cli/entry.ts trials <runId>
 ```
 
 ### Baseline management
 
 ```bash
 # Set a run as baseline
-node --import tsx src/cli.ts baseline set <runId>
+node --import tsx src/interfaces/cli/entry.ts baseline set <runId>
 
 # Compare a run against the baseline
-node --import tsx src/cli.ts baseline compare <runId>
+node --import tsx src/interfaces/cli/entry.ts baseline compare <runId>
 ```
 
 ---

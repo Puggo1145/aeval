@@ -60,6 +60,12 @@ function resolveAdapterOrThrow<TAdapter>(
 
 export interface RuntimeDependencyContainer {
   taskSourceAdapters: Readonly<Record<string, TaskSourceAdapter>>;
+  /**
+   * Optional factory that creates task-source adapters at run time
+   * (e.g. from a datasetsRoot path supplied alongside the experiment).
+   * Adapters produced here are merged **over** the static map above.
+   */
+  createTaskSourceAdapters?: (datasetsRoot: string) => Record<string, TaskSourceAdapter>;
   resultStoreAdapters: Readonly<Record<string, ResultStoreAdapter>>;
   observerAdapters?: Readonly<Record<string, ObserverAdapter>>;
   providerRegistry: ProviderRegistry;

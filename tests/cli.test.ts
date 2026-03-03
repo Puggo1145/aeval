@@ -9,10 +9,8 @@ import type { CoreApi } from '../src/core/api/index.js';
 import { ERROR_CODES, ValidationError } from '../src/core/errors/index.js';
 import { runCli } from '../src/interfaces/cli/index.js';
 
-function createCliCore(datasetsRoot = '/tmp') {
-  return createAppCore({
-    datasetsRoot,
-  });
+function createCliCore() {
+  return createAppCore();
 }
 
 function createCompareOnlyCore(
@@ -132,7 +130,7 @@ test('report command returns 1 for non-existent run', async (t) => {
 
   const tmpDir = await mkdtemp(join(tmpdir(), 'youeval-test-'));
   try {
-    const core = createAppCore({ datasetsRoot: '/tmp', runsRoot: tmpDir });
+    const core = createAppCore({ runsRoot: tmpDir });
     const exitCode = await runCli(['report', 'nonexistent-run'], core);
     assert.equal(exitCode, 1);
   } finally {
@@ -145,7 +143,7 @@ test('runs command returns 0 with no runs', async (t) => {
 
   const tmpDir = await mkdtemp(join(tmpdir(), 'youeval-test-'));
   try {
-    const core = createAppCore({ datasetsRoot: '/tmp', runsRoot: tmpDir });
+    const core = createAppCore({ runsRoot: tmpDir });
     const exitCode = await runCli(['runs'], core);
     assert.equal(exitCode, 0);
   } finally {
@@ -169,7 +167,7 @@ test('trials command returns 0 for non-existent run', async (t) => {
 
   const tmpDir = await mkdtemp(join(tmpdir(), 'youeval-test-'));
   try {
-    const core = createAppCore({ datasetsRoot: '/tmp', runsRoot: tmpDir });
+    const core = createAppCore({ runsRoot: tmpDir });
     const exitCode = await runCli(['trials', 'nonexistent-run'], core);
     assert.equal(exitCode, 0);
   } finally {
