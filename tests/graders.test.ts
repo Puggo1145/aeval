@@ -410,11 +410,30 @@ test('transcript: turn count within bounds', async () => {
 
 test('transcript: too many turns', async () => {
   const turns = Array.from({ length: 10 }, (_, i) => ({
-    role: (i % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
+    role: (i % 3 === 0 ? 'system' : i % 2 === 0 ? 'user' : 'assistant') as
+      | 'system'
+      | 'user'
+      | 'assistant',
     content: `msg ${i}`,
   }));
   const r = await transcript(makeResult({ trace: { turns } }), { maxTurns: 5 });
   assert.equal(r.pass, false);
+});
+
+test('transcript: accepts system role in mustStartWith', async () => {
+  const r = await transcript(
+    makeResult({
+      trace: {
+        turns: [
+          { role: 'system', content: 'You are concise.' },
+          { role: 'user', content: 'hi' },
+          { role: 'assistant', content: 'hello' },
+        ],
+      },
+    }),
+    { mustStartWith: 'system' },
+  );
+  assert.equal(r.pass, true);
 });
 
 test('transcript: mustStartWith', async () => {
@@ -491,7 +510,7 @@ test('transcript: Infinity maxConsecutiveSameRole fails config validation', asyn
 });
 
 test('transcript: invalid role fails config validation', async () => {
-  const r = await transcript(makeResult(), { mustStartWith: 'system' });
+  const r = await transcript(makeResult(), { mustStartWith: 'tool' });
   assert.equal(r.pass, false);
   assert.ok(r.reason.includes('Invalid grader config'));
 });

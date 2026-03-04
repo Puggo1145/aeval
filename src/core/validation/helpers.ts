@@ -29,44 +29,67 @@ function joinValidationPath(baseField: string, segments: readonly ValidationPath
 
 function toZodIssueDetails(issue: ZodIssue): Record<string, unknown> | undefined {
   switch (issue.code) {
-    case 'invalid_type':
-      return {
-        expected: issue.expected,
-        receivedType: issue.received,
-      };
-    case 'invalid_literal':
-      return {
-        expected: issue.expected,
-        received: issue.received,
-      };
-    case 'invalid_enum_value':
-      return {
-        expected: issue.options,
-        received: issue.received,
-      };
-    case 'too_small':
-      return {
-        minimum: issue.minimum,
-        inclusive: issue.inclusive,
-        exact: issue.exact,
-        type: issue.type,
-      };
-    case 'too_big':
-      return {
-        maximum: issue.maximum,
-        inclusive: issue.inclusive,
-        exact: issue.exact,
-        type: issue.type,
-      };
+    case 'invalid_type': {
+      const details: Record<string, unknown> = {};
+      if ('expected' in issue) {
+        details.expected = issue.expected;
+      }
+      if ('received' in issue) {
+        details.receivedType = issue.received;
+      }
+      return Object.keys(details).length > 0 ? details : undefined;
+    }
+    case 'too_small': {
+      const details: Record<string, unknown> = {};
+      if ('minimum' in issue) {
+        details.minimum = issue.minimum;
+      }
+      if ('inclusive' in issue) {
+        details.inclusive = issue.inclusive;
+      }
+      if ('exact' in issue) {
+        details.exact = issue.exact;
+      }
+      if ('origin' in issue) {
+        details.origin = issue.origin;
+      }
+      return Object.keys(details).length > 0 ? details : undefined;
+    }
+    case 'too_big': {
+      const details: Record<string, unknown> = {};
+      if ('maximum' in issue) {
+        details.maximum = issue.maximum;
+      }
+      if ('inclusive' in issue) {
+        details.inclusive = issue.inclusive;
+      }
+      if ('exact' in issue) {
+        details.exact = issue.exact;
+      }
+      if ('origin' in issue) {
+        details.origin = issue.origin;
+      }
+      return Object.keys(details).length > 0 ? details : undefined;
+    }
+    case 'invalid_value': {
+      const details: Record<string, unknown> = {};
+      if ('values' in issue) {
+        details.expected = issue.values;
+      }
+      if ('input' in issue) {
+        details.received = issue.input;
+      }
+      return Object.keys(details).length > 0 ? details : undefined;
+    }
     case 'custom':
-      return issue.params;
+      return 'params' in issue ? issue.params : undefined;
     default:
       return undefined;
   }
 }
 
 function normalizeZodIssueMessage(issue: ZodIssue, field: string): string {
-  if (issue.code === 'invalid_literal' && field.endsWith('.schemaVersion')) {
+  if (issue.code === 'invalid_value' && field.endsWith('.schemaVersion')) {
     return `Unsupported schema version at '${field}'.`;
   }
 
@@ -82,7 +105,7 @@ function normalizeZodIssueMessage(issue: ZodIssue, field: string): string {
     }
   }
 
-  if (issue.code === 'too_small' && issue.type === 'string') {
+  if (issue.code === 'too_small' && 'origin' in issue && issue.origin === 'string') {
     return `Field '${field}' must be a non-empty string.`;
   }
 

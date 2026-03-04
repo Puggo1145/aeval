@@ -1,9 +1,13 @@
 schemaVersion: "experiment.v1"
-name: "chat-agent-smoke"
+name: "basic-llm-test"
 taskSource:
   adapter: "local"
 runs:
   - name: "smoke"
-maxConcurrency: 2
+maxConcurrency: 1
+trialsPerTask: 1
+timeoutMs: 30000
 resultStore:
   adapter: "local"
+observers:
+  - type: "console"

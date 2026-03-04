@@ -224,7 +224,7 @@ interface GraderResult {
 | `json-schema` | structuredOutput 符合 JSON Schema | `schema` (标准 JSON Schema 对象) |
 | `length-check` | output 长度检查 | `min?`, `max?` |
 | `tool-calls` | 验证 tool 调用行为 | `required?`, `forbidden?` (各含 `tool`), `minCalls?`, `maxCalls?` |
-| `transcript` | 验证对话轮次结构 | `maxTurns?`, `minTurns?`, `mustStartWith?`, `mustEndWith?`, `maxConsecutiveSameRole?` |
+| `transcript` | 验证对话轮次结构 | `maxTurns?`, `minTurns?`, `mustStartWith?` (`system/user/assistant`), `mustEndWith?` (`system/user/assistant`), `maxConsecutiveSameRole?` |
 | `outcome-check` | 验证环境副作用 | `expect` (key-value 深度比较 outcome) |
 | `latency-threshold` | 延迟阈值 | `maxMs` |
 | `token-budget` | token 用量限制 | `maxTotal?`, `maxInput?`, `maxOutput?` |

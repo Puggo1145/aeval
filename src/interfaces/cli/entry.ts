@@ -32,8 +32,8 @@ async function main(): Promise<void> {
 
   if (args.length === 0) {
     try {
-      const { runTui } = await import('./tui/index.js');
-      await runTui();
+      const { runAppTui } = await import('./tui/index.js');
+      await runAppTui();
     } catch (error) {
       reportError(error);
       process.exitCode = 1;

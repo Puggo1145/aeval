@@ -12,7 +12,7 @@ const ajv = new Ajv({
 
 const JsonSchemaConfigSchema = z
   .object({
-    schema: z.record(z.unknown()),
+    schema: z.record(z.string(), z.unknown()),
   })
   .strict();
 

@@ -22,10 +22,8 @@ const ACTIONS: Record<string, Action> = {
   'baseline-compare': compareBaseline,
 };
 
-export async function runTui(): Promise<void> {
+export async function runTui(core: CoreApi): Promise<void> {
   p.intro('YouEval — Interactive Mode');
-
-  const core = createAppCore();
 
   let running = true;
   while (running) {
@@ -74,4 +72,8 @@ export async function runTui(): Promise<void> {
   }
 
   p.outro('Goodbye!');
+}
+
+export async function runAppTui(): Promise<void> {
+  await runTui(createAppCore());
 }

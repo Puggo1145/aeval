@@ -53,7 +53,7 @@ export function validateGraderConfig<TSchema extends z.ZodTypeAny>(
   };
 }
 
-function formatIssuePath(path: Array<string | number>): string {
+function formatIssuePath(path: readonly PropertyKey[]): string {
   let formatted = '';
 
   for (const segment of path) {
@@ -62,7 +62,12 @@ function formatIssuePath(path: Array<string | number>): string {
       continue;
     }
 
-    formatted += formatted.length === 0 ? segment : `.${segment}`;
+    if (typeof segment === 'string') {
+      formatted += formatted.length === 0 ? segment : `.${segment}`;
+      continue;
+    }
+
+    formatted += formatted.length === 0 ? String(segment) : `.${String(segment)}`;
   }
 
   return formatted;

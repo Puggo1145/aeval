@@ -216,7 +216,7 @@ export interface ToolCallRecord {
 }
 
 export interface TurnRecord {
-  role: 'user' | 'assistant'
+  role: 'system' | 'user' | 'assistant'
   content: string
   toolCalls?: ToolCallRecord[]
 }

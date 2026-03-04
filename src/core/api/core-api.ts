@@ -1,4 +1,5 @@
 import type { ResultStoreAdapter } from '../adapters/result-store-adapter.js';
+import type { ExperimentDiscoveryHints, TaskSourceAdapter } from '../adapters/task-source-adapter.js';
 import type { ExperimentDefinition } from '../contracts/experiment.js';
 import type { RunSummary, RunSummaryRecord } from '../contracts/run-summary.js';
 import type { BaselineComparison, BaselineThresholds, RunEvent } from '../contracts/runtime.js';
@@ -143,6 +144,49 @@ export interface CompareBaselineOptions {
   tokenBudgetBreached?: boolean;
 }
 
+export interface CoreDiscoveryHints {
+  experimentSearchRoots: string[];
+  experimentSearchMaxDepth?: number;
+}
+
+function collectCoreDiscoveryHints(
+  taskSourceAdapters: Readonly<Record<string, TaskSourceAdapter>>,
+): CoreDiscoveryHints | undefined {
+  const roots = new Set<string>();
+  let resolvedMaxDepth: number | undefined;
+
+  for (const adapter of Object.values(taskSourceAdapters)) {
+    const hints: ExperimentDiscoveryHints | undefined = adapter.getExperimentDiscoveryHints?.();
+    if (!hints) {
+      continue;
+    }
+
+    for (const root of hints.roots) {
+      const normalizedRoot = root.trim();
+      if (normalizedRoot.length > 0) {
+        roots.add(normalizedRoot);
+      }
+    }
+
+    if (hints.maxDepth !== undefined) {
+      resolvedMaxDepth =
+        resolvedMaxDepth === undefined
+          ? hints.maxDepth
+          : Math.min(resolvedMaxDepth, hints.maxDepth);
+    }
+  }
+
+  const normalizedRoots = [...roots];
+  if (normalizedRoots.length === 0) {
+    return undefined;
+  }
+
+  return {
+    experimentSearchRoots: normalizedRoots,
+    experimentSearchMaxDepth: resolvedMaxDepth,
+  };
+}
+
 export interface CoreApi {
   runExperiment(input: RunExperimentInput): Promise<RunSummary>;
   streamRun(input: RunExperimentInput): AsyncIterable<RunEvent>;
@@ -154,9 +198,12 @@ export interface CoreApi {
     options?: CompareBaselineOptions,
   ): Promise<BaselineComparison>;
   listRuns(): Promise<RunSummaryRecord[]>;
+  getDiscoveryHints?(): CoreDiscoveryHints | undefined;
 }
 
 export function createCore(dependencies: RuntimeDependencyContainer): CoreApi {
+  const discoveryHints = collectCoreDiscoveryHints(dependencies.taskSourceAdapters);
+
   return {
     async runExperiment(input): Promise<RunSummary> {
       const runName = ensureNonEmptyString(input.runName, 'runName');
@@ -351,6 +398,10 @@ export function createCore(dependencies: RuntimeDependencyContainer): CoreApi {
       }
 
       return [...allRecords.values()].sort((a, b) => a.runId.localeCompare(b.runId));
+    },
+
+    getDiscoveryHints(): CoreDiscoveryHints | undefined {
+      return discoveryHints;
     },
   };
 }

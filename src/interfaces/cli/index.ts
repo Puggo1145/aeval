@@ -336,3 +336,5 @@ export async function runCli(args: string[], core: CoreApi): Promise<number> {
     details: { command, knownCommands: [...KNOWN_COMMANDS] },
   });
 }
+
+export { runAppTui, runTui } from './tui/index.js';

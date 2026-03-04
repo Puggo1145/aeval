@@ -1,0 +1,31 @@
+task:
+  schemaVersion: "task.v1"
+  id: "basic-llm/smoke/capital-france-001"
+  desc: "Ask a simple factual question to verify end-to-end LLM wiring."
+  category: "basic-llm"
+  capability: "qa"
+  tier: "L0"
+  difficulty: "easy"
+  tags: ["smoke", "factual"]
+
+  provider:
+    id: "basic-llm"
+    params:
+      systemPrompt: "You are a helpful AI Assistant."
+      prompt: "What is the capital of France? Answer with one word."
+      model: "gpt-4o-mini"
+      temperature: 0
+
+  graders:
+    strategy: "ALL"
+    layers:
+      - name: "must contain Paris"
+        type: "contains"
+        config:
+          mustInclude:
+            - pattern: "Paris"
+              caseSensitive: false
+
+  execution:
+    timeoutMs: 30000
+    retryOnError: 0

@@ -11,8 +11,8 @@ const TranscriptConfigSchema = z
   .object({
     maxTurns: z.number().int().finite().nonnegative().optional(),
     minTurns: z.number().int().finite().nonnegative().optional(),
-    mustStartWith: z.enum(['user', 'assistant']).optional(),
-    mustEndWith: z.enum(['user', 'assistant']).optional(),
+    mustStartWith: z.enum(['system', 'user', 'assistant']).optional(),
+    mustEndWith: z.enum(['system', 'user', 'assistant']).optional(),
     maxConsecutiveSameRole: z.number().int().finite().nonnegative().optional(),
   })
   .strict()
@@ -51,8 +51,8 @@ type TranscriptConfig = z.infer<typeof TranscriptConfigSchema>;
  * Config:
  *   maxTurns?: number           — maximum number of turns
  *   minTurns?: number           — minimum number of turns
- *   mustStartWith?: 'user' | 'assistant'  — expected role of first turn
- *   mustEndWith?: 'user' | 'assistant'    — expected role of last turn
+ *   mustStartWith?: 'system' | 'user' | 'assistant'  — expected role of first turn
+ *   mustEndWith?: 'system' | 'user' | 'assistant'    — expected role of last turn
  *   maxConsecutiveSameRole?: number        — max consecutive turns with same role
  *
  * At least one config field must be provided.

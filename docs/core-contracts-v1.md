@@ -116,17 +116,18 @@ Optional but standardized fields:
 
 1. `structuredOutput`
 2. `trace.turns[]`
-3. `trace.turns[].toolCalls[]`
-4. `trace.rawEvents[]`
-5. `metrics.latencyMs`
-6. `metrics.timeToFirstTokenMs`
-7. `metrics.model`
-8. `metrics.tokenUsage.input/output/total`
-9. `outcome`
-10. `error.type` (`agent` | `system`)
-11. `error.message`
-12. `error.code` (optional)
-13. `error.retryable` (optional)
+3. `trace.turns[].role` (`system` | `user` | `assistant`)
+4. `trace.turns[].toolCalls[]`
+5. `trace.rawEvents[]`
+6. `metrics.latencyMs`
+7. `metrics.timeToFirstTokenMs`
+8. `metrics.model`
+9. `metrics.tokenUsage.input/output/total`
+10. `outcome`
+11. `error.type` (`agent` | `system`)
+12. `error.message`
+13. `error.code` (optional)
+14. `error.retryable` (optional)
 
 Required behaviors:
 

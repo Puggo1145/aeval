@@ -9,7 +9,7 @@ import {
 
 const OutcomeCheckConfigSchema = z
   .object({
-    expect: z.record(z.unknown()),
+    expect: z.record(z.string(), z.unknown()),
   })
   .strict();
 
