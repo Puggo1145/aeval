@@ -28,6 +28,7 @@
     "start": "node dist/interfaces/cli/entry.js",
     "build": "tsc -p tsconfig.build.json",
     "example:basic-llm": "pnpm build && node --env-file=examples/basic-llm-test/.env --import tsx examples/basic-llm-test/main.ts",
+    "example:file-edit-agent": "pnpm build && node --env-file=examples/file-edit-agent/.env --import tsx examples/file-edit-agent/main.ts",
     "lint": "biome check . --diagnostic-level=error",
     "lint:fix": "biome check . --write --diagnostic-level=error",
     "format": "biome format . --write",
