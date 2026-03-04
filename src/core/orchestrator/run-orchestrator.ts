@@ -16,6 +16,7 @@ import type { TrialResult } from '../contracts/trial.js';
 import { RuntimeError, ValidationError } from '../errors/index.js';
 import { resolveGraderOrThrow, resolveProviderOrThrow } from '../runtime/dependency-resolver.js';
 import { validateTaskDefinitions } from '../validation/task-validator.js';
+import { createBoundedAsyncChannel } from './bounded-async-channel.js';
 import { computeConfigHash } from './config-hash.js';
 import { cloneAndDeepFreezeRecord } from './immutable-input.js';
 import { executeTrial } from './trial-engine.js';
@@ -179,53 +180,17 @@ export async function* orchestrateRun(
   const trialIterator = trialWork[Symbol.iterator]();
   const activeWorkers: Promise<void>[] = [];
 
-  // worker 事件队列，避免慢消费方导致无限堆积
+  // worker 事件通道，避免慢消费方导致无限堆积
   const eventQueueCapacity = Math.max(maxConcurrency * 4, 32);
-  const eventQueue: RunEvent[] = [];
-  const queueSpaceWaiters: Array<() => void> = [];
-  let resolveNextEvent: (() => void) | null = null;
+  const eventChannel = createBoundedAsyncChannel<RunEvent>(eventQueueCapacity);
   let allDonePromise: Promise<void> | undefined;
-  let workersFinished = false;
   let fatalWorkerError: unknown;
 
   async function pushEvent(event: RunEvent): Promise<void> {
-    while (eventQueue.length >= eventQueueCapacity) {
-      if (runAbortController.signal.aborted) {
-        return;
-      }
-      await new Promise<void>((resolve) => {
-        queueSpaceWaiters.push(resolve);
-      });
-    }
-
     if (runAbortController.signal.aborted) {
       return;
     }
-
-    eventQueue.push(event);
-    if (resolveNextEvent) {
-      resolveNextEvent();
-      resolveNextEvent = null;
-    }
-  }
-
-  function shiftEvent(): RunEvent | undefined {
-    const event = eventQueue.shift();
-    if (event !== undefined) {
-      const resolveWaiter = queueSpaceWaiters.shift();
-      resolveWaiter?.();
-    }
-    return event;
-  }
-
-  function wakeEventConsumersAndProducers(): void {
-    if (resolveNextEvent) {
-      resolveNextEvent();
-      resolveNextEvent = null;
-    }
-    while (queueSpaceWaiters.length > 0) {
-      queueSpaceWaiters.shift()?.();
-    }
+    await eventChannel.push(event);
   }
 
   async function runWorker(): Promise<void> {
@@ -335,33 +300,13 @@ export async function* orchestrateRun(
       activeWorkers.push(runWorker());
     }
 
-    // 等待 workers 结束，并在结束后唤醒事件消费方
+    // 等待 workers 结束，并在结束后关闭事件通道
     allDonePromise = Promise.allSettled(activeWorkers).then(() => {
-      workersFinished = true;
-      wakeEventConsumersAndProducers();
+      eventChannel.close();
     });
 
     // 按到达顺序输出事件
-    while (true) {
-      const queuedEvent = shiftEvent();
-      if (queuedEvent !== undefined) {
-        yield queuedEvent;
-        continue;
-      }
-
-      if (workersFinished) break;
-
-      await new Promise<void>((resolve) => {
-        resolveNextEvent = resolve;
-      });
-    }
-
-    // 清空剩余事件
-    while (true) {
-      const queuedEvent = shiftEvent();
-      if (queuedEvent === undefined) {
-        break;
-      }
+    for await (const queuedEvent of eventChannel) {
       yield queuedEvent;
     }
 
@@ -389,7 +334,7 @@ export async function* orchestrateRun(
     if (!runAbortController.signal.aborted) {
       runAbortController.abort(new Error('stream closed'));
     }
-    wakeEventConsumersAndProducers();
+    eventChannel.close();
 
     if (allDonePromise) {
       await allDonePromise;
