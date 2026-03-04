@@ -1,0 +1,73 @@
+task:
+  schemaVersion: "task.v1"
+  id: "basic-llm/regression/eu-capitals-format-002"
+  desc: "Validate multi-constraint output quality: factual correctness, formatting, and transcript shape."
+  category: "basic-llm"
+  capability: "qa-format-following"
+  tier: "L1"
+  difficulty: "medium"
+  tags: ["regression", "multi-constraint", "format", "geography"]
+
+  provider:
+    id: "basic-llm"
+    params:
+      systemPrompt: "You are a precise assistant. Follow the required output format exactly."
+      prompt: |
+        Return exactly 3 lines and no extra text.
+        Use this format:
+        1. France - <capital>
+        2. Germany - <capital>
+        3. Italy - <capital>
+      model: "gpt-4o-mini"
+      temperature: 0
+
+  graders:
+    strategy: "ALL"
+    layers:
+      - name: "must include expected capitals"
+        type: "contains"
+        config:
+          mustInclude:
+            - pattern: "Paris"
+              caseSensitive: false
+            - pattern: "Berlin"
+              caseSensitive: false
+            - pattern: "Rome"
+              caseSensitive: false
+
+      - name: "must match numbered-line structure"
+        type: "regex"
+        config:
+          mustMatch:
+            - pattern: "^1\\.\\s*France\\s*-\\s*\\S+[\\s\\S]*2\\.\\s*Germany\\s*-\\s*\\S+[\\s\\S]*3\\.\\s*Italy\\s*-\\s*\\S+$"
+              flags: "i"
+
+      - name: "must avoid obvious wrong capitals"
+        type: "contains"
+        config:
+          mustNotInclude:
+            - pattern: "France - Lyon"
+              caseSensitive: false
+            - pattern: "Germany - Munich"
+              caseSensitive: false
+            - pattern: "Italy - Milan"
+              caseSensitive: false
+
+      - name: "response length sanity"
+        type: "length-check"
+        config:
+          min: 30
+          max: 200
+
+      - name: "transcript shape must be single-turn"
+        type: "transcript"
+        config:
+          minTurns: 2
+          maxTurns: 2
+          mustStartWith: "user"
+          mustEndWith: "assistant"
+
+  execution:
+    timeoutMs: 45000
+    retryOnError: 1
+    trialsPerTask: 2

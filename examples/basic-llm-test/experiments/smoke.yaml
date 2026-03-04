@@ -1,6 +1,12 @@
 name: "basic-llm-test"
 runs:
-  - name: "smoke"
-maxConcurrency: 1
-trialsPerTask: 1
+  - name: "4o-mini"
+  - name: "5-mini"
+    overrides:
+      model: "gpt-5-mini"
+  - name: "5-nano"
+    overrides:
+      model: "gpt-5-nano"
+maxConcurrency: 3
+trialsPerTask: 2
 timeoutMs: 30000
