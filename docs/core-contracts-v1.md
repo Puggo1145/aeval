@@ -44,10 +44,11 @@ Required fields:
 Optional but standardized fields:
 
 1. `task.provider.params`
-2. `task.graders.passThreshold` (required when `strategy=WEIGHTED`)
-3. `task.trackedMetrics`
-4. `task.execution.retryOnError`
-5. `task.execution.trialsPerTask`
+2. `task.graders.passThreshold` (required only when `strategy=WEIGHTED`; forbidden for `ALL`/`ANY`)
+3. `task.graders.layers[].weight` (required only when `strategy=WEIGHTED`; forbidden for `ALL`/`ANY`)
+4. `task.trackedMetrics`
+5. `task.execution.retryOnError`
+6. `task.execution.trialsPerTask`
 
 Metadata fields (optional, strict type validation by Core, then pass-through to records):
 

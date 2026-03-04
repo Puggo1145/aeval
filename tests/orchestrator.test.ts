@@ -74,8 +74,7 @@ function makeTask(overrides: Partial<TaskDefinition> = {}): TaskDefinition {
     provider: { id: 'mock-provider' },
     graders: {
       strategy: 'ALL',
-      passThreshold: null,
-      layers: [{ name: 'always-pass', type: 'always-pass', weight: 1.0 }],
+      layers: [{ name: 'always-pass', type: 'always-pass' }],
     },
     execution: { timeoutMs: 5000 },
     ...overrides,
@@ -205,8 +204,8 @@ test('grader aggregate ALL strategy passes when all graders pass', async () => {
   const result = await aggregateGraders({
     execution: { schemaVersion: SCHEMA_VERSIONS.EXECUTION_RESULT, output: 'test' },
     layers: [
-      { name: 'g1', type: 'pass', weight: 1.0 },
-      { name: 'g2', type: 'pass', weight: 1.0 },
+      { name: 'g1', type: 'pass' },
+      { name: 'g2', type: 'pass' },
     ],
     strategy: 'ALL',
     resolveGrader: () => async () => ({ pass: true, reason: 'ok' }),
@@ -221,8 +220,8 @@ test('grader aggregate ALL strategy fails when any grader fails', async () => {
   const result = await aggregateGraders({
     execution: { schemaVersion: SCHEMA_VERSIONS.EXECUTION_RESULT, output: 'test' },
     layers: [
-      { name: 'g1', type: 'pass', weight: 1.0 },
-      { name: 'g2', type: 'fail', weight: 1.0 },
+      { name: 'g1', type: 'pass' },
+      { name: 'g2', type: 'fail' },
     ],
     strategy: 'ALL',
     resolveGrader: (type) => async () => {
@@ -238,8 +237,8 @@ test('grader aggregate ANY strategy passes when at least one grader passes', asy
   const result = await aggregateGraders({
     execution: { schemaVersion: SCHEMA_VERSIONS.EXECUTION_RESULT, output: 'test' },
     layers: [
-      { name: 'g1', type: 'fail', weight: 1.0 },
-      { name: 'g2', type: 'pass', weight: 1.0 },
+      { name: 'g1', type: 'fail' },
+      { name: 'g2', type: 'pass' },
     ],
     strategy: 'ANY',
     resolveGrader: (type) => async () => ({ pass: type === 'pass', reason: type }),
@@ -252,8 +251,8 @@ test('grader aggregate ANY strategy fails when all graders fail', async () => {
   const result = await aggregateGraders({
     execution: { schemaVersion: SCHEMA_VERSIONS.EXECUTION_RESULT, output: 'test' },
     layers: [
-      { name: 'g1', type: 'fail', weight: 1.0 },
-      { name: 'g2', type: 'fail', weight: 1.0 },
+      { name: 'g1', type: 'fail' },
+      { name: 'g2', type: 'fail' },
     ],
     strategy: 'ANY',
     resolveGrader: () => async () => ({ pass: false, reason: 'fail' }),
@@ -315,7 +314,6 @@ test('grader aggregate passes immutable isolated config to grader', async () => 
       {
         name: 'immutable-config-check',
         type: 'immutable-config-check',
-        weight: 1.0,
         config: originalConfig,
       },
     ],
@@ -682,8 +680,7 @@ test('multiple trials per task computes pass@k and pass^k', async () => {
   const task = makeTask({
     graders: {
       strategy: 'ALL',
-      passThreshold: null,
-      layers: [{ name: 'output-check', type: 'output-check', weight: 1.0 }],
+      layers: [{ name: 'output-check', type: 'output-check' }],
     },
   });
 
@@ -970,12 +967,10 @@ test('run fails fast before execution when regex grader config is invalid', asyn
   const task = makeTask({
     graders: {
       strategy: 'ALL',
-      passThreshold: null,
       layers: [
         {
           name: 'regex-invalid',
           type: 'regex',
-          weight: 1.0,
           config: {
             mustMatch: [{ pattern: '[' }],
           },
@@ -1015,12 +1010,10 @@ test('run fails fast before execution when json-schema grader pattern is invalid
   const task = makeTask({
     graders: {
       strategy: 'ALL',
-      passThreshold: null,
       layers: [
         {
           name: 'json-schema-invalid',
           type: 'json-schema',
-          weight: 1.0,
           config: {
             schema: {
               type: 'object',
@@ -1068,12 +1061,10 @@ test("run does not fail fast when json-schema has a property named 'pattern'", a
   const task = makeTask({
     graders: {
       strategy: 'ALL',
-      passThreshold: null,
       layers: [
         {
           name: 'json-schema-pattern-property',
           type: 'json-schema',
-          weight: 1.0,
           config: {
             schema: {
               type: 'object',
@@ -1117,12 +1108,10 @@ test('run fails fast before execution when length-check min is greater than max'
   const task = makeTask({
     graders: {
       strategy: 'ALL',
-      passThreshold: null,
       layers: [
         {
           name: 'length-check-invalid',
           type: 'length-check',
-          weight: 1.0,
           config: {
             min: 10,
             max: 5,
@@ -1235,8 +1224,7 @@ test('timeout is enforced even when provider ignores AbortSignal', async () => {
 test('grader exception is contained as trial system failure and does not abort run', async () => {
   const throwingGraders = {
     strategy: 'ALL' as const,
-    passThreshold: null,
-    layers: [{ name: 'throwing', type: 'throwing-grader', weight: 1.0 }],
+    layers: [{ name: 'throwing', type: 'throwing-grader' }],
   };
   const task1 = makeTask({ id: 'task-grader-throws', graders: throwingGraders });
   const task2 = makeTask({ id: 'task-still-runs', graders: throwingGraders });

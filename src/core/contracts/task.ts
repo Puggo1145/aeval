@@ -31,66 +31,45 @@ export const TaskProviderConfigSchema = z
   .strict();
 export type TaskProviderConfig = z.infer<typeof TaskProviderConfigSchema>;
 
-export const TaskGraderLayerSchema = z
+export const BaseGraderLayerSchema = z
   .object({
     name: NonEmptyStringSchema,
     type: NonEmptyStringSchema,
-    weight: z.number().finite().gt(0).optional(),
     config: UnknownRecordSchema.optional(),
   })
   .strict();
-export type TaskGraderLayer = z.infer<typeof TaskGraderLayerSchema>;
+export type TaskGraderLayer = z.infer<typeof BaseGraderLayerSchema>;
 
-export const TaskGradersConfigSchema = z
-  .object({
-    strategy: TaskGraderStrategySchema,
-    passThreshold: z.unknown().optional(),
-    layers: z.array(TaskGraderLayerSchema).min(1, {
-      message: "Field 'task.graders.layers' must contain at least one item.",
-    }),
-  })
-  .strict()
-  .superRefine((value, ctx) => {
-    if (value.strategy === 'WEIGHTED') {
-      if (
-        typeof value.passThreshold !== 'number' ||
-        !Number.isFinite(value.passThreshold) ||
-        value.passThreshold <= 0
-      ) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message:
-            "Field 'task.graders.passThreshold' is required and must be a finite number > 0 when strategy is WEIGHTED.",
-          path: ['passThreshold'],
-        });
-      }
-      return;
-    }
+export const WeightedGraderLayerSchema = BaseGraderLayerSchema.extend({
+  weight: z.number().finite().gt(0),
+}).strict();
+export type WeightedGraderLayer = z.infer<typeof WeightedGraderLayerSchema>;
 
-    if (value.passThreshold === undefined || value.passThreshold === null) {
-      return;
-    }
+const GradersLayersMinOne = {
+  message: "Field 'task.graders.layers' must contain at least one item.",
+};
 
-    if (typeof value.passThreshold !== 'number' || !Number.isFinite(value.passThreshold)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Field 'task.graders.passThreshold' must be a finite number when provided.",
-        path: ['passThreshold'],
-      });
-    }
-  })
-  .transform((value) => {
-    const passThreshold: number | null | undefined =
-      value.passThreshold === undefined || value.passThreshold === null
-        ? value.passThreshold
-        : (value.passThreshold as number);
-
-    return {
-      strategy: value.strategy,
-      passThreshold,
-      layers: value.layers,
-    };
-  });
+export const TaskGradersConfigSchema = z.discriminatedUnion('strategy', [
+  z
+    .object({
+      strategy: z.literal('ALL'),
+      layers: z.array(BaseGraderLayerSchema).min(1, GradersLayersMinOne),
+    })
+    .strict(),
+  z
+    .object({
+      strategy: z.literal('ANY'),
+      layers: z.array(BaseGraderLayerSchema).min(1, GradersLayersMinOne),
+    })
+    .strict(),
+  z
+    .object({
+      strategy: z.literal('WEIGHTED'),
+      passThreshold: z.number().finite().gt(0),
+      layers: z.array(WeightedGraderLayerSchema).min(1, GradersLayersMinOne),
+    })
+    .strict(),
+]);
 export type TaskGradersConfig = z.infer<typeof TaskGradersConfigSchema>;
 
 export const TaskExecutionConfigSchema = z

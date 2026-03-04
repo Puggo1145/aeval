@@ -43,11 +43,7 @@ export function validateTaskDefinition(
       id: task.provider.id,
       params: task.provider.params,
     },
-    graders: {
-      strategy: task.graders.strategy,
-      passThreshold: task.graders.passThreshold,
-      layers: task.graders.layers,
-    },
+    graders: task.graders,
     trackedMetrics: task.trackedMetrics,
     execution: {
       timeoutMs: task.execution.timeoutMs,

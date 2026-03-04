@@ -146,6 +146,7 @@ test('validateTaskDefinition fails when WEIGHTED strategy has no passThreshold',
               {
                 name: 'contains keyword',
                 type: 'contains',
+                weight: 1.0,
               },
             ],
           },
@@ -171,6 +172,7 @@ test('validateTaskDefinition fails when WEIGHTED strategy has non-positive passT
               {
                 name: 'contains keyword',
                 type: 'contains',
+                weight: 1.0,
               },
             ],
           },
@@ -196,6 +198,7 @@ test('validateTaskDefinition fails when WEIGHTED strategy passThreshold is NaN',
               {
                 name: 'contains keyword',
                 type: 'contains',
+                weight: 1.0,
               },
             ],
           },
@@ -221,6 +224,7 @@ test('validateTaskDefinition fails when WEIGHTED strategy passThreshold is Infin
               {
                 name: 'contains keyword',
                 type: 'contains',
+                weight: 1.0,
               },
             ],
           },
@@ -240,7 +244,8 @@ test('validateTaskDefinition fails when grader layer weight is non-positive', as
         {
           ...createValidTaskInput(),
           graders: {
-            strategy: 'ALL',
+            strategy: 'WEIGHTED',
+            passThreshold: 0.5,
             layers: [
               {
                 name: 'contains keyword',

@@ -434,11 +434,9 @@ task:
 
   graders:
     strategy: "ALL"
-    passThreshold: null
     layers:
       - name: "contains key concept"
         type: "contains"
-        weight: 1.0
         config:
           mustInclude:
             - pattern: "Server Components"
@@ -446,7 +444,6 @@ task:
 
       - name: "forbid fallback phrase"
         type: "regex"
-        weight: 1.0
         config:
           mustNotMatch:
             - pattern: "I cannot find"
@@ -454,7 +451,6 @@ task:
 
       - name: "tool behavior"
         type: "tool-calls"
-        weight: 1.0
         config:
           required:
             - tool: "searchBoards"
@@ -463,7 +459,6 @@ task:
 
       - name: "outcome safety"
         type: "outcome-check"
-        weight: 1.0
         config:
           expect:
             boardModified: false
@@ -471,7 +466,6 @@ task:
 
       - name: "semantic faithfulness"
         type: "llm-judge"
-        weight: 1.5
         config:
           dimension: "faithfulness"
           model: "judge-model-default"
@@ -530,13 +524,15 @@ experiment:
 4. `provider.id` 必须能在 `ProviderRegistry` 解析。
 5. `graders.layers` 至少一个。
 6. `strategy=WEIGHTED` 时必须提供 `passThreshold`。
-7. `execution.timeoutMs` 必须 > 0。
-8. 若使用 `experiment.taskSource`，`adapter` 必填且必须能解析到已注册 `TaskSourceAdapter`。
-9. 运行前必须通过 `TaskSourceAdapter.resolveDataset()` 解析到不可变 `revision`。
-10. `task.tags` 若提供，必须是 `string[]`。
-11. `task.lifecycle` 若提供，必须是对象。
-12. `task.desc/category/capability/tier/difficulty` 若提供，必须是 string。
-13. Task/Experiment DSL 对象内的未知字段必须在校验阶段直接报错（fail fast）。
+7. `strategy=WEIGHTED` 时，每个 `layers[]` 必须提供 `weight (>0)`。
+8. `strategy=ALL|ANY` 时，不允许出现 `passThreshold` 与 `weight` 字段。
+9. `execution.timeoutMs` 必须 > 0。
+10. 若使用 `experiment.taskSource`，`adapter` 必填且必须能解析到已注册 `TaskSourceAdapter`。
+11. 运行前必须通过 `TaskSourceAdapter.resolveDataset()` 解析到不可变 `revision`。
+12. `task.tags` 若提供，必须是 `string[]`。
+13. `task.lifecycle` 若提供，必须是对象。
+14. `task.desc/category/capability/tier/difficulty` 若提供，必须是 string。
+15. Task/Experiment DSL 对象内的未知字段必须在校验阶段直接报错（fail fast）。
 
 ---
 

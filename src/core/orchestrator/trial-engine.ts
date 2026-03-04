@@ -193,7 +193,8 @@ export async function executeTrial(
       execution,
       layers: input.task.graders.layers,
       strategy: input.task.graders.strategy,
-      passThreshold: input.task.graders.passThreshold,
+      passThreshold:
+        'passThreshold' in input.task.graders ? input.task.graders.passThreshold : undefined,
       resolveGrader: deps.resolveGrader,
     });
 

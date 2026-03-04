@@ -121,11 +121,9 @@ task:
 
   graders:
     strategy: "ALL"                        # 聚合策略: ALL / ANY / WEIGHTED
-    passThreshold: null                    # WEIGHTED 时必填
     layers:                                # 评分层（至少一个）
       - name: "contains greeting"
         type: "contains"                   # grader 类型
-        weight: 1.0
         config:
           mustInclude:
             - pattern: "Hello"
@@ -238,7 +236,7 @@ Task 级的 `graders.strategy` 决定多个 grader layer 如何聚合：
 
 - **ALL**: 所有 layer 必须 pass → 最终 pass
 - **ANY**: 任一 layer pass → 最终 pass
-- **WEIGHTED**: 加权评分。每个 layer 的 `weight` (默认 1.0) 乘以 `score` (没有则 pass=1.0/fail=0.0)，归一化后与 `passThreshold` 比较
+- **WEIGHTED**: 加权评分。每个 layer 必须显式提供 `weight`，以 `weight * score`（没有 `score` 时按 pass=1.0/fail=0.0）归一化后与 `passThreshold` 比较
 
 ### 6. Trial（试验）
 

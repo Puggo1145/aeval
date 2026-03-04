@@ -152,11 +152,9 @@ test('E2E smoke: llm-judge protocol chain with mock JudgeProvider', async () => 
 
   graders:
     strategy: "ALL"
-    passThreshold: null
     layers:
       - name: "judge accuracy"
         type: "llm-judge"
-        weight: 1.0
         config:
           dimension: "accuracy"
           rubric: "The output should correctly state that Paris is the capital of France."

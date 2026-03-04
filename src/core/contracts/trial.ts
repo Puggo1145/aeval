@@ -12,7 +12,7 @@ export interface TrialGraderResult {
   name: string;
   type: string;
   result: GraderResult;
-  weight: number;
+  weight?: number;
 }
 
 export interface TrialResult {
