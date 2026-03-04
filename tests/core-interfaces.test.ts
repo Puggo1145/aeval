@@ -81,7 +81,6 @@ function createExperimentDefinition(): ExperimentDefinition {
     name: 'milestone-2-smoke',
     taskSource: {
       adapter: 'local-task-source',
-      ref: 'dataset://chat-agent/smoke',
     },
     runs: [
       {
@@ -284,7 +283,6 @@ test('resolveRuntimeDependencies does not resolve adapters from prototype chain 
     name: 'prototype-key-check',
     taskSource: {
       adapter: '__proto__',
-      ref: 'dataset://chat-agent/smoke',
     },
     runs: [
       {

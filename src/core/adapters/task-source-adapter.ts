@@ -1,11 +1,5 @@
 export interface TaskSourceAdapter {
-  resolveDataset(input: {
-    ref: string;
-    selector?: {
-      revision?: string;
-      tag?: string;
-    };
-  }): Promise<ResolvedDataset>;
+  resolveDataset(): Promise<ResolvedDataset>;
 }
 
 export interface ResolvedDataset {

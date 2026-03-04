@@ -1,3 +1,7 @@
+/**
+ * 检查值是否为纯对象（plain object）。
+ * 纯对象是指原型为 Object.prototype 或 null 的对象。
+ */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== 'object') {
     return false;
@@ -7,6 +11,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
+/**
+ * 递归深拷贝值。
+ * 对数组和纯对象进行深拷贝，其他类型直接返回。
+ */
 function cloneValue(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => cloneValue(item));
@@ -23,6 +31,10 @@ function cloneValue(value: unknown): unknown {
   return value;
 }
 
+/**
+ * 递归深度冻结对象。
+ * 使用 WeakSet 跟踪已访问对象，避免循环引用导致无限递归。
+ */
 function deepFreezeValue(value: unknown, visited: WeakSet<object>): void {
   if (value === null || typeof value !== 'object') {
     return;

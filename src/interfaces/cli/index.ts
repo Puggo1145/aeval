@@ -117,19 +117,6 @@ function printComparison(comparison: BaselineComparison): void {
   }
 }
 
-function readDatasetsRootFromEnv(): string {
-  const value = process.env.YOUEVAL_DATASETS_ROOT;
-  if (value && value.trim().length > 0) {
-    return value.trim();
-  }
-
-  throw new ValidationError("Missing required environment variable 'YOUEVAL_DATASETS_ROOT'.", {
-    details: {
-      field: 'YOUEVAL_DATASETS_ROOT',
-    },
-  });
-}
-
 const handleRun: CliCommandHandler = async (args, core) => {
   const experimentPath = parseFlag(args, '--experiment');
   const runName = parseFlag(args, '--run');
@@ -145,14 +132,13 @@ const handleRun: CliCommandHandler = async (args, core) => {
     });
   }
 
-  const datasetsRoot = readDatasetsRootFromEnv();
   const absolutePath = resolve(experimentPath);
   const rawYaml = await readFile(absolutePath, 'utf-8');
   const parsed = parseYaml(rawYaml);
   const experiment = validateExperimentDefinition(parsed);
 
   let lastSummary: RunSummary | undefined;
-  for await (const event of core.streamRun({ experiment, runName, datasetsRoot })) {
+  for await (const event of core.streamRun({ experiment, runName })) {
     switch (event.type) {
       case 'run:started':
         console.log(`Run started: ${event.runId} (${event.totalTasks} tasks)`);

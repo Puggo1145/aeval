@@ -22,8 +22,6 @@ export function validateExperimentDefinition(input: unknown): ExperimentDefiniti
     name: experiment.name,
     taskSource: {
       adapter: experiment.taskSource.adapter,
-      ref: experiment.taskSource.ref,
-      selector: experiment.taskSource.selector,
     },
     runs: experiment.runs,
     trialsPerTask: experiment.trialsPerTask,
@@ -31,7 +29,6 @@ export function validateExperimentDefinition(input: unknown): ExperimentDefiniti
     timeoutMs: experiment.timeoutMs,
     resultStore: {
       adapter: experiment.resultStore.adapter,
-      options: experiment.resultStore.options,
     },
     observers: experiment.observers,
   };

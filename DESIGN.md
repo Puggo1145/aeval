@@ -378,13 +378,7 @@ Core 必须通过 `TaskSourceAdapter` 读取 task 输入，不直接绑死某种
 
 ```typescript
 export interface TaskSourceAdapter {
-  resolveDataset(input: {
-    ref: string
-    selector?: {
-      revision?: string
-      tag?: string
-    }
-  }): Promise<ResolvedDataset>
+  resolveDataset(): Promise<ResolvedDataset>
 }
 
 export interface ResolvedDataset {
@@ -511,9 +505,6 @@ experiment:
   name: "chat-agent-model-compare"
   taskSource:
     adapter: "task-source-adapter-id"
-    ref: "dataset://chat-agent/golden-set"
-    selector:
-      revision: "rev-2026-02-28-001"
   runs:
     - name: "model-a"
       overrides:
@@ -526,9 +517,6 @@ experiment:
   timeoutMs: 120000
   resultStore:
     adapter: "result-store-adapter-id"
-    options:
-      # adapter-specific options
-      target: ".youeval/runs"
 
   observers:
     - type: "observer-adapter-id"
@@ -543,8 +531,8 @@ experiment:
 5. `graders.layers` 至少一个。
 6. `strategy=WEIGHTED` 时必须提供 `passThreshold`。
 7. `execution.timeoutMs` 必须 > 0。
-8. 若使用 `experiment.taskSource`，`adapter/ref` 必填。
-9. 运行前必须将 `taskSource.ref` 解析为不可变 `revision`。
+8. 若使用 `experiment.taskSource`，`adapter` 必填且必须能解析到已注册 `TaskSourceAdapter`。
+9. 运行前必须通过 `TaskSourceAdapter.resolveDataset()` 解析到不可变 `revision`。
 10. `task.tags` 若提供，必须是 `string[]`。
 11. `task.lifecycle` 若提供，必须是对象。
 12. `task.desc/category/capability/tier/difficulty` 若提供，必须是 string。
@@ -565,7 +553,7 @@ LOADED -> SETUP -> RUNNING -> GRADING -> FINALIZED
 
 ### 6.2 Trial 生命周期
 
-1. 通过 `TaskSourceAdapter` 解析 dataset ref 并冻结 revision。
+1. 通过 `TaskSourceAdapter` 解析数据集并冻结 revision。
 2. 读取 Task 配置。
 3. 构建 `TaskContext`（含 `AbortSignal`）。
 4. 调用 Provider 执行真实场景。

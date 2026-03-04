@@ -27,11 +27,8 @@ pnpm build
 ### Run the smoke experiment
 
 ```bash
-YOUEVAL_DATASETS_ROOT=.datasets node --import tsx src/interfaces/cli/entry.ts run \
+node --import tsx src/interfaces/cli/entry.ts run \
   --experiment experiments/chat-agent-smoke.yaml --run smoke
-
-# Reuse for all following commands in this shell
-export YOUEVAL_DATASETS_ROOT=.datasets
 ```
 
 ### View results
@@ -69,7 +66,7 @@ YouEval 是一个 **AI Agent/LLM 评测框架**。它的核心流程是：
 Experiment (实验定义) → 加载 Tasks (任务集) → 执行 Provider (被测对象) → Grader 评分 → 聚合结果
 ```
 
-所有配置通过 YAML 文件声明，核心引擎用 TypeScript 实现，运行在 Node.js >= 20 上。
+评测定义通过 YAML 声明；adapter 实例配置在组合根注入。核心引擎用 TypeScript 实现，运行在 Node.js >= 20 上。
 
 ---
 
@@ -84,10 +81,6 @@ schemaVersion: "experiment.v1"
 name: "chat-agent-smoke"
 taskSource:
   adapter: "local"                    # 任务加载适配器
-  ref: "dataset://chat-agent/smoke"   # 数据集引用路径
-  selector:                           # 可选：过滤条件
-    revision: "v1.0"
-    tag: "smoke"
 runs:
   - name: "smoke"                     # run 配置名（一个实验可定义多个 run）
     overrides: {}                     # 可选：传给 provider 的覆盖参数
@@ -104,6 +97,7 @@ observers:                            # 可选：事件观察者
 - **runs**: 数组，每个元素是一个 run 配置。run name 在实验内必须唯一。执行时通过 `--run` 指定跑哪个。
 - **maxConcurrency**: 控制 trial 级别的并发数。
 - **trialsPerTask**: 全局默认值，task 级可覆盖。当 > 1 时，summary 会产出 pass@k / pass^k 指标。
+- **taskSource.adapter**: 声明运行时使用哪个任务源实例。`local` 数据集定位参数（`datasetsRoot/dataset/revision/tag`）在 `createAppCore({...})` 注入时配置。
 
 ### 2. Task（任务）
 
@@ -364,7 +358,7 @@ verdict 逻辑：
 `orchestrateRun()` 是核心编排流程：
 
 1. **解析 run 配置** — 从 experiment.runs 中找到指定 runName
-2. **加载数据集** — 调用 `taskSourceAdapter.resolveDataset(ref, selector)`
+2. **加载数据集** — 调用 `taskSourceAdapter.resolveDataset()`（数据定位参数来自组合根注入的 adapter 实例）
 3. **校验 tasks** — 验证 schema、检查 provider/grader 是否注册、校验 grader config
 4. **保存 RunManifest** — 记录 run 元数据
 5. **生成 trial 队列** — 每个 task × trialsPerTask
@@ -424,7 +418,18 @@ youeval baseline compare <runId> \
         └── .tags.json         # 可选：tag 过滤文件
 ```
 
-Task 文件引用格式: `dataset://chat-agent/smoke`（映射到 `.datasets/chat-agent/smoke/`）
+`local` task source 的数据集在组合根配置，例如：
+
+```typescript
+import { createAppCore } from './src/bootstrap/create-app-core.js';
+
+const core = createAppCore({
+  datasetsRoot: '.datasets',
+  dataset: 'chat-agent/smoke',
+  revision: 'rev-2026-02-28-001', // 可选，和 tag 二选一
+  // tag: 'stable',               // 可选，和 revision 二选一
+});
+```
 
 ---
 
@@ -435,7 +440,7 @@ Task 文件引用格式: `dataset://chat-agent/smoke`（映射到 `.datasets/cha
 ```typescript
 import { createAppCore } from './bootstrap/create-app-core.js';
 
-const core = createAppCore({ datasetsRoot: '.datasets' });
+const core = createAppCore();
 // 目前需要通过 createCore() 直接注入 registry
 providerRegistry.register('my-agent', async (ctx, params) => {
   // 调用你的 agent，返回 ExecutionResult
@@ -455,7 +460,6 @@ graderRegistry.register('my-custom', async (result, config) => {
 
 ```typescript
 createAppCore({
-  datasetsRoot: '.datasets',
   judgeProvider: {
     async evaluate(input) {
       // 调用 LLM API，返回 { pass, score, reason, label }

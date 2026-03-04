@@ -20,32 +20,6 @@ export interface GraderAggregateResult {
   };
 }
 
-/**
- * 执行所有 grader layer，并按配置策略聚合最终 pass/score。
- */
-export async function aggregateGraders(
-  input: GraderAggregateInput,
-): Promise<GraderAggregateResult> {
-  const graderResults: TrialGraderResult[] = [];
-
-  for (const layer of input.layers) {
-    const grader = input.resolveGrader(layer.type);
-    const config = cloneAndDeepFreezeRecord(layer.config);
-    const result: GraderResult = await grader(input.execution, config);
-
-    graderResults.push({
-      name: layer.name,
-      type: layer.type,
-      result,
-      weight: layer.weight ?? 1.0,
-    });
-  }
-
-  const aggregate = computeAggregate(graderResults, input.strategy, input.passThreshold);
-
-  return { graderResults, aggregate };
-}
-
 function computeAggregate(
   graderResults: TrialGraderResult[],
   strategy: TaskGraderStrategy,
@@ -84,4 +58,30 @@ function computeAggregate(
       };
     }
   }
+}
+
+/**
+ * 执行所有 grader layer，并按配置策略聚合最终 pass/score。
+ */
+export async function aggregateGraders(
+  input: GraderAggregateInput,
+): Promise<GraderAggregateResult> {
+  const graderResults: TrialGraderResult[] = [];
+
+  for (const layer of input.layers) {
+    const grader = input.resolveGrader(layer.type);
+    const config = cloneAndDeepFreezeRecord(layer.config);
+    const result: GraderResult = await grader(input.execution, config);
+
+    graderResults.push({
+      name: layer.name,
+      type: layer.type,
+      result,
+      weight: layer.weight ?? 1.0,
+    });
+  }
+
+  const aggregate = computeAggregate(graderResults, input.strategy, input.passThreshold);
+
+  return { graderResults, aggregate };
 }

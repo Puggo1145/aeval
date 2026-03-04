@@ -17,7 +17,7 @@
 满足以下条件即视为 Core v1 完成：
 
 1. `Task` / `Experiment` / `ExecutionResult` / `TrialResult` / `RunSummary` / `RunManifest` 契约已落地并校验。
-2. 运行前可将 `taskSource.ref` 解析为不可变 `revision`，并记录 `datasetHash`。
+2. 运行前通过已注册 `TaskSourceAdapter` 解析为不可变 `revision`，并记录 `datasetHash`。
 3. `ProviderRegistry`、grader 执行、trial orchestration、run 聚合全部可用。
 4. `ResultStoreAdapter` 完整支持 `save/get/list` 合约并可被 interface adapter 读取（v1 由 CLI 承担）。
 5. Core 判定不依赖 observer 成功写入。
@@ -72,9 +72,9 @@
 
 - [x] **Milestone 3: Task Source Resolution (Reference Adapter)**
   - [x] 实现 local/reference `TaskSourceAdapter`（从本地 dataset 读取任务集合）。
-  - [x] 实现 `ref + selector` -> `resolved revision` 逻辑（不可变 revision）。
+  - [x] 实现 adapter 内部 `resolved revision` 逻辑（不可变 revision）。
   - [x] 计算并返回 `datasetHash`（用于复现与审计）。
-  - [x] 在 adapter 层对非法 ref / 数据集读取失败执行 fail fast。
+  - [x] 在 adapter 层对非法 options / 数据集读取失败执行 fail fast。
   - [x] 验收：`resolveDataset` 返回 `source(adapter/ref/revision/fetchedAt) + tasks + datasetHash`。
 
 - [x] **Milestone 4: Trial Engine & Run Orchestrator**
@@ -160,7 +160,8 @@
 - `2026-02-28`: aligned `core-contracts-v1.md` and `DESIGN.md` with strict metadata type checks and unknown-field fail-fast rules for Task/Experiment DSL.
 - `2026-02-28`: completed `Milestone 2`, added provider/grader registries, adapter interfaces, runtime dependency resolver, and core API surface with query/baseline coverage tests.
 - `2026-02-28`: refined Milestone 2 API boundary with `createCore` composition root, runId-based result-store routing, and required baseline store contracts.
-- `2026-02-28`: completed `Milestone 3`, added local TaskSourceAdapter with YAML parsing, deterministic datasetHash (SHA-256), ref+selector→revision resolution, adapter-level fail-fast validation, sample dataset fixtures, and 16 unit tests.
+- `2026-02-28`: completed `Milestone 3`, added local TaskSourceAdapter with YAML parsing, deterministic datasetHash (SHA-256), revision resolution, adapter-level fail-fast validation, sample dataset fixtures, and 16 unit tests.
+- `2026-03-03`: updated task source contract to direct `TaskSourceAdapter` instance wiring in `createCore`; moved local dataset settings to composition-root injection (`createAppCore`) and removed adapter options from Experiment DSL.
 - `2026-02-28`: completed `Milestone 4`, added trial engine (timeout/AbortSignal, error semantics, retry), run orchestrator (concurrent execution, dataset resolve, manifest/summary persistence), grader aggregation (ALL/ANY/WEIGHTED), configHash computation, pass@k/pass^k metrics, and 23 orchestrator unit tests.
 - `2026-03-01`: completed `Milestone 5`, added 10 built-in graders (exact-match, contains, regex, json-schema, length-check, tool-calls, transcript, outcome-check, latency-threshold, token-budget), JudgeProvider protocol with llm-judge grader factory, registerBuiltinGraders composition-root pre-registration, bootstrap wiring, and 60 grader unit tests.
 - `2026-03-01`: completed `Milestone 6`, added local/reference `ResultStoreAdapter` (filesystem-based, JSON per run/trial), strict-only write failure handling, baseline persistence, bootstrap wiring with configurable `runsRoot`, and 17 unit tests.

@@ -2,22 +2,14 @@ import { z } from 'zod';
 import { NonEmptyStringSchema, UnknownRecordSchema } from '../utils/zod.js';
 import { SCHEMA_VERSIONS } from './schema-versions.js';
 
-export const ExperimentTaskSourceSelectorSchema = z
-  .object({
-    revision: NonEmptyStringSchema.optional(),
-    tag: NonEmptyStringSchema.optional(),
-  })
-  .strict();
-export type ExperimentTaskSourceSelector = z.infer<typeof ExperimentTaskSourceSelectorSchema>;
-
 /**
  * 实验的 task source 配置
+ *
+ * adapter 全权负责数据发现，所有 adapter 特定配置统一放在 options 中。
  */
 export const ExperimentTaskSourceConfigSchema = z
   .object({
     adapter: NonEmptyStringSchema,
-    ref: NonEmptyStringSchema,
-    selector: ExperimentTaskSourceSelectorSchema.optional(),
   })
   .strict();
 export type ExperimentTaskSourceConfig = z.infer<typeof ExperimentTaskSourceConfigSchema>;
@@ -33,7 +25,6 @@ export type ExperimentRunConfig = z.infer<typeof ExperimentRunConfigSchema>;
 export const ExperimentResultStoreConfigSchema = z
   .object({
     adapter: NonEmptyStringSchema,
-    options: UnknownRecordSchema.optional(),
   })
   .strict();
 export type ExperimentResultStoreConfig = z.infer<typeof ExperimentResultStoreConfigSchema>;
@@ -41,7 +32,6 @@ export type ExperimentResultStoreConfig = z.infer<typeof ExperimentResultStoreCo
 export const ExperimentObserverConfigSchema = z
   .object({
     type: NonEmptyStringSchema,
-    options: UnknownRecordSchema.optional(),
   })
   .strict();
 export type ExperimentObserverConfig = z.infer<typeof ExperimentObserverConfigSchema>;

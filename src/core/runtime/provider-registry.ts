@@ -1,16 +1,16 @@
 import type { ProviderRegistry, TaskProvider } from '../contracts/runtime.js';
 import { ContractError, ValidationError } from '../errors/index.js';
 
-function normalizeProviderId(providerId: string, field: string): string {
+function normalizeProviderId(providerId: string): string {
   const normalizedProviderId = providerId.trim();
   if (normalizedProviderId.length > 0) {
     return normalizedProviderId;
   }
 
-  throw new ValidationError(`Field '${field}' must be a non-empty string.`, {
+  throw new ValidationError(`Field 'providerId' must be a non-empty string.`, {
     details: {
-      field,
-      providerId,
+      field: 'providerId',
+      value: providerId,
     },
   });
 }
@@ -19,7 +19,7 @@ export class InMemoryProviderRegistry implements ProviderRegistry {
   private readonly providers = new Map<string, TaskProvider>();
 
   register(providerId: string, provider: TaskProvider): void {
-    const normalizedProviderId = normalizeProviderId(providerId, 'providerId');
+    const normalizedProviderId = normalizeProviderId(providerId);
 
     if (this.providers.has(normalizedProviderId)) {
       throw new ContractError(`Provider '${normalizedProviderId}' is already registered.`, {
@@ -33,10 +33,7 @@ export class InMemoryProviderRegistry implements ProviderRegistry {
   }
 
   get(providerId: string): TaskProvider | undefined {
-    const normalizedProviderId = providerId.trim();
-    if (normalizedProviderId.length === 0) {
-      return undefined;
-    }
+    const normalizedProviderId = normalizeProviderId(providerId);
     return this.providers.get(normalizedProviderId);
   }
 

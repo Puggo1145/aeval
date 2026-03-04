@@ -78,7 +78,7 @@ Required fields:
 
 1. `experiment.schemaVersion` = `experiment.v1`
 2. `experiment.name`
-3. `experiment.taskSource.adapter` + `experiment.taskSource.ref`
+3. `experiment.taskSource.adapter`
 4. `experiment.runs[]` (at least one `RunConfig`)
 5. `experiment.maxConcurrency` (> 0)
 6. `experiment.resultStore.adapter`
@@ -90,17 +90,14 @@ RunConfig structure (each element of `experiment.runs[]`):
 
 Optional but standardized fields:
 
-1. `experiment.taskSource.selector.revision`
-2. `experiment.taskSource.selector.tag`
-3. `experiment.trialsPerTask`
-4. `experiment.timeoutMs`
-5. `experiment.resultStore.options` (`Record<string, unknown>`, adapter-specific)
-6. `experiment.observers`
+1. `experiment.trialsPerTask`
+2. `experiment.timeoutMs`
+3. `experiment.observers`
 
 Validation rules:
 
 1. `experiment.schemaVersion` must be supported.
-2. `experiment.taskSource` must be resolved to immutable `revision` before run starts.
+2. `experiment.taskSource.adapter` must resolve to a registered `TaskSourceAdapter`.
 3. `experiment.runs.length >= 1`.
 4. `experiment.runs[].name` must be unique within the experiment.
 5. `experiment.maxConcurrency > 0`.
@@ -185,13 +182,7 @@ Required behaviors:
 
 ```typescript
 export interface TaskSourceAdapter {
-  resolveDataset(input: {
-    ref: string
-    selector?: {
-      revision?: string
-      tag?: string
-    }
-  }): Promise<ResolvedDataset>
+  resolveDataset(): Promise<ResolvedDataset>
 }
 
 export interface ResolvedDataset {
@@ -359,7 +350,7 @@ Aggregation records:
 输入范围（按 key 字典序序列化后取 SHA-256）：
 
 1. `experiment.schemaVersion`
-2. `experiment.taskSource.adapter` + `experiment.taskSource.ref`
+2. `experiment.taskSource.adapter`
 3. `experiment.runs[]`（含每个 RunConfig 的 `name` + `overrides`）
 4. `experiment.trialsPerTask`
 5. `experiment.maxConcurrency`
@@ -369,9 +360,7 @@ Aggregation records:
 不参与 configHash 的字段：
 
 1. `experiment.name`（纯标识，不影响执行行为）
-2. `experiment.taskSource.selector`（revision 已通过 `datasetHash` 捕获）
-3. `experiment.observers`（不影响 pass/fail 语义）
-4. `experiment.resultStore.options`（不影响执行行为）
+2. `experiment.observers`（不影响 pass/fail 语义）
 
 ## 6. Observer 契约（可选）
 

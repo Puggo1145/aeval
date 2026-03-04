@@ -581,7 +581,6 @@ test('local ResultStoreAdapter supports full core run persistence and query read
       name: 'result-store-smoke',
       taskSource: {
         adapter: 'local',
-        ref: 'dataset://smoke',
       },
       runs: [{ name: 'default' }],
       maxConcurrency: 1,

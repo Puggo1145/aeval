@@ -1,13 +1,20 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
 
-import { createAppCore } from '../src/bootstrap/create-app-core.js';
+import { createConsoleObserverAdapter } from '../src/adapters/observer/index.js';
+import { createLocalResultStoreAdapter } from '../src/adapters/result-store/index.js';
+import { createLocalTaskSourceAdapter } from '../src/adapters/task-source/index.js';
+import { createCore } from '../src/core/api/index.js';
 import type { ExperimentDefinition, RunEvent } from '../src/core/contracts/index.js';
 import { SCHEMA_VERSIONS } from '../src/core/contracts/schema-versions.js';
+import { InMemoryGraderRegistry } from '../src/core/runtime/grader-registry.js';
+import { InMemoryProviderRegistry } from '../src/core/runtime/provider-registry.js';
 import type { JudgeProvider, JudgeProviderInput } from '../src/graders/llm/judge-provider.js';
+import { registerBuiltinGraders } from '../src/graders/register-builtins.js';
+import { registerReferenceProvider } from '../src/providers/index.js';
 
 const DATASETS_ROOT = resolve('.datasets');
 
@@ -17,7 +24,6 @@ function buildSmokeExperiment(): ExperimentDefinition {
     name: 'chat-agent-smoke',
     taskSource: {
       adapter: 'local',
-      ref: 'dataset://chat-agent/smoke',
     },
     runs: [{ name: 'smoke' }],
     maxConcurrency: 2,
@@ -30,15 +36,34 @@ function buildSmokeExperiment(): ExperimentDefinition {
 test('E2E smoke: full chain from taskSource.resolve to resultStore.read', async () => {
   const tmpDir = await mkdtemp(join(tmpdir(), 'youeval-e2e-'));
   try {
-    const core = createAppCore({
-      runsRoot: tmpDir,
+    const graderRegistry = new InMemoryGraderRegistry();
+    registerBuiltinGraders(graderRegistry);
+
+    const providerRegistry = new InMemoryProviderRegistry();
+    registerReferenceProvider(providerRegistry);
+
+    const core = createCore({
+      taskSourceAdapters: {
+        local: createLocalTaskSourceAdapter({
+          datasetsRoot: DATASETS_ROOT,
+          dataset: 'chat-agent/smoke',
+        }),
+      },
+      resultStoreAdapters: {
+        local: createLocalResultStoreAdapter({ rootDir: tmpDir }),
+      },
+      providerRegistry,
+      graderRegistry,
+      observerAdapters: {
+        console: createConsoleObserverAdapter(),
+      },
     });
 
     const experiment = buildSmokeExperiment();
     const events: RunEvent[] = [];
 
     // 1. Stream the run
-    for await (const event of core.streamRun({ experiment, runName: 'smoke', datasetsRoot: DATASETS_ROOT })) {
+    for await (const event of core.streamRun({ experiment, runName: 'smoke' })) {
       events.push(event);
     }
 
@@ -76,11 +101,6 @@ test('E2E smoke: full chain from taskSource.resolve to resultStore.read', async 
     assert.equal(comparison.verdict, 'pass');
 
     // 7. Verify RunManifest via result store
-    //    We access it through the local adapter indirectly — getRunSummary already proved
-    //    the run exists, but we also check manifest fields by reading it through the adapter.
-    //    Since createAppCore builds a local result store, we can construct a second adapter
-    //    to read the manifest file. Instead, let's use the core's public API to verify
-    //    the summary has the expected shape, and check manifest fields from the completed event.
     const startedEvent = events.find((e) => e.type === 'run:started');
     assert.ok(startedEvent, 'run:started event should be emitted');
     assert.equal(startedEvent.type, 'run:started');
@@ -88,9 +108,6 @@ test('E2E smoke: full chain from taskSource.resolve to resultStore.read', async 
     assert.equal(startedEvent.totalTasks, 2);
 
     // Verify RunManifest by reading it directly from the result store adapter
-    const { createLocalResultStoreAdapter } = await import(
-      '../src/adapters/result-store/local-result-store-adapter.js'
-    );
     const verifyStore = createLocalResultStoreAdapter({ rootDir: tmpDir });
     const manifest = await verifyStore.getRunManifest(runId);
     assert.ok(manifest, 'RunManifest should be persisted');
@@ -98,7 +115,7 @@ test('E2E smoke: full chain from taskSource.resolve to resultStore.read', async 
     assert.equal(manifest.runId, runId);
     assert.equal(manifest.experimentName, 'chat-agent-smoke');
     assert.equal(manifest.taskSource.adapter, 'local');
-    assert.equal(manifest.taskSource.ref, 'dataset://chat-agent/smoke');
+    assert.equal(manifest.taskSource.ref, 'chat-agent/smoke');
     assert.ok(manifest.taskSource.revision, 'revision should be set');
     assert.ok(manifest.datasetHash, 'datasetHash should be set');
     assert.ok(manifest.configHash, 'configHash should be set');
@@ -113,7 +130,6 @@ test('E2E smoke: llm-judge protocol chain with mock JudgeProvider', async () => 
   try {
     // Create a temporary dataset directory with an llm-judge task
     const datasetDir = join(tmpDir, 'datasets', 'judge-test');
-    const { mkdir, writeFile } = await import('node:fs/promises');
     await mkdir(datasetDir, { recursive: true });
 
     // Write a task YAML that uses llm-judge grader
@@ -169,9 +185,28 @@ test('E2E smoke: llm-judge protocol chain with mock JudgeProvider', async () => 
     };
 
     const datasetsRoot = join(tmpDir, 'datasets');
-    const core = createAppCore({
-      runsRoot: runsDir,
-      judgeProvider: mockJudgeProvider,
+
+    const graderRegistry = new InMemoryGraderRegistry();
+    registerBuiltinGraders(graderRegistry, { judgeProvider: mockJudgeProvider });
+
+    const providerRegistry = new InMemoryProviderRegistry();
+    registerReferenceProvider(providerRegistry);
+
+    const core = createCore({
+      taskSourceAdapters: {
+        local: createLocalTaskSourceAdapter({
+          datasetsRoot,
+          dataset: 'judge-test',
+        }),
+      },
+      resultStoreAdapters: {
+        local: createLocalResultStoreAdapter({ rootDir: runsDir }),
+      },
+      providerRegistry,
+      graderRegistry,
+      observerAdapters: {
+        console: createConsoleObserverAdapter(),
+      },
     });
 
     const experiment: ExperimentDefinition = {
@@ -179,7 +214,6 @@ test('E2E smoke: llm-judge protocol chain with mock JudgeProvider', async () => 
       name: 'judge-protocol-test',
       taskSource: {
         adapter: 'local',
-        ref: 'dataset://judge-test',
       },
       runs: [{ name: 'judge-run' }],
       maxConcurrency: 1,
@@ -189,7 +223,7 @@ test('E2E smoke: llm-judge protocol chain with mock JudgeProvider', async () => 
     };
 
     const events: RunEvent[] = [];
-    for await (const event of core.streamRun({ experiment, runName: 'judge-run', datasetsRoot })) {
+    for await (const event of core.streamRun({ experiment, runName: 'judge-run' })) {
       events.push(event);
     }
 

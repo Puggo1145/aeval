@@ -9,15 +9,6 @@ import { validateExperimentDefinition } from '../../../../core/validation/experi
 import { formatSummaryNote } from '../formatters.js';
 import { discoverExperimentFiles, handleCancel } from '../utils.js';
 
-function resolveDatasetsRoot(): string {
-  const envValue = process.env.YOUEVAL_DATASETS_ROOT?.trim();
-  if (envValue && envValue.length > 0) {
-    p.log.info(`Using datasets root from YOUEVAL_DATASETS_ROOT: ${envValue}`);
-    return envValue;
-  }
-  return '';
-}
-
 export async function runExperiment(core: CoreApi): Promise<void> {
   const files = await discoverExperimentFiles();
 
@@ -68,21 +59,6 @@ export async function runExperiment(core: CoreApi): Promise<void> {
     }),
   );
 
-  let datasetsRoot = resolveDatasetsRoot();
-  if (!datasetsRoot) {
-    datasetsRoot = handleCancel(
-      await p.text({
-        message: 'Enter the datasets root directory path:',
-        placeholder: './datasets',
-        validate(value) {
-          if (!value || value.trim().length === 0) {
-            return 'Datasets root cannot be empty.';
-          }
-        },
-      }),
-    ).trim();
-  }
-
   const s = p.spinner();
   let completedTasks = 0;
   let totalTasks = 0;
@@ -90,7 +66,7 @@ export async function runExperiment(core: CoreApi): Promise<void> {
 
   s.start('Starting run…');
 
-  for await (const event of core.streamRun({ experiment, runName, datasetsRoot })) {
+  for await (const event of core.streamRun({ experiment, runName })) {
     switch (event.type) {
       case 'run:started':
         totalTasks = event.totalTasks;

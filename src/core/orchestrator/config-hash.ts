@@ -15,7 +15,7 @@ type CanonicalJsonValue =
  *
  * 参与字段（序列化前按 key 排序）：
  *   - experiment.schemaVersion
- *   - experiment.taskSource.adapter + ref
+ *   - experiment.taskSource.adapter
  *   - experiment.runs[]（每个 RunConfig 的 name + overrides）
  *   - experiment.trialsPerTask
  *   - experiment.maxConcurrency
@@ -24,9 +24,7 @@ type CanonicalJsonValue =
  *
  * 排除字段：
  *   - experiment.name
- *   - experiment.taskSource.selector
  *   - experiment.observers
- *   - experiment.resultStore.options
  */
 export function computeConfigHash(experiment: ExperimentDefinition): string {
   const hashInput = {
@@ -38,7 +36,6 @@ export function computeConfigHash(experiment: ExperimentDefinition): string {
     })),
     schemaVersion: experiment.schemaVersion,
     taskSourceAdapter: experiment.taskSource.adapter,
-    taskSourceRef: experiment.taskSource.ref,
     timeoutMs: experiment.timeoutMs,
     trialsPerTask: experiment.trialsPerTask,
   };

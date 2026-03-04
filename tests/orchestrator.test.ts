@@ -86,7 +86,7 @@ function makeExperiment(overrides: Partial<ExperimentDefinition> = {}): Experime
   return validateExperimentDefinition({
     schemaVersion: SCHEMA_VERSIONS.EXPERIMENT,
     name: 'test-experiment',
-    taskSource: { adapter: 'local', ref: 'dataset://test' },
+    taskSource: { adapter: 'local' },
     runs: [{ name: 'default' }],
     maxConcurrency: 2,
     resultStore: { adapter: 'local-store' },

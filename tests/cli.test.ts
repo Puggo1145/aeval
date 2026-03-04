@@ -1,16 +1,42 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-
-import { createAppCore } from '../src/bootstrap/create-app-core.js';
-import type { CoreApi } from '../src/core/api/index.js';
+import { createConsoleObserverAdapter } from '../src/adapters/observer/index.js';
+import { createLocalResultStoreAdapter } from '../src/adapters/result-store/index.js';
+import { createLocalTaskSourceAdapter } from '../src/adapters/task-source/index.js';
+import { type CoreApi, createCore } from '../src/core/api/index.js';
 import { ERROR_CODES, ValidationError } from '../src/core/errors/index.js';
+import { InMemoryGraderRegistry } from '../src/core/runtime/grader-registry.js';
+import { InMemoryProviderRegistry } from '../src/core/runtime/provider-registry.js';
+import { registerBuiltinGraders } from '../src/graders/register-builtins.js';
 import { runCli } from '../src/interfaces/cli/index.js';
+import { registerReferenceProvider } from '../src/providers/index.js';
 
-function createCliCore() {
-  return createAppCore();
+function createCliCore(options: { runsRoot?: string } = {}): CoreApi {
+  const graderRegistry = new InMemoryGraderRegistry();
+  registerBuiltinGraders(graderRegistry);
+
+  const providerRegistry = new InMemoryProviderRegistry();
+  registerReferenceProvider(providerRegistry);
+
+  return createCore({
+    taskSourceAdapters: {
+      local: createLocalTaskSourceAdapter({
+        datasetsRoot: '.datasets',
+        dataset: 'chat-agent-smoke',
+      }),
+    },
+    resultStoreAdapters: {
+      local: createLocalResultStoreAdapter({ rootDir: options.runsRoot ?? '.youeval/runs' }),
+    },
+    providerRegistry,
+    graderRegistry,
+    observerAdapters: {
+      console: createConsoleObserverAdapter(),
+    },
+  });
 }
 
 function createCompareOnlyCore(
@@ -130,7 +156,7 @@ test('report command returns 1 for non-existent run', async (t) => {
 
   const tmpDir = await mkdtemp(join(tmpdir(), 'youeval-test-'));
   try {
-    const core = createAppCore({ runsRoot: tmpDir });
+    const core = createCliCore({ runsRoot: tmpDir });
     const exitCode = await runCli(['report', 'nonexistent-run'], core);
     assert.equal(exitCode, 1);
   } finally {
@@ -143,7 +169,7 @@ test('runs command returns 0 with no runs', async (t) => {
 
   const tmpDir = await mkdtemp(join(tmpdir(), 'youeval-test-'));
   try {
-    const core = createAppCore({ runsRoot: tmpDir });
+    const core = createCliCore({ runsRoot: tmpDir });
     const exitCode = await runCli(['runs'], core);
     assert.equal(exitCode, 0);
   } finally {
@@ -167,7 +193,7 @@ test('trials command returns 0 for non-existent run', async (t) => {
 
   const tmpDir = await mkdtemp(join(tmpdir(), 'youeval-test-'));
   try {
-    const core = createAppCore({ runsRoot: tmpDir });
+    const core = createCliCore({ runsRoot: tmpDir });
     const exitCode = await runCli(['trials', 'nonexistent-run'], core);
     assert.equal(exitCode, 0);
   } finally {
@@ -279,8 +305,7 @@ test('baseline compare rejects missing value for --token-budget-breached flag', 
   const core = createCompareOnlyCore(() => {});
 
   await assert.rejects(
-    () =>
-      runCli(['baseline', 'compare', 'current-run', '--token-budget-breached'], core),
+    () => runCli(['baseline', 'compare', 'current-run', '--token-budget-breached'], core),
     (error: unknown) => {
       assert.ok(error instanceof ValidationError);
       assert.ok(error.message.includes('--token-budget-breached'));

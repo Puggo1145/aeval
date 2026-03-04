@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { ObserverAdapter } from '../adapters/observer-adapter.js';
 import type { ResultStoreAdapter } from '../adapters/result-store-adapter.js';
-import type { TaskSourceAdapter } from '../adapters/task-source-adapter.js';
+import type { ResolvedDataset, TaskSourceAdapter } from '../adapters/task-source-adapter.js';
 import { SYSTEM_ERROR_CODES } from '../contracts/execution.js';
 import type { ExperimentDefinition } from '../contracts/experiment.js';
 import type { RunManifest } from '../contracts/run-manifest.js';
@@ -11,7 +11,7 @@ import type { GraderRegistry, ProviderRegistry, RunEvent } from '../contracts/ru
 import { SCHEMA_VERSIONS } from '../contracts/schema-versions.js';
 import type { TaskDefinition } from '../contracts/task.js';
 import type { TrialResult } from '../contracts/trial.js';
-import { ValidationError } from '../errors/index.js';
+import { RuntimeError, ValidationError } from '../errors/index.js';
 import { resolveGraderOrThrow, resolveProviderOrThrow } from '../runtime/dependency-resolver.js';
 import { validateTaskDefinitions } from '../validation/task-validator.js';
 import { computeConfigHash } from './config-hash.js';
@@ -72,10 +72,22 @@ export async function* orchestrateRun(
   const overrides = cloneAndDeepFreezeRecord(runConfig.overrides);
 
   // 1. run 启动前先解析数据集，失败即终止
-  const resolved = await deps.taskSourceAdapter.resolveDataset({
-    ref: input.experiment.taskSource.ref,
-    selector: input.experiment.taskSource.selector,
-  });
+  let resolved: ResolvedDataset;
+  try {
+    resolved = await deps.taskSourceAdapter.resolveDataset();
+  } catch (cause) {
+    const message =
+      cause instanceof Error && cause.message.trim().length > 0 ? cause.message : 'Unknown error.';
+    throw new RuntimeError(
+      `Task source adapter dataset resolution failed: ${message}`,
+      {
+        details: {
+          field: 'experiment.taskSource',
+        },
+        cause,
+      },
+    );
+  }
 
   // 2. 校验任务定义
   const tasks = validateTaskDefinitions(resolved.tasks, {

@@ -43,7 +43,6 @@ function createValidExperimentInput() {
     name: 'smoke-run',
     taskSource: {
       adapter: 'local-task-source',
-      ref: 'dataset://chat-agent/smoke',
     },
     runs: [
       {
@@ -53,9 +52,6 @@ function createValidExperimentInput() {
     maxConcurrency: 2,
     resultStore: {
       adapter: 'local-result-store',
-      options: {
-        target: '.youeval/runs',
-      },
     },
   };
 }
@@ -490,7 +486,6 @@ test('validateExperimentDefinition fails when taskSource.adapter is missing', as
         ...createValidExperimentInput(),
         taskSource: {
           adapter: '',
-          ref: 'dataset://chat-agent/smoke',
         },
       }),
     (error: unknown) => expectValidationField(error, 'experiment.taskSource.adapter'),

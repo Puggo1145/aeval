@@ -1,3 +1,4 @@
+// 在 run 启动时，根据 experiment 的配置从所有的 registry 中解析出本次 run 实际所需要用到的依赖
 import type { ObserverAdapter } from '../adapters/observer-adapter.js';
 import type { ResultStoreAdapter } from '../adapters/result-store-adapter.js';
 import type { TaskSourceAdapter } from '../adapters/task-source-adapter.js';
@@ -8,24 +9,7 @@ import type {
   ProviderRegistry,
   TaskProvider,
 } from '../contracts/runtime.js';
-import { ERROR_CODES, RuntimeError } from '../errors/index.js';
-
-interface MissingDependencyDetails extends Record<string, unknown> {
-  field: string;
-  dependencyType: string;
-  requestedId: string;
-  available: string[];
-}
-
-function throwMissingDependencyError(details: MissingDependencyDetails): never {
-  throw new RuntimeError(
-    `Unable to resolve ${details.dependencyType} '${details.requestedId}' from '${details.field}'.`,
-    {
-      code: ERROR_CODES.RUNTIME_DEPENDENCY_MISSING,
-      details,
-    },
-  );
-}
+import { throwMissingDependencyError } from '../utils/dependency-resolver.js';
 
 function resolveAdapterOrThrow<TAdapter>(
   adapters: Readonly<Record<string, TAdapter>> | undefined,
@@ -60,12 +44,6 @@ function resolveAdapterOrThrow<TAdapter>(
 
 export interface RuntimeDependencyContainer {
   taskSourceAdapters: Readonly<Record<string, TaskSourceAdapter>>;
-  /**
-   * Optional factory that creates task-source adapters at run time
-   * (e.g. from a datasetsRoot path supplied alongside the experiment).
-   * Adapters produced here are merged **over** the static map above.
-   */
-  createTaskSourceAdapters?: (datasetsRoot: string) => Record<string, TaskSourceAdapter>;
   resultStoreAdapters: Readonly<Record<string, ResultStoreAdapter>>;
   observerAdapters?: Readonly<Record<string, ObserverAdapter>>;
   providerRegistry: ProviderRegistry;
