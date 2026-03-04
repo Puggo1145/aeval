@@ -77,27 +77,20 @@ Experiment (实验定义) → 加载 Tasks (任务集) → 执行 Provider (被�
 实验是最顶层的配置单元，定义"评测什么、怎么评、结果存哪"。对应 `experiments/*.yaml`。
 
 ```yaml
-schemaVersion: "experiment.v1"
 name: "chat-agent-smoke"
-taskSource:
-  adapter: "local"                    # 任务加载适配器
 runs:
   - name: "smoke"                     # run 配置名（一个实验可定义多个 run）
     overrides: {}                     # 可选：传给 provider 的覆盖参数
 maxConcurrency: 2                     # 并发 trial 数
 trialsPerTask: 1                      # 每个 task 执行几次（默认 1）
 timeoutMs: 30000                      # 可选：全局超时覆盖
-resultStore:
-  adapter: "local"                    # 结果存储适配器
-observers:                            # 可选：事件观察者
-  - type: "console"
 ```
 
 关键字段说明：
 - **runs**: 数组，每个元素是一个 run 配置。run name 在实验内必须唯一。执行时通过 `--run` 指定跑哪个。
 - **maxConcurrency**: 控制 trial 级别的并发数。
 - **trialsPerTask**: 全局默认值，task 级可覆盖。当 > 1 时，summary 会产出 pass@k / pass^k 指标。
-- **taskSource.adapter**: 声明运行时使用哪个任务源实例。`local` 数据集定位参数（`datasetsRoot/dataset/revision/tag`）在 `createAppCore({...})` 注入时配置。
+- `taskSource` / `resultStore` / `observer` 实例通过 `createCore(...)` 依赖注入，不再由 Experiment DSL 声明。
 
 ### 2. Task（任务）
 
@@ -470,12 +463,11 @@ createAppCore({
 
 ## 八、Schema 版本
 
-所有数据结构都有 `schemaVersion` 字段，当前均为 v1：
+核心运行记录结构都带有 `schemaVersion` 字段，当前均为 v1：
 
 | Schema | Version |
 |--------|---------|
 | Task | `task.v1` |
-| Experiment | `experiment.v1` |
 | ExecutionResult | `execution-result.v1` |
 | TrialResult | `trial-result.v1` |
 | RunManifest | `run-manifest.v1` |

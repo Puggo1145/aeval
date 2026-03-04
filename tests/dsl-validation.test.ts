@@ -39,20 +39,13 @@ function createValidTaskInput() {
 
 function createValidExperimentInput() {
   return {
-    schemaVersion: SCHEMA_VERSIONS.EXPERIMENT,
     name: 'smoke-run',
-    taskSource: {
-      adapter: 'local-task-source',
-    },
     runs: [
       {
         name: 'baseline',
       },
     ],
     maxConcurrency: 2,
-    resultStore: {
-      adapter: 'local-result-store',
-    },
   };
 }
 
@@ -458,9 +451,9 @@ test('validateTaskDefinitions fails when task.id is duplicated in one dataset re
 test('validateExperimentDefinition accepts a valid experiment', () => {
   const experiment = validateExperimentDefinition(createValidExperimentInput());
 
-  assert.equal(experiment.schemaVersion, SCHEMA_VERSIONS.EXPERIMENT);
   assert.equal(experiment.name, 'smoke-run');
   assert.equal(experiment.runs.length, 1);
+  assert.equal(experiment.maxConcurrency, 2);
 });
 
 test('validateExperimentDefinition rejects wrapped experiment input', async () => {
@@ -469,31 +462,18 @@ test('validateExperimentDefinition rejects wrapped experiment input', async () =
       validateExperimentDefinition({
         experiment: createValidExperimentInput(),
       }),
-    (error: unknown) => expectValidationField(error, 'experiment.schemaVersion'),
+    (error: unknown) => expectValidationField(error, 'experiment.name'),
   );
 });
 
-test('validateExperimentDefinition fails when schemaVersion is unsupported', async () => {
+test('validateExperimentDefinition fails when unknown field schemaVersion is present', async () => {
   await assert.rejects(
     async () =>
       validateExperimentDefinition({
         ...createValidExperimentInput(),
-        schemaVersion: 'experiment.v2',
+        schemaVersion: 'experiment.v1',
       }),
-    (error: unknown) => expectValidationField(error, 'experiment.schemaVersion'),
-  );
-});
-
-test('validateExperimentDefinition fails when taskSource.adapter is missing', async () => {
-  await assert.rejects(
-    async () =>
-      validateExperimentDefinition({
-        ...createValidExperimentInput(),
-        taskSource: {
-          adapter: '',
-        },
-      }),
-    (error: unknown) => expectValidationField(error, 'experiment.taskSource.adapter'),
+    (error: unknown) => expectValidationField(error, 'experiment'),
   );
 });
 

@@ -7,8 +7,7 @@ test('createAppCore returns a valid CoreApi instance', () => {
   const core = createAppCore();
 
   assert.ok(core);
-  assert.equal(typeof core.runExperiment, 'function');
-  assert.equal(typeof core.streamRun, 'function');
+  assert.equal(typeof core.loadExperiment, 'function');
   assert.equal(typeof core.getRunSummary, 'function');
   assert.equal(typeof core.listTrials, 'function');
   assert.equal(typeof core.setBaseline, 'function');

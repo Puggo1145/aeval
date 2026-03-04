@@ -1,13 +1,6 @@
-schemaVersion: "experiment.v1"
 name: "basic-llm-test"
-taskSource:
-  adapter: "local"
 runs:
   - name: "smoke"
 maxConcurrency: 1
 trialsPerTask: 1
 timeoutMs: 30000
-resultStore:
-  adapter: "local"
-observers:
-  - type: "console"

@@ -1,6 +1,5 @@
 import * as p from '@clack/prompts';
 
-import { createAppCore } from '../../../bootstrap/create-app-core.js';
 import type { CoreApi } from '../../../core/api/index.js';
 
 import { compareBaseline } from './actions/compare-baseline.js';
@@ -14,12 +13,12 @@ import { CancelError } from './utils.js';
 type Action = (core: CoreApi) => Promise<void>;
 
 const ACTIONS: Record<string, Action> = {
-  run: runExperiment,
-  report: viewReport,
-  runs: listRuns,
-  trials: viewTrials,
-  'baseline-set': setBaseline,
-  'baseline-compare': compareBaseline,
+  run: (core) => runExperiment(core),
+  report: (core) => viewReport(core),
+  runs: (core) => listRuns(core),
+  trials: (core) => viewTrials(core),
+  'baseline-set': (core) => setBaseline(core),
+  'baseline-compare': (core) => compareBaseline(core),
 };
 
 export async function runTui(core: CoreApi): Promise<void> {
@@ -27,10 +26,16 @@ export async function runTui(core: CoreApi): Promise<void> {
 
   let running = true;
   while (running) {
+    const hasLoadedExperiments = core.experiments.length > 0;
     const action = await p.select({
       message: 'What would you like to do?',
       options: [
-        { value: 'run', label: 'Run an experiment' },
+        {
+          value: 'run',
+          label: hasLoadedExperiments
+            ? 'Run an experiment'
+            : 'Run an experiment (no experiment loaded)',
+        },
         { value: 'report', label: 'View run report' },
         { value: 'runs', label: 'List all runs' },
         { value: 'trials', label: 'View trial details' },
@@ -45,6 +50,13 @@ export async function runTui(core: CoreApi): Promise<void> {
       break;
     }
 
+    if (action === 'run' && !hasLoadedExperiments) {
+      p.log.warn(
+        "No experiment loaded. Load one with `core.loadExperiment(...)` before entering TUI run flow.",
+      );
+      continue;
+    }
+
     const handler = ACTIONS[action];
     if (!handler) {
       continue;
@@ -54,7 +66,6 @@ export async function runTui(core: CoreApi): Promise<void> {
       await handler(core);
     } catch (error) {
       if (error instanceof CancelError) {
-        // action cancelled, return to menu
         continue;
       }
       const message = error instanceof Error ? error.message : String(error);
@@ -72,8 +83,4 @@ export async function runTui(core: CoreApi): Promise<void> {
   }
 
   p.outro('Goodbye!');
-}
-
-export async function runAppTui(): Promise<void> {
-  await runTui(createAppCore());
 }

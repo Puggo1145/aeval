@@ -16,20 +16,5 @@ export function validateExperimentDefinition(input: unknown): ExperimentDefiniti
     throwFirstZodValidationError(experimentResult.error, 'experiment');
   }
 
-  const experiment = experimentResult.data;
-  return {
-    schemaVersion: experiment.schemaVersion,
-    name: experiment.name,
-    taskSource: {
-      adapter: experiment.taskSource.adapter,
-    },
-    runs: experiment.runs,
-    trialsPerTask: experiment.trialsPerTask,
-    maxConcurrency: experiment.maxConcurrency,
-    timeoutMs: experiment.timeoutMs,
-    resultStore: {
-      adapter: experiment.resultStore.adapter,
-    },
-    observers: experiment.observers,
-  };
+  return experimentResult.data;
 }

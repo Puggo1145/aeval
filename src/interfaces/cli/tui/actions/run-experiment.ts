@@ -1,58 +1,37 @@
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-
 import * as p from '@clack/prompts';
-import { parse as parseYaml } from 'yaml';
 
-import type { CoreApi } from '../../../../core/api/index.js';
-import { validateExperimentDefinition } from '../../../../core/validation/experiment-validator.js';
+import type { CoreApi, LoadedExperiment } from '../../../../core/api/index.js';
 import { formatSummaryNote } from '../formatters.js';
-import { discoverExperimentFiles, handleCancel } from '../utils.js';
+import { handleCancel } from '../utils.js';
 
 export async function runExperiment(core: CoreApi): Promise<void> {
-  const files = await discoverExperimentFiles();
+  const experiments = core.experiments;
 
-  let experimentPath: string;
+  if (experiments.length === 0) {
+    p.log.warn('No experiments loaded.');
+    return;
+  }
 
-  if (files.length > 0) {
-    const selected = handleCancel(
-      await p.select({
-        message: 'Select an experiment file:',
-        options: [
-          ...files.map((f) => ({ value: f, label: f })),
-          { value: '__manual__' as const, label: 'Enter path manually…' },
-        ],
-      }),
-    );
+  let experiment: LoadedExperiment;
 
-    if (selected === '__manual__') {
-      experimentPath = handleCancel(
-        await p.text({
-          message: 'Enter the experiment YAML file path:',
-          placeholder: 'experiments/my-experiment.yaml',
-        }),
-      );
-    } else {
-      experimentPath = selected;
-    }
+  if (experiments.length === 1) {
+    experiment = experiments[0]!;
   } else {
-    experimentPath = handleCancel(
-      await p.text({
-        message: 'Enter the experiment YAML file path:',
-        placeholder: 'experiments/my-experiment.yaml',
+    experiment = handleCancel(
+      await p.select({
+        message: 'Select an experiment:',
+        options: experiments.map((exp) => ({
+          value: exp,
+          label: exp.definition.name,
+        })),
       }),
     );
   }
 
-  const absolutePath = resolve(experimentPath);
-  const rawYaml = await readFile(absolutePath, 'utf-8');
-  const parsed = parseYaml(rawYaml);
-  const experiment = validateExperimentDefinition(parsed);
-
   const runName = handleCancel(
     await p.select({
       message: 'Select a run to execute:',
-      options: experiment.runs.map((r) => ({
+      options: experiment.definition.runs.map((r) => ({
         value: r.name,
         label: r.name,
       })),
@@ -66,7 +45,7 @@ export async function runExperiment(core: CoreApi): Promise<void> {
 
   s.start('Starting run…');
 
-  for await (const event of core.streamRun({ experiment, runName })) {
+  for await (const event of experiment.stream(runName)) {
     switch (event.type) {
       case 'run:started':
         totalTasks = event.totalTasks;

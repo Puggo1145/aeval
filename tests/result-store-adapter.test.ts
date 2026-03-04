@@ -566,30 +566,20 @@ test('local ResultStoreAdapter supports full core run persistence and query read
     graderRegistry.register('always-pass', async () => ({ pass: true, reason: 'ok' }));
 
     const core = createCore({
-      taskSourceAdapters: {
-        local: taskSourceAdapter,
-      },
-      resultStoreAdapters: {
-        local: resultStore,
-      },
+      taskSourceAdapter: taskSourceAdapter,
+      resultStoreAdapter: resultStore,
       providerRegistry,
       graderRegistry,
     });
 
     const experiment = validateExperimentDefinition({
-      schemaVersion: SCHEMA_VERSIONS.EXPERIMENT,
       name: 'result-store-smoke',
-      taskSource: {
-        adapter: 'local',
-      },
       runs: [{ name: 'default' }],
       maxConcurrency: 1,
-      resultStore: {
-        adapter: 'local',
-      },
     });
 
-    const summary = await core.runExperiment({ experiment, runName: 'default' });
+    const loaded = await core.loadExperiment(experiment);
+    const summary = await loaded.run('default');
     const manifest = await resultStore.getRunManifest(summary.runId);
     const loadedSummary = await core.getRunSummary(summary.runId);
     const loadedTrials = await core.listTrials(summary.runId);

@@ -77,12 +77,9 @@ Validation rules:
 
 Required fields:
 
-1. `experiment.schemaVersion` = `experiment.v1`
-2. `experiment.name`
-3. `experiment.taskSource.adapter`
-4. `experiment.runs[]` (at least one `RunConfig`)
-5. `experiment.maxConcurrency` (> 0)
-6. `experiment.resultStore.adapter`
+1. `experiment.name`
+2. `experiment.runs[]` (at least one `RunConfig`)
+3. `experiment.maxConcurrency` (> 0)
 
 RunConfig structure (each element of `experiment.runs[]`):
 
@@ -93,15 +90,13 @@ Optional but standardized fields:
 
 1. `experiment.trialsPerTask`
 2. `experiment.timeoutMs`
-3. `experiment.observers`
 
 Validation rules:
 
-1. `experiment.schemaVersion` must be supported.
-2. `experiment.taskSource.adapter` must resolve to a registered `TaskSourceAdapter`.
-3. `experiment.runs.length >= 1`.
-4. `experiment.runs[].name` must be unique within the experiment.
-5. `experiment.maxConcurrency > 0`.
+1. `experiment.runs.length >= 1`.
+2. `experiment.runs[].name` must be unique within the experiment.
+3. `experiment.maxConcurrency > 0`.
+4. Unknown fields in Experiment DSL must fail fast.
 
 ## 4. Runtime 契约（v1 必选）
 
@@ -212,13 +207,16 @@ Core 通过工厂函数创建：
 
 1. `createCore(deps) -> CoreApi`
 
-#### 4.7.1 Batch API
+#### 4.7.1 Experiment Loading
 
-1. `core.runExperiment(input) -> Promise<RunSummary>` — 批量执行，返回最终聚合结果。
+1. `core.loadExperiment(input) -> Promise<LoadedExperiment>` — 加载并校验 ExperimentDefinition。
+2. `input` 支持直接对象或 `Promise<unknown>`（例如 YAML 解析结果）。
+3. `core.experiments` 暴露当前已加载实验列表（只读）。
 
-#### 4.7.2 Stream API（v1 必选，interactive adapter 依赖）
+#### 4.7.2 LoadedExperiment Runtime API（v1 必选）
 
-1. `core.streamRun(input) -> AsyncIterable<RunEvent>` — 返回事件流。
+1. `loadedExperiment.run(runName) -> Promise<RunSummary>` — 批量执行并返回 summary。
+2. `loadedExperiment.stream(runName) -> AsyncIterable<RunEvent>` — 返回事件流。
 
 RunEvent 联合类型：
 
@@ -235,23 +233,20 @@ Required behaviors:
 
 1. 事件必须按时间顺序发射。
 2. `run:completed` 必须是最后一个事件。
-3. Stream API 的判定语义与 Batch API 完全一致。
-4. v1 必须至少提供一个可用的 interactive interface adapter 具体实现（CLI 可作为该实现），并通过该实现消费 `streamRun`。
+3. `stream(runName)` 与 `run(runName)` 的判定语义完全一致。
+4. v1 必须至少提供一个可用的 interactive interface adapter 具体实现（CLI 可作为该实现），并通过该实现消费 `stream(runName)`。
 
 #### 4.7.3 Query API
 
 1. `core.getRunSummary(runId) -> RunSummary | null` — 通过 `ResultStoreAdapter` 读取。
 2. `core.listTrials(runId) -> TrialResultRecord[]` — 通过 `ResultStoreAdapter` 读取。
-3. `core.listRuns() -> RunSummaryRecord[]` — 聚合已注入 `ResultStoreAdapter` 的 run summaries。
+3. `core.listRuns() -> RunSummaryRecord[]` — 从注入的 `ResultStoreAdapter` 列出 run summaries。
 
 Required behaviors:
 
-1. Query API 按 `runId` 在已注入的 `ResultStoreAdapter` 集合中自动定位目标 store。
-2. 当 `runId` 在多个 store 同时命中时，必须 fail fast。
-3. `core.getRunSummary` 在未命中时返回 `null`。
-4. `core.listTrials` 在未命中时返回空数组。
-5. `core.listRuns` 仅返回存在 run summary 的 `runId`。
-6. `core.listRuns` 若发现同一 `runId` 在多个 store 命中，必须 fail fast。
+1. `core.getRunSummary` 在未命中时返回 `null`。
+2. `core.listTrials` 在未命中时返回空数组。
+3. `core.listRuns` 仅返回存在 run summary 的 `runId`。
 
 ### 4.8 Baseline Contracts
 
@@ -259,8 +254,7 @@ Required behaviors:
 
 1. `core.setBaseline(runId)` — 将指定 run 标记为基线（写入 ResultStoreAdapter）。
 2. `core.compareBaseline(currentRunId, baselineRunId?) -> BaselineComparison` — 比较当前 run 与基线。
-3. `baselineRunId` 未传入时，使用当前 run 所在 store 的基线指针。
-4. `runId` 路由冲突（多个 store 同时命中）必须 fail fast。
+3. `baselineRunId` 未传入时，使用注入的 `ResultStoreAdapter` 中的基线指针。
 
 #### 4.8.2 BaselineComparison 结构
 
@@ -351,18 +345,14 @@ Aggregation records:
 
 输入范围（按 key 字典序序列化后取 SHA-256）：
 
-1. `experiment.schemaVersion`
-2. `experiment.taskSource.adapter`
-3. `experiment.runs[]`（含每个 RunConfig 的 `name` + `overrides`）
-4. `experiment.trialsPerTask`
-5. `experiment.maxConcurrency`
-6. `experiment.timeoutMs`
-7. `experiment.resultStore.adapter`
+1. `experiment.runs[]`（含每个 RunConfig 的 `name` + `overrides`）
+2. `experiment.trialsPerTask`
+3. `experiment.maxConcurrency`
+4. `experiment.timeoutMs`
 
 不参与 configHash 的字段：
 
 1. `experiment.name`（纯标识，不影响执行行为）
-2. `experiment.observers`（不影响 pass/fail 语义）
 
 ## 6. Observer 契约（可选）
 
@@ -373,12 +363,12 @@ Aggregation records:
 ## 7. 版本演进规则
 
 1. Any breaking contract change requires new schema version.
-2. v1 loader must reject unsupported schema versions.
+2. v1 loader must reject unsupported schema versions on versioned contracts.
 3. Cross-version comparison must be explicit and auditable.
 
 ## 8. 实施检查清单
 
-- [x] Task/Experiment schema version validation implemented.
+- [x] Task schema version validation implemented.
 - [x] ProviderRegistry (`register/get/has/list`) implemented.
 - [x] GraderRegistry (`register/get/has/list`) implemented; built-in graders pre-registered in composition root.
 - [x] Task DSL `graders.layers[].type` validated against GraderRegistry.
@@ -390,8 +380,8 @@ Aggregation records:
 - [x] `configHash` computed per §5.5 rules.
 - [x] Core pass/fail does not depend on observer write success.
 - [x] CI reads summary/trials via `ResultStoreAdapter` only.
-- [x] Query API `listRuns` implemented via `ResultStoreAdapter` aggregation with duplicate runId fail-fast.
+- [x] Query API `listRuns` implemented via `ResultStoreAdapter`.
 - [x] Baseline `setBaseline`/`compareBaseline` implemented per §4.8.
 - [x] Baseline regression evaluation covers `passRate`/`pass^k`/`latency`/`token budget breach` with caller-provided thresholds.
-- [x] `streamRun` implemented and consumed by at least one interactive interface adapter implementation (v1 can use CLI).
+- [x] `stream(runName)` implemented and consumed by at least one interactive interface adapter implementation (v1 can use CLI).
 - [x] `llm-judge` protocol verified with mock judge (quality verification is post-v1).

@@ -83,12 +83,9 @@ function makeTask(overrides: Partial<TaskDefinition> = {}): TaskDefinition {
 
 function makeExperiment(overrides: Partial<ExperimentDefinition> = {}): ExperimentDefinition {
   return validateExperimentDefinition({
-    schemaVersion: SCHEMA_VERSIONS.EXPERIMENT,
     name: 'test-experiment',
-    taskSource: { adapter: 'local' },
     runs: [{ name: 'default' }],
     maxConcurrency: 2,
-    resultStore: { adapter: 'local-store' },
     ...overrides,
   });
 }
@@ -188,9 +185,9 @@ function setupTestCore(opts: Partial<TestCoreSetup> = {}) {
   };
 
   const core = createCore({
-    taskSourceAdapters: { local: createMockTaskSource(tasks) },
-    resultStoreAdapters: { 'local-store': resultStore },
-    observerAdapters: { console: observer },
+    taskSourceAdapter: createMockTaskSource(tasks),
+    resultStoreAdapter: resultStore,
+    observerAdapters: [observer],
     providerRegistry,
     graderRegistry,
   });
@@ -364,7 +361,7 @@ test('configHash changes when maxConcurrency changes', () => {
   assert.notEqual(computeConfigHash(exp1), computeConfigHash(exp2));
 });
 
-test('configHash ignores experiment name and observers', () => {
+test('configHash ignores experiment name', () => {
   const exp1 = makeExperiment({ name: 'experiment-a' });
   const exp2 = makeExperiment({ name: 'experiment-b' });
 
@@ -405,7 +402,7 @@ test('runExperiment executes a single task with one trial and produces summary',
   providerRegistry.register('mock-provider', createPassingProvider());
 
   const experiment = makeExperiment();
-  const summary = await core.runExperiment({ experiment, runName: 'default' });
+  const summary = await (await core.loadExperiment(experiment)).run('default');
 
   assert.equal(summary.totalTasks, 1);
   assert.equal(summary.totalTrials, 1);
@@ -424,7 +421,7 @@ test('streamRun emits events in correct order', async () => {
   providerRegistry.register('mock-provider', createPassingProvider());
 
   const events: RunEvent[] = [];
-  for await (const event of core.streamRun({ experiment: makeExperiment(), runName: 'default' })) {
+  for await (const event of (await core.loadExperiment(makeExperiment())).stream('default')) {
     events.push(event);
   }
 
@@ -443,10 +440,7 @@ test('streamRun handles slow consumers without dropping events', async () => {
   providerRegistry.register('mock-provider', createPassingProvider());
 
   const events: RunEvent[] = [];
-  for await (const event of core.streamRun({
-    experiment: makeExperiment({ maxConcurrency: 4 }),
-    runName: 'default',
-  })) {
+  for await (const event of (await core.loadExperiment(makeExperiment({ maxConcurrency: 4 }))).stream('default')) {
     events.push(event);
     await new Promise((resolve) => setTimeout(resolve, 1));
   }
@@ -462,10 +456,7 @@ test('streamRun early stop aborts workers and still persists consistent run reco
   const { core, providerRegistry, resultStore } = setupTestCore({ tasks });
   providerRegistry.register('mock-provider', createSlowProvider(300));
 
-  for await (const event of core.streamRun({
-    experiment: makeExperiment({ maxConcurrency: 2 }),
-    runName: 'default',
-  })) {
+  for await (const event of (await core.loadExperiment(makeExperiment({ maxConcurrency: 2 }))).stream('default')) {
     if (event.type === 'trial:started') {
       break;
     }
@@ -489,7 +480,7 @@ test('single trial failure does not affect other trials', async () => {
   providerRegistry.register('mock-provider', createPassingProvider());
   providerRegistry.register('failing-provider', createFailingProvider());
 
-  const summary = await core.runExperiment({ experiment: makeExperiment(), runName: 'default' });
+  const summary = await (await core.loadExperiment(makeExperiment())).run('default');
 
   assert.equal(summary.totalTasks, 2);
   assert.equal(summary.totalTrials, 2);
@@ -501,7 +492,7 @@ test('agent error is recorded as failure without retry', async () => {
   const { core, providerRegistry, resultStore } = setupTestCore({ tasks: [task] });
   providerRegistry.register('failing-provider', createFailingProvider());
 
-  const summary = await core.runExperiment({ experiment: makeExperiment(), runName: 'default' });
+  const summary = await (await core.loadExperiment(makeExperiment())).run('default');
 
   assert.equal(summary.passRate, 0);
 
@@ -581,7 +572,7 @@ test('run overrides and provider params are deep-frozen before provider executio
       },
     ],
   });
-  const summary = await core.runExperiment({ experiment, runName: 'default' });
+  const summary = await (await core.loadExperiment(experiment)).run('default');
 
   assert.equal(summary.passRate, 1);
   const allTrials = [...resultStore.trialRecords.values()].flat();
@@ -621,7 +612,7 @@ test('system error triggers retry per retryOnError config', async () => {
     };
   });
 
-  const summary = await core.runExperiment({ experiment: makeExperiment(), runName: 'default' });
+  const summary = await (await core.loadExperiment(makeExperiment())).run('default');
 
   // After retry, the trial should pass
   assert.equal(summary.passRate, 1);
@@ -649,7 +640,7 @@ test('timeout system error is never retried even when retryable is true', async 
     };
   });
 
-  const summary = await core.runExperiment({ experiment: makeExperiment(), runName: 'default' });
+  const summary = await (await core.loadExperiment(makeExperiment())).run('default');
   const allTrials = [...resultStore.trialRecords.values()].flat();
 
   assert.equal(summary.passRate, 0);
@@ -666,7 +657,7 @@ test('timeout aborts provider execution and records system error', async () => {
   const { core, providerRegistry, resultStore } = setupTestCore({ tasks: [task] });
   providerRegistry.register('mock-provider', createSlowProvider(5000)); // Takes 5s
 
-  const summary = await core.runExperiment({ experiment: makeExperiment(), runName: 'default' });
+  const summary = await (await core.loadExperiment(makeExperiment())).run('default');
 
   assert.equal(summary.passRate, 0);
 
@@ -705,7 +696,7 @@ test('multiple trials per task computes pass@k and pass^k', async () => {
   const { core } = setupTestCore({ tasks: [task], providerRegistry, graderRegistry });
 
   const experiment = makeExperiment({ trialsPerTask: 3, maxConcurrency: 1 });
-  const summary = await core.runExperiment({ experiment, runName: 'default' });
+  const summary = await (await core.loadExperiment(experiment)).run('default');
 
   assert.equal(summary.totalTrials, 3);
   // At least 1 trial passes (trial 1 and 3), so passRate = 1 (pass@k)
@@ -735,7 +726,7 @@ test('concurrent execution respects maxConcurrency', async () => {
   });
 
   const experiment = makeExperiment({ maxConcurrency: 2 });
-  await core.runExperiment({ experiment, runName: 'default' });
+  await (await core.loadExperiment(experiment)).run('default');
 
   assert.ok(peakConcurrency <= 2, `Peak concurrency ${peakConcurrency} exceeded maxConcurrency 2`);
 });
@@ -763,15 +754,14 @@ test('observer receives all events and failures do not affect pass/fail', async 
   };
 
   const core = createCore({
-    taskSourceAdapters: { local: createMockTaskSource([task]) },
-    resultStoreAdapters: { 'local-store': resultStore },
-    observerAdapters: { console: failingObserver },
+    taskSourceAdapter: createMockTaskSource([task]),
+    resultStoreAdapter: resultStore,
+    observerAdapters: [failingObserver],
     providerRegistry,
     graderRegistry,
   });
 
-  const experiment = makeExperiment({ observers: [{ type: 'console' }] });
-  const summary = await core.runExperiment({ experiment, runName: 'default' });
+  const summary = await (await core.loadExperiment(makeExperiment())).run('default');
 
   // Despite observer failure, run should complete
   assert.equal(summary.passRate, 1);
@@ -801,22 +791,15 @@ test('hanging observer does not block run completion', async () => {
   };
 
   const core = createCore({
-    taskSourceAdapters: { local: createMockTaskSource([task]) },
-    resultStoreAdapters: { 'local-store': resultStore },
-    observerAdapters: {
-      hanging: hangingObserver,
-      recorder: recordingObserver,
-    },
+    taskSourceAdapter: createMockTaskSource([task]),
+    resultStoreAdapter: resultStore,
+    observerAdapters: [hangingObserver, recordingObserver],
     providerRegistry,
     graderRegistry,
   });
 
-  const experiment = makeExperiment({
-    observers: [{ type: 'hanging' }, { type: 'recorder' }],
-  });
   const executionResult = await Promise.race([
-    core
-      .runExperiment({ experiment, runName: 'default' })
+    (await core.loadExperiment(makeExperiment())).run('default')
       .then(() => 'resolved')
       .catch(() => 'rejected'),
     new Promise<'timeout'>((resolve) => {
@@ -875,19 +858,14 @@ test('observer notify clears timeout when observer returns early', async () => {
 
   try {
     const core = createCore({
-      taskSourceAdapters: { local: createMockTaskSource([task]) },
-      resultStoreAdapters: { 'local-store': resultStore },
-      observerAdapters: {
-        quick: quickObserver,
-      },
+      taskSourceAdapter: createMockTaskSource([task]),
+      resultStoreAdapter: resultStore,
+      observerAdapters: [quickObserver],
       providerRegistry,
       graderRegistry,
     });
 
-    await core.runExperiment({
-      experiment: makeExperiment({ observers: [{ type: 'quick' }] }),
-      runName: 'default',
-    });
+    await (await core.loadExperiment(makeExperiment())).run('default');
   } finally {
     globalThis.setTimeout = originalSetTimeout;
     globalThis.clearTimeout = originalClearTimeout;
@@ -903,7 +881,7 @@ test('run manifest includes correct taskSource and datasetHash', async () => {
   const { core, resultStore, providerRegistry } = setupTestCore({ tasks: [task] });
   providerRegistry.register('mock-provider', createPassingProvider());
 
-  await core.runExperiment({ experiment: makeExperiment(), runName: 'default' });
+  await (await core.loadExperiment(makeExperiment())).run('default');
 
   const manifests = [...resultStore.runManifests.values()];
   assert.equal(manifests.length, 1);
@@ -933,7 +911,7 @@ test('avgLatencyMs is computed from execution metrics', async () => {
     };
   });
 
-  const summary = await core.runExperiment({ experiment: makeExperiment(), runName: 'default' });
+  const summary = await (await core.loadExperiment(makeExperiment())).run('default');
 
   // avgLatencyMs should be (100 + 200) / 2 = 150
   assert.equal(summary.avgLatencyMs, 150);
@@ -947,14 +925,14 @@ test('dataset resolve failure terminates run before trial execution', async () =
   };
 
   const core = createCore({
-    taskSourceAdapters: { local: failingTaskSource },
-    resultStoreAdapters: { 'local-store': new InMemoryResultStoreAdapter() },
+    taskSourceAdapter: failingTaskSource,
+    resultStoreAdapter: new InMemoryResultStoreAdapter(),
     providerRegistry: new InMemoryProviderRegistry(),
     graderRegistry: new InMemoryGraderRegistry(),
   });
 
   await assert.rejects(
-    async () => core.runExperiment({ experiment: makeExperiment(), runName: 'default' }),
+    async () => (await core.loadExperiment(makeExperiment())).run('default'),
     (error: unknown) => {
       assert.ok(error instanceof Error);
       assert.ok(error.message.includes('dataset not found'));
@@ -986,14 +964,14 @@ test('run fails fast before execution when regex grader config is invalid', asyn
   registerBuiltinGraders(graderRegistry);
 
   const core = createCore({
-    taskSourceAdapters: { local: createMockTaskSource([task]) },
-    resultStoreAdapters: { 'local-store': resultStore },
+    taskSourceAdapter: createMockTaskSource([task]),
+    resultStoreAdapter: resultStore,
     providerRegistry,
     graderRegistry,
   });
 
   await assert.rejects(
-    async () => core.runExperiment({ experiment: makeExperiment(), runName: 'default' }),
+    async () => (await core.loadExperiment(makeExperiment())).run('default'),
     (error: unknown) => {
       assert.ok(error instanceof ValidationError);
       assert.ok(error.message.includes("Invalid config for grader 'regex'"));
@@ -1037,14 +1015,14 @@ test('run fails fast before execution when json-schema grader pattern is invalid
   registerBuiltinGraders(graderRegistry);
 
   const core = createCore({
-    taskSourceAdapters: { local: createMockTaskSource([task]) },
-    resultStoreAdapters: { 'local-store': resultStore },
+    taskSourceAdapter: createMockTaskSource([task]),
+    resultStoreAdapter: resultStore,
     providerRegistry,
     graderRegistry,
   });
 
   await assert.rejects(
-    async () => core.runExperiment({ experiment: makeExperiment(), runName: 'default' }),
+    async () => (await core.loadExperiment(makeExperiment())).run('default'),
     (error: unknown) => {
       assert.ok(error instanceof ValidationError);
       assert.ok(error.message.includes("Invalid config for grader 'json-schema'"));
@@ -1092,13 +1070,13 @@ test("run does not fail fast when json-schema has a property named 'pattern'", a
   registerBuiltinGraders(graderRegistry);
 
   const core = createCore({
-    taskSourceAdapters: { local: createMockTaskSource([task]) },
-    resultStoreAdapters: { 'local-store': resultStore },
+    taskSourceAdapter: createMockTaskSource([task]),
+    resultStoreAdapter: resultStore,
     providerRegistry,
     graderRegistry,
   });
 
-  const summary = await core.runExperiment({ experiment: makeExperiment(), runName: 'default' });
+  const summary = await (await core.loadExperiment(makeExperiment())).run('default');
   assert.equal(summary.totalTrials, 1);
   assert.equal(summary.passRate, 1);
   assert.equal(resultStore.trialRecords.size, 1);
@@ -1128,14 +1106,14 @@ test('run fails fast before execution when length-check min is greater than max'
   registerBuiltinGraders(graderRegistry);
 
   const core = createCore({
-    taskSourceAdapters: { local: createMockTaskSource([task]) },
-    resultStoreAdapters: { 'local-store': resultStore },
+    taskSourceAdapter: createMockTaskSource([task]),
+    resultStoreAdapter: resultStore,
     providerRegistry,
     graderRegistry,
   });
 
   await assert.rejects(
-    async () => core.runExperiment({ experiment: makeExperiment(), runName: 'default' }),
+    async () => (await core.loadExperiment(makeExperiment())).run('default'),
     (error: unknown) => {
       assert.ok(error instanceof ValidationError);
       assert.ok(error.message.includes("Invalid config for grader 'length-check'"));
@@ -1189,7 +1167,7 @@ test('experiment-level timeoutMs overrides task-level timeoutMs', async () => {
 
   // Experiment-level timeout is 50ms — should override the 60s task-level
   const experiment = makeExperiment({ timeoutMs: 50 });
-  const summary = await core.runExperiment({ experiment, runName: 'default' });
+  const summary = await (await core.loadExperiment(experiment)).run('default');
 
   assert.equal(summary.passRate, 0);
   const allTrials = [...resultStore.trialRecords.values()].flat();
@@ -1209,7 +1187,7 @@ test('timeout is enforced even when provider ignores AbortSignal', async () => {
     return nonCooperativeProvider();
   });
 
-  const summary = await core.runExperiment({ experiment: makeExperiment(), runName: 'default' });
+  const summary = await (await core.loadExperiment(makeExperiment())).run('default');
   const allTrials = [...resultStore.trialRecords.values()].flat();
 
   assert.equal(summary.passRate, 0);
@@ -1238,10 +1216,7 @@ test('grader exception is contained as trial system failure and does not abort r
     throw new Error('grader exploded');
   });
 
-  const summary = await core.runExperiment({
-    experiment: makeExperiment({ maxConcurrency: 2 }),
-    runName: 'default',
-  });
+  const summary = await (await core.loadExperiment(makeExperiment({ maxConcurrency: 2 }))).run('default');
 
   const allTrials = [...resultStore.trialRecords.values()].flat();
   assert.equal(summary.totalTrials, 2);
@@ -1262,7 +1237,7 @@ test('trial results are persisted to ResultStoreAdapter', async () => {
   const { core, resultStore, providerRegistry } = setupTestCore({ tasks: [task] });
   providerRegistry.register('mock-provider', createPassingProvider());
 
-  const summary = await core.runExperiment({ experiment: makeExperiment(), runName: 'default' });
+  const summary = await (await core.loadExperiment(makeExperiment())).run('default');
 
   // Verify trials are stored
   const trials = [...resultStore.trialRecords.values()].flat();
@@ -1292,8 +1267,8 @@ test('runExperiment surfaces trial persistence errors without hanging', async ()
   providerRegistry.register('mock-provider', createPassingProvider());
 
   const result = await Promise.race([
-    core
-      .runExperiment({ experiment: makeExperiment(), runName: 'default' })
+    core.loadExperiment(makeExperiment())
+      .then((loaded) => loaded.run('default'))
       .then(() => 'resolved')
       .catch((error: unknown) => (error instanceof Error ? error.message : String(error))),
     new Promise<string>((resolve) => setTimeout(() => resolve('timeout'), 1000)),
@@ -1343,7 +1318,7 @@ test('runExperiment waits for in-flight workers to settle before rejecting on wo
   const startedAt = Date.now();
   await assert.rejects(
     async () =>
-      core.runExperiment({ experiment: makeExperiment({ maxConcurrency: 2 }), runName: 'default' }),
+      (await core.loadExperiment(makeExperiment({ maxConcurrency: 2 }))).run('default'),
     (error: unknown) => {
       assert.ok(error instanceof Error);
       assert.equal(error.message, 'save trial failed');

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -22,20 +22,14 @@ function createCliCore(options: { runsRoot?: string } = {}): CoreApi {
   registerReferenceProvider(providerRegistry);
 
   return createCore({
-    taskSourceAdapters: {
-      local: createLocalTaskSourceAdapter({
-        datasetsRoot: '.datasets',
-        dataset: 'chat-agent-smoke',
-      }),
-    },
-    resultStoreAdapters: {
-      local: createLocalResultStoreAdapter({ rootDir: options.runsRoot ?? '.youeval/runs' }),
-    },
+    taskSourceAdapter: createLocalTaskSourceAdapter({
+      datasetsRoot: '.datasets',
+      dataset: 'chat-agent-smoke',
+    }),
+    resultStoreAdapter: createLocalResultStoreAdapter({ rootDir: options.runsRoot ?? '.youeval/runs' }),
     providerRegistry,
     graderRegistry,
-    observerAdapters: {
-      console: createConsoleObserverAdapter(),
-    },
+    observerAdapters: [createConsoleObserverAdapter()],
   });
 }
 
@@ -46,13 +40,8 @@ function createCompareOnlyCore(
   ) => Promise<void> | void,
 ): CoreApi {
   return {
-    async runExperiment() {
+    async loadExperiment() {
       throw new Error('not used');
-    },
-    streamRun() {
-      return (async function* () {
-        yield* [];
-      })();
     },
     async getRunSummary() {
       throw new Error('not used');
@@ -138,6 +127,32 @@ test('run command throws when --run flag is missing', async () => {
       return true;
     },
   );
+});
+
+test('run command fails fast when experiment yaml includes unknown fields', async () => {
+  const tmpDir = await mkdtemp(join(tmpdir(), 'youeval-test-'));
+  const experimentPath = join(tmpDir, 'invalid-experiment.yaml');
+  await writeFile(
+    experimentPath,
+    `name: "invalid"
+runs:
+  - name: "smoke"
+maxConcurrency: 1
+schemaVersion: "experiment.v2"
+`,
+  );
+
+  try {
+    await assert.rejects(
+      () => runCli(['run', '--experiment', experimentPath, '--run', 'smoke'], createCliCore()),
+      (error: unknown) => {
+        assert.ok(error instanceof ValidationError);
+        return true;
+      },
+    );
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test('report command throws when runId is missing', async () => {

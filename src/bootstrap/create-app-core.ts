@@ -15,19 +15,13 @@ export function createAppCore(): CoreApi {
   registerReferenceProvider(providerRegistry);
 
   return createCore({
-    taskSourceAdapters: {
-      local: createLocalTaskSourceAdapter({
-        datasetsRoot: '.datasets',
-        dataset: 'chat-agent/smoke',
-      }),
-    },
-    resultStoreAdapters: {
-      local: createLocalResultStoreAdapter({ rootDir: '.youeval/runs' }),
-    },
+    taskSourceAdapter: createLocalTaskSourceAdapter({
+      datasetsRoot: '.datasets',
+      dataset: 'chat-agent/smoke',
+    }),
+    resultStoreAdapter: createLocalResultStoreAdapter({ rootDir: '.youeval/runs' }),
     providerRegistry,
     graderRegistry,
-    observerAdapters: {
-      console: createConsoleObserverAdapter(),
-    },
+    observerAdapters: [createConsoleObserverAdapter()],
   });
 }

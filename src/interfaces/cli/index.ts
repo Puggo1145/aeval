@@ -1,13 +1,8 @@
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-
-import { parse as parseYaml } from 'yaml';
-
 import type { CoreApi } from '../../core/api/index.js';
 import type { RunSummary } from '../../core/contracts/run-summary.js';
 import type { BaselineComparison } from '../../core/contracts/runtime.js';
 import { ERROR_CODES, ValidationError } from '../../core/errors/index.js';
-import { validateExperimentDefinition } from '../../core/validation/experiment-validator.js';
+import { readFromYAML } from '../../core/experiment/index.js';
 
 const KNOWN_COMMANDS = ['run', 'report', 'runs', 'trials', 'baseline'] as const;
 type KnownCommand = (typeof KNOWN_COMMANDS)[number];
@@ -132,13 +127,10 @@ const handleRun: CliCommandHandler = async (args, core) => {
     });
   }
 
-  const absolutePath = resolve(experimentPath);
-  const rawYaml = await readFile(absolutePath, 'utf-8');
-  const parsed = parseYaml(rawYaml);
-  const experiment = validateExperimentDefinition(parsed);
+  const experiment = await core.loadExperiment(readFromYAML(experimentPath));
 
   let lastSummary: RunSummary | undefined;
-  for await (const event of core.streamRun({ experiment, runName })) {
+  for await (const event of experiment.stream(runName)) {
     switch (event.type) {
       case 'run:started':
         console.log(`Run started: ${event.runId} (${event.totalTasks} tasks)`);
@@ -337,4 +329,4 @@ export async function runCli(args: string[], core: CoreApi): Promise<number> {
   });
 }
 
-export { runAppTui, runTui } from './tui/index.js';
+export { runTui } from './tui/index.js';

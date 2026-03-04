@@ -26,7 +26,6 @@ import {
   InMemoryProviderRegistry,
   resolveGraderOrThrow,
   resolveProviderOrThrow,
-  resolveRuntimeDependencies,
 } from '../src/core/runtime/index.js';
 import { validateExperimentDefinition } from '../src/core/validation/index.js';
 
@@ -77,25 +76,13 @@ class InMemoryResultStoreAdapter implements ResultStoreAdapter {
 
 function createExperimentDefinition(): ExperimentDefinition {
   return validateExperimentDefinition({
-    schemaVersion: SCHEMA_VERSIONS.EXPERIMENT,
     name: 'milestone-2-smoke',
-    taskSource: {
-      adapter: 'local-task-source',
-    },
     runs: [
       {
         name: 'baseline',
       },
     ],
     maxConcurrency: 1,
-    resultStore: {
-      adapter: 'local-result-store',
-    },
-    observers: [
-      {
-        type: 'console',
-      },
-    ],
   });
 }
 
@@ -167,17 +154,15 @@ function createTrialRecord(
   };
 }
 
-function createCoreWithStores(resultStoreAdapters: Readonly<Record<string, ResultStoreAdapter>>) {
+function createCoreWithStore(resultStoreAdapter: ResultStoreAdapter) {
   return createCore({
-    taskSourceAdapters: {
-      'local-task-source': createTaskSourceAdapter(),
-    },
-    resultStoreAdapters,
-    observerAdapters: {
-      console: {
+    taskSourceAdapter: createTaskSourceAdapter(),
+    resultStoreAdapter,
+    observerAdapters: [
+      {
         onEvent: () => {},
       },
-    },
+    ],
     providerRegistry: new InMemoryProviderRegistry(),
     graderRegistry: new InMemoryGraderRegistry(),
   });
@@ -230,89 +215,6 @@ test('grader registry supports register/get/has/list', () => {
   assert.deepEqual(registry.list(), ['contains']);
 });
 
-test('resolveRuntimeDependencies resolves adapters configured in experiment', () => {
-  const providerRegistry = new InMemoryProviderRegistry();
-  const graderRegistry = new InMemoryGraderRegistry();
-  const experiment = createExperimentDefinition();
-  const resultStore = new InMemoryResultStoreAdapter();
-  const taskSource = createTaskSourceAdapter();
-
-  const resolved = resolveRuntimeDependencies(experiment, {
-    taskSourceAdapters: {
-      'local-task-source': taskSource,
-    },
-    resultStoreAdapters: {
-      'local-result-store': resultStore,
-    },
-    observerAdapters: {
-      console: {
-        onEvent: () => {},
-      },
-    },
-    providerRegistry,
-    graderRegistry,
-  });
-
-  assert.equal(resolved.taskSourceAdapter, taskSource);
-  assert.equal(resolved.resultStoreAdapter, resultStore);
-  assert.equal(resolved.observerAdapters.length, 1);
-});
-
-test('resolveRuntimeDependencies fails fast when adapter is missing', () => {
-  const experiment = createExperimentDefinition();
-
-  assert.throws(
-    () =>
-      resolveRuntimeDependencies(experiment, {
-        taskSourceAdapters: {},
-        resultStoreAdapters: {},
-        providerRegistry: new InMemoryProviderRegistry(),
-        graderRegistry: new InMemoryGraderRegistry(),
-      }),
-    (error: unknown) => {
-      assert.ok(error instanceof RuntimeError);
-      assert.equal(error.code, ERROR_CODES.RUNTIME_DEPENDENCY_MISSING);
-      return true;
-    },
-  );
-});
-
-test('resolveRuntimeDependencies does not resolve adapters from prototype chain keys', () => {
-  const experiment = validateExperimentDefinition({
-    schemaVersion: SCHEMA_VERSIONS.EXPERIMENT,
-    name: 'prototype-key-check',
-    taskSource: {
-      adapter: '__proto__',
-    },
-    runs: [
-      {
-        name: 'baseline',
-      },
-    ],
-    maxConcurrency: 1,
-    resultStore: {
-      adapter: 'local-result-store',
-    },
-  });
-
-  assert.throws(
-    () =>
-      resolveRuntimeDependencies(experiment, {
-        taskSourceAdapters: {},
-        resultStoreAdapters: {
-          'local-result-store': new InMemoryResultStoreAdapter(),
-        },
-        providerRegistry: new InMemoryProviderRegistry(),
-        graderRegistry: new InMemoryGraderRegistry(),
-      }),
-    (error: unknown) => {
-      assert.ok(error instanceof RuntimeError);
-      assert.equal(error.code, ERROR_CODES.RUNTIME_DEPENDENCY_MISSING);
-      return true;
-    },
-  );
-});
-
 test('resolveProviderOrThrow and resolveGraderOrThrow fail fast with explicit error', () => {
   const providerRegistry = new InMemoryProviderRegistry();
   const graderRegistry = new InMemoryGraderRegistry();
@@ -336,28 +238,22 @@ test('resolveProviderOrThrow and resolveGraderOrThrow fail fast with explicit er
   );
 });
 
-test('runExperiment completes with empty dataset and returns summary', async () => {
+test('loadExperiment + run completes with empty dataset and returns summary', async () => {
   const resultStore = new InMemoryResultStoreAdapter();
   const core = createCore({
-    taskSourceAdapters: {
-      'local-task-source': createTaskSourceAdapter(),
-    },
-    resultStoreAdapters: {
-      'local-result-store': resultStore,
-    },
-    observerAdapters: {
-      console: {
+    taskSourceAdapter: createTaskSourceAdapter(),
+    resultStoreAdapter: resultStore,
+    observerAdapters: [
+      {
         onEvent: () => {},
       },
-    },
+    ],
     providerRegistry: new InMemoryProviderRegistry(),
     graderRegistry: new InMemoryGraderRegistry(),
   });
 
-  const summary = await core.runExperiment({
-    experiment: createExperimentDefinition(),
-    runName: 'baseline',
-  });
+  const experiment = await core.loadExperiment(createExperimentDefinition());
+  const summary = await experiment.run('baseline');
 
   assert.equal(summary.schemaVersion, 'run-summary.v1');
   assert.equal(summary.runName, 'baseline');
@@ -366,28 +262,22 @@ test('runExperiment completes with empty dataset and returns summary', async () 
   assert.equal(summary.passRate, 0);
 });
 
-test('streamRun emits run:started and run:completed events', async () => {
+test('loadExperiment + stream emits run:started and run:completed events', async () => {
   const core = createCore({
-    taskSourceAdapters: {
-      'local-task-source': createTaskSourceAdapter(),
-    },
-    resultStoreAdapters: {
-      'local-result-store': new InMemoryResultStoreAdapter(),
-    },
-    observerAdapters: {
-      console: {
+    taskSourceAdapter: createTaskSourceAdapter(),
+    resultStoreAdapter: new InMemoryResultStoreAdapter(),
+    observerAdapters: [
+      {
         onEvent: () => {},
       },
-    },
+    ],
     providerRegistry: new InMemoryProviderRegistry(),
     graderRegistry: new InMemoryGraderRegistry(),
   });
 
+  const experiment = await core.loadExperiment(createExperimentDefinition());
   const events: RunEvent[] = [];
-  for await (const event of core.streamRun({
-    experiment: createExperimentDefinition(),
-    runName: 'baseline',
-  })) {
+  for await (const event of experiment.stream('baseline')) {
     events.push(event);
   }
 
@@ -396,16 +286,12 @@ test('streamRun emits run:started and run:completed events', async () => {
   assert.equal(events[1]?.type, 'run:completed');
 });
 
-test('getRunSummary and listTrials route by runId to matched ResultStoreAdapter', async () => {
-  const storeA = new InMemoryResultStoreAdapter();
-  const storeB = new InMemoryResultStoreAdapter();
-  await storeB.saveRunSummary(createRunSummaryRecord('run-1', 'run-1'));
-  await storeB.saveTrial(createTrialRecord('run-1', 'task-1', true));
+test('getRunSummary and listTrials return data from the ResultStoreAdapter', async () => {
+  const store = new InMemoryResultStoreAdapter();
+  await store.saveRunSummary(createRunSummaryRecord('run-1', 'run-1'));
+  await store.saveTrial(createTrialRecord('run-1', 'task-1', true));
 
-  const core = createCoreWithStores({
-    a: storeA,
-    b: storeB,
-  });
+  const core = createCoreWithStore(store);
 
   const summary = await core.getRunSummary('run-1');
   const trials = await core.listTrials('run-1');
@@ -416,9 +302,7 @@ test('getRunSummary and listTrials route by runId to matched ResultStoreAdapter'
 });
 
 test('getRunSummary returns null and listTrials returns empty array when run is not found', async () => {
-  const core = createCoreWithStores({
-    'local-result-store': new InMemoryResultStoreAdapter(),
-  });
+  const core = createCoreWithStore(new InMemoryResultStoreAdapter());
 
   const summary = await core.getRunSummary('missing-run');
   const trials = await core.listTrials('missing-run');
@@ -427,26 +311,19 @@ test('getRunSummary returns null and listTrials returns empty array when run is 
   assert.deepEqual(trials, []);
 });
 
-test('setBaseline writes baseline to the matched ResultStoreAdapter', async () => {
-  const storeA = new InMemoryResultStoreAdapter();
-  const storeB = new InMemoryResultStoreAdapter();
-  await storeA.saveRunSummary(createRunSummaryRecord('baseline-run', 'baseline-run'));
+test('setBaseline writes baseline to the ResultStoreAdapter', async () => {
+  const store = new InMemoryResultStoreAdapter();
+  await store.saveRunSummary(createRunSummaryRecord('baseline-run', 'baseline-run'));
 
-  const core = createCoreWithStores({
-    a: storeA,
-    b: storeB,
-  });
+  const core = createCoreWithStore(store);
 
   await core.setBaseline('baseline-run');
 
-  assert.equal(await storeA.getBaselineRunId(), 'baseline-run');
-  assert.equal(await storeB.getBaselineRunId(), null);
+  assert.equal(await store.getBaselineRunId(), 'baseline-run');
 });
 
-test('setBaseline fails when run cannot be found in any ResultStoreAdapter', async () => {
-  const core = createCoreWithStores({
-    'local-result-store': new InMemoryResultStoreAdapter(),
-  });
+test('setBaseline fails when run cannot be found in the ResultStoreAdapter', async () => {
+  const core = createCoreWithStore(new InMemoryResultStoreAdapter());
 
   await assert.rejects(
     async () => core.setBaseline('missing-run'),
@@ -458,92 +335,28 @@ test('setBaseline fails when run cannot be found in any ResultStoreAdapter', asy
   );
 });
 
-test('runId routing fails fast when the same run is found in multiple stores', async () => {
-  const storeA = new InMemoryResultStoreAdapter();
-  const storeB = new InMemoryResultStoreAdapter();
-  await storeA.saveRunSummary(createRunSummaryRecord('run-dup', 'run-dup'));
-  await storeB.saveRunSummary(createRunSummaryRecord('run-dup', 'run-dup'));
-
-  const core = createCoreWithStores({
-    a: storeA,
-    b: storeB,
-  });
-
-  await assert.rejects(
-    async () => core.getRunSummary('run-dup'),
-    (error: unknown) => {
-      assert.ok(error instanceof RuntimeError);
-      assert.equal(error.code, ERROR_CODES.RUNTIME_DEPENDENCY_AMBIGUOUS);
-      return true;
-    },
-  );
-});
-
-test('listRuns aggregates run summaries across stores and returns sorted runIds', async () => {
-  const storeA = new InMemoryResultStoreAdapter();
-  const storeB = new InMemoryResultStoreAdapter();
-  await storeA.saveRunSummary(createRunSummaryRecord('run-b', 'run-b'));
-  await storeB.saveRunSummary(createRunSummaryRecord('run-a', 'run-a'));
-
-  const core = createCoreWithStores({
-    a: storeA,
-    b: storeB,
-  });
-
-  const runs = await core.listRuns();
-  assert.deepEqual(
-    runs.map((record) => record.runId),
-    ['run-a', 'run-b'],
-  );
-});
-
-test('listRuns fails fast when the same runId exists in multiple stores', async () => {
-  const storeA = new InMemoryResultStoreAdapter();
-  const storeB = new InMemoryResultStoreAdapter();
-  await storeA.saveRunSummary(createRunSummaryRecord('run-dup', 'run-dup'));
-  await storeB.saveRunSummary(createRunSummaryRecord('run-dup', 'run-dup'));
-
-  const core = createCoreWithStores({
-    a: storeA,
-    b: storeB,
-  });
-
-  await assert.rejects(
-    () => core.listRuns(),
-    (error: unknown) => {
-      assert.ok(error instanceof RuntimeError);
-      assert.equal(error.code, ERROR_CODES.RUNTIME_DEPENDENCY_AMBIGUOUS);
-      return true;
-    },
-  );
-});
-
-test('compareBaseline calculates deltas across stores and returns regressed verdict', async () => {
-  const currentStore = new InMemoryResultStoreAdapter();
-  const baselineStore = new InMemoryResultStoreAdapter();
-  await baselineStore.saveRunSummary(
+test('compareBaseline calculates deltas and returns regressed verdict', async () => {
+  const store = new InMemoryResultStoreAdapter();
+  await store.saveRunSummary(
     createRunSummaryRecord('baseline', 'baseline', {
       passRate: 0.9,
       passHatK: 0.8,
       avgLatencyMs: 100,
     }),
   );
-  await currentStore.saveRunSummary(
+  await store.saveRunSummary(
     createRunSummaryRecord('current', 'current', {
       passRate: 0.75,
       passHatK: 0.6,
       avgLatencyMs: 130,
     }),
   );
-  await baselineStore.saveTrial(createTrialRecord('baseline', 'task-a', true));
-  await baselineStore.saveTrial(createTrialRecord('baseline', 'task-b', true));
-  await currentStore.saveTrial(createTrialRecord('current', 'task-a', false));
-  await currentStore.saveTrial(createTrialRecord('current', 'task-b', true));
+  await store.saveTrial(createTrialRecord('baseline', 'task-a', true));
+  await store.saveTrial(createTrialRecord('baseline', 'task-b', true));
+  await store.saveTrial(createTrialRecord('current', 'task-a', false));
+  await store.saveTrial(createTrialRecord('current', 'task-b', true));
 
-  const core = createCoreWithStores({
-    current: currentStore,
-    baseline: baselineStore,
-  });
+  const core = createCoreWithStore(store);
 
   const comparison = await core.compareBaseline('current', {
     baselineRunId: 'baseline',
@@ -561,7 +374,7 @@ test('compareBaseline calculates deltas across stores and returns regressed verd
   assert.deepEqual(comparison.regressions, ['task-a']);
 });
 
-test('compareBaseline uses baseline pointer from the current run store by default', async () => {
+test('compareBaseline uses baseline pointer from the store by default', async () => {
   const store = new InMemoryResultStoreAdapter();
   await store.saveRunSummary(
     createRunSummaryRecord('baseline', 'baseline', {
@@ -582,9 +395,7 @@ test('compareBaseline uses baseline pointer from the current run store by defaul
     updatedAt: '2026-02-28T00:00:00.000Z',
   });
 
-  const core = createCoreWithStores({
-    'local-result-store': store,
-  });
+  const core = createCoreWithStore(store);
 
   const comparison = await core.compareBaseline('current');
 
@@ -593,10 +404,8 @@ test('compareBaseline uses baseline pointer from the current run store by defaul
   assert.ok((comparison.avgLatencyDelta ?? 0) < 0);
 });
 
-test('compareBaseline fails when current run cannot be found in any ResultStoreAdapter', async () => {
-  const core = createCoreWithStores({
-    'local-result-store': new InMemoryResultStoreAdapter(),
-  });
+test('compareBaseline fails when current run cannot be found in the ResultStoreAdapter', async () => {
+  const core = createCoreWithStore(new InMemoryResultStoreAdapter());
 
   await assert.rejects(
     async () => core.compareBaseline('current', { baselineRunId: 'baseline' }),
@@ -617,9 +426,7 @@ test('compareBaseline rejects invalid threshold values', async () => {
     updatedAt: '2026-02-28T00:00:00.000Z',
   });
 
-  const core = createCoreWithStores({
-    'local-result-store': store,
-  });
+  const core = createCoreWithStore(store);
 
   await assert.rejects(
     async () =>
@@ -647,5 +454,19 @@ test('compareBaseline rejects invalid threshold values', async () => {
       assert.equal(error.code, ERROR_CODES.VALIDATION_INVALID_INPUT);
       return true;
     },
+  );
+});
+
+test('listRuns returns sorted run summaries from the store', async () => {
+  const store = new InMemoryResultStoreAdapter();
+  await store.saveRunSummary(createRunSummaryRecord('run-b', 'run-b'));
+  await store.saveRunSummary(createRunSummaryRecord('run-a', 'run-a'));
+
+  const core = createCoreWithStore(store);
+
+  const runs = await core.listRuns();
+  assert.deepEqual(
+    runs.map((record) => record.runId),
+    ['run-a', 'run-b'],
   );
 });

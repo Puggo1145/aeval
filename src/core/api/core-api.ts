@@ -1,16 +1,19 @@
+import type { ObserverAdapter } from '../adapters/observer-adapter.js';
 import type { ResultStoreAdapter } from '../adapters/result-store-adapter.js';
-import type { ExperimentDiscoveryHints, TaskSourceAdapter } from '../adapters/task-source-adapter.js';
+import type { TaskSourceAdapter } from '../adapters/task-source-adapter.js';
 import type { ExperimentDefinition } from '../contracts/experiment.js';
 import type { RunSummary, RunSummaryRecord } from '../contracts/run-summary.js';
-import type { BaselineComparison, BaselineThresholds, RunEvent } from '../contracts/runtime.js';
-import { SCHEMA_VERSIONS } from '../contracts/schema-versions.js';
+import type {
+  BaselineComparison,
+  BaselineThresholds,
+  GraderRegistry,
+  ProviderRegistry,
+  RunEvent,
+} from '../contracts/runtime.js';
 import type { TrialResultRecord } from '../contracts/trial.js';
 import { ERROR_CODES, RuntimeError, ValidationError } from '../errors/index.js';
 import { orchestrateRun } from '../orchestrator/run-orchestrator.js';
-import {
-  type RuntimeDependencyContainer,
-  resolveRuntimeDependencies,
-} from '../runtime/dependency-resolver.js';
+import { validateExperimentDefinition } from '../validation/experiment-validator.js';
 import { ensureNonEmptyString } from '../validation/helpers.js';
 import {
   computeRegressionDiff,
@@ -18,6 +21,47 @@ import {
   validateBaselineThresholds,
   validateComparableDelta,
 } from './baseline-utils.js';
+
+// ---------------------------------------------------------------------------
+// Public types
+// ---------------------------------------------------------------------------
+
+export interface CoreDependencies {
+  taskSourceAdapter: TaskSourceAdapter;
+  resultStoreAdapter: ResultStoreAdapter;
+  observerAdapters?: ObserverAdapter[];
+  providerRegistry: ProviderRegistry;
+  graderRegistry: GraderRegistry;
+}
+
+export interface LoadedExperiment {
+  readonly definition: ExperimentDefinition;
+  run(runName: string): Promise<RunSummary>;
+  stream(runName: string): AsyncIterable<RunEvent>;
+}
+
+export interface CompareBaselineOptions {
+  baselineRunId?: string;
+  thresholds?: BaselineThresholds;
+  tokenBudgetBreached?: boolean;
+}
+
+export interface CoreApi {
+  readonly experiments: readonly LoadedExperiment[];
+  loadExperiment(input: unknown | Promise<unknown>): Promise<LoadedExperiment>;
+  getRunSummary(runId: string): Promise<RunSummary | null>;
+  listTrials(runId: string): Promise<TrialResultRecord[]>;
+  setBaseline(runId: string): Promise<void>;
+  compareBaseline(
+    currentRunId: string,
+    options?: CompareBaselineOptions,
+  ): Promise<BaselineComparison>;
+  listRuns(): Promise<RunSummaryRecord[]>;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function ensureRunExists(runName: string, experiment: ExperimentDefinition): void {
   const hasMatchingRun = experiment.runs.some((run) => run.name === runName);
@@ -30,82 +74,6 @@ function ensureRunExists(runName: string, experiment: ExperimentDefinition): voi
       field: 'runName',
       runName,
       knownRuns: experiment.runs.map((run) => run.name),
-    },
-  });
-}
-
-interface ResolvedRunStore {
-  adapterId: string;
-  resultStore: ResultStoreAdapter;
-  summary: RunSummary;
-}
-
-async function collectMatchedRunStores(
-  runId: string,
-  resultStoreAdapters: Readonly<Record<string, ResultStoreAdapter>>,
-): Promise<ResolvedRunStore[]> {
-  const entries = Object.entries(resultStoreAdapters);
-  if (entries.length === 0) {
-    return [];
-  }
-
-  const matches = await Promise.all(
-    entries.map(async ([adapterId, resultStore]) => {
-      const record = await resultStore.getRunSummary(runId);
-      if (!record) {
-        return null;
-      }
-
-      return {
-        adapterId,
-        resultStore,
-        summary: record.summary,
-      } satisfies ResolvedRunStore;
-    }),
-  );
-
-  return matches.filter((match): match is ResolvedRunStore => match !== null);
-}
-
-async function resolveRunStoreOrNull(
-  runId: string,
-  dependencies: RuntimeDependencyContainer,
-): Promise<ResolvedRunStore | null> {
-  const matches = await collectMatchedRunStores(runId, dependencies.resultStoreAdapters);
-  if (matches.length === 0) {
-    return null;
-  }
-
-  if (matches.length === 1) {
-    return matches[0] ?? null;
-  }
-
-  throw new RuntimeError(
-    `Run '${runId}' was found in multiple result stores and cannot be resolved unambiguously.`,
-    {
-      code: ERROR_CODES.RUNTIME_DEPENDENCY_AMBIGUOUS,
-      details: {
-        runId,
-        matchedAdapters: matches.map((match) => match.adapterId).sort(),
-      },
-    },
-  );
-}
-
-async function resolveRunStoreOrThrow(
-  runId: string,
-  dependencies: RuntimeDependencyContainer,
-  field: string,
-): Promise<ResolvedRunStore> {
-  const resolved = await resolveRunStoreOrNull(runId, dependencies);
-  if (resolved) {
-    return resolved;
-  }
-
-  throw new ValidationError(`Run summary for '${runId}' was not found.`, {
-    details: {
-      field,
-      runId,
     },
   });
 }
@@ -133,134 +101,104 @@ async function resolveBaselineRunIdInput(
   });
 }
 
-export interface RunExperimentInput {
-  experiment: ExperimentDefinition;
-  runName: string;
-}
+// ---------------------------------------------------------------------------
+// Factory
+// ---------------------------------------------------------------------------
 
-export interface CompareBaselineOptions {
-  baselineRunId?: string;
-  thresholds?: BaselineThresholds;
-  tokenBudgetBreached?: boolean;
-}
+export function createCore(deps: CoreDependencies): CoreApi {
+  const {
+    taskSourceAdapter,
+    resultStoreAdapter,
+    observerAdapters = [],
+    providerRegistry,
+    graderRegistry,
+  } = deps;
 
-export interface CoreDiscoveryHints {
-  experimentSearchRoots: string[];
-  experimentSearchMaxDepth?: number;
-}
+  function buildLoadedExperiment(definition: ExperimentDefinition): LoadedExperiment {
+    const orchDeps = {
+      taskSourceAdapter,
+      resultStoreAdapter,
+      observerAdapters,
+      providerRegistry,
+      graderRegistry,
+    };
 
-function collectCoreDiscoveryHints(
-  taskSourceAdapters: Readonly<Record<string, TaskSourceAdapter>>,
-): CoreDiscoveryHints | undefined {
-  const roots = new Set<string>();
-  let resolvedMaxDepth: number | undefined;
+    return {
+      definition,
 
-  for (const adapter of Object.values(taskSourceAdapters)) {
-    const hints: ExperimentDiscoveryHints | undefined = adapter.getExperimentDiscoveryHints?.();
-    if (!hints) {
-      continue;
-    }
+      async run(runName: string): Promise<RunSummary> {
+        const normalizedRunName = ensureNonEmptyString(runName, 'runName');
+        ensureRunExists(normalizedRunName, definition);
 
-    for (const root of hints.roots) {
-      const normalizedRoot = root.trim();
-      if (normalizedRoot.length > 0) {
-        roots.add(normalizedRoot);
-      }
-    }
-
-    if (hints.maxDepth !== undefined) {
-      resolvedMaxDepth =
-        resolvedMaxDepth === undefined
-          ? hints.maxDepth
-          : Math.min(resolvedMaxDepth, hints.maxDepth);
-    }
-  }
-
-  const normalizedRoots = [...roots];
-  if (normalizedRoots.length === 0) {
-    return undefined;
-  }
-
-  return {
-    experimentSearchRoots: normalizedRoots,
-    experimentSearchMaxDepth: resolvedMaxDepth,
-  };
-}
-
-export interface CoreApi {
-  runExperiment(input: RunExperimentInput): Promise<RunSummary>;
-  streamRun(input: RunExperimentInput): AsyncIterable<RunEvent>;
-  getRunSummary(runId: string): Promise<RunSummary | null>;
-  listTrials(runId: string): Promise<TrialResultRecord[]>;
-  setBaseline(runId: string): Promise<void>;
-  compareBaseline(
-    currentRunId: string,
-    options?: CompareBaselineOptions,
-  ): Promise<BaselineComparison>;
-  listRuns(): Promise<RunSummaryRecord[]>;
-  getDiscoveryHints?(): CoreDiscoveryHints | undefined;
-}
-
-export function createCore(dependencies: RuntimeDependencyContainer): CoreApi {
-  const discoveryHints = collectCoreDiscoveryHints(dependencies.taskSourceAdapters);
-
-  return {
-    async runExperiment(input): Promise<RunSummary> {
-      const runName = ensureNonEmptyString(input.runName, 'runName');
-      ensureRunExists(runName, input.experiment);
-
-      const resolved = resolveRuntimeDependencies(input.experiment, dependencies);
-
-      let summary: RunSummary | undefined;
-      for await (const event of orchestrateRun(
-        { experiment: input.experiment, runName },
-        resolved,
-      )) {
-        if (event.type === 'run:completed') {
-          summary = event.summary;
+        let summary: RunSummary | undefined;
+        for await (const event of orchestrateRun(
+          { experiment: definition, runName: normalizedRunName },
+          orchDeps,
+        )) {
+          if (event.type === 'run:completed') {
+            summary = event.summary;
+          }
         }
-      }
 
-      if (!summary) {
-        throw new RuntimeError('Run completed without producing a summary.', {
-          code: ERROR_CODES.RUNTIME_UNEXPECTED,
-          details: { runName },
-        });
-      }
+        if (!summary) {
+          throw new RuntimeError('Run completed without producing a summary.', {
+            code: ERROR_CODES.RUNTIME_UNEXPECTED,
+            details: { runName: normalizedRunName },
+          });
+        }
 
-      return summary;
+        return summary;
+      },
+
+      stream(runName: string): AsyncIterable<RunEvent> {
+        const normalizedRunName = ensureNonEmptyString(runName, 'runName');
+        ensureRunExists(normalizedRunName, definition);
+
+        return orchestrateRun({ experiment: definition, runName: normalizedRunName }, orchDeps);
+      },
+    };
+  }
+
+  const loadedExperiments: LoadedExperiment[] = [];
+
+  return {
+    get experiments(): readonly LoadedExperiment[] {
+      return loadedExperiments;
     },
 
-    streamRun(input): AsyncIterable<RunEvent> {
-      const runName = ensureNonEmptyString(input.runName, 'runName');
-      ensureRunExists(runName, input.experiment);
-
-      const resolved = resolveRuntimeDependencies(input.experiment, dependencies);
-
-      return orchestrateRun({ experiment: input.experiment, runName }, resolved);
+    async loadExperiment(input): Promise<LoadedExperiment> {
+      const raw = await input;
+      const definition = validateExperimentDefinition(raw);
+      const loaded = buildLoadedExperiment(definition);
+      loadedExperiments.push(loaded);
+      return loaded;
     },
 
     async getRunSummary(runId): Promise<RunSummary | null> {
       const normalizedRunId = ensureNonEmptyString(runId, 'runId');
-      const resolved = await resolveRunStoreOrNull(normalizedRunId, dependencies);
-      return resolved?.summary ?? null;
+      const record = await resultStoreAdapter.getRunSummary(normalizedRunId);
+      return record?.summary ?? null;
     },
 
     async listTrials(runId): Promise<TrialResultRecord[]> {
       const normalizedRunId = ensureNonEmptyString(runId, 'runId');
-      const resolved = await resolveRunStoreOrNull(normalizedRunId, dependencies);
-      if (!resolved) {
+      const record = await resultStoreAdapter.getRunSummary(normalizedRunId);
+      if (!record) {
         return [];
       }
-
-      return resolved.resultStore.listTrials(normalizedRunId);
+      return resultStoreAdapter.listTrials(normalizedRunId);
     },
 
     async setBaseline(runId): Promise<void> {
       const normalizedRunId = ensureNonEmptyString(runId, 'runId');
-      const resolved = await resolveRunStoreOrThrow(normalizedRunId, dependencies, 'runId');
+      const record = await resultStoreAdapter.getRunSummary(normalizedRunId);
+      if (!record) {
+        throw new ValidationError(`Run summary for '${normalizedRunId}' was not found.`, {
+          details: { field: 'runId', runId: normalizedRunId },
+        });
+      }
 
-      await resolved.resultStore.saveBaseline({
+      await resultStoreAdapter.saveBaseline({
         runId: normalizedRunId,
         updatedAt: new Date().toISOString(),
       });
@@ -273,40 +211,27 @@ export function createCore(dependencies: RuntimeDependencyContainer): CoreApi {
       const normalizedCurrentRunId = ensureNonEmptyString(currentRunId, 'currentRunId');
       validateBaselineThresholds(options.thresholds);
 
-      const currentStore = await resolveRunStoreOrThrow(
-        normalizedCurrentRunId,
-        dependencies,
-        'currentRunId',
-      );
+      const currentRecord = await resultStoreAdapter.getRunSummary(normalizedCurrentRunId);
+      if (!currentRecord) {
+        throw new ValidationError(`Run summary for '${normalizedCurrentRunId}' was not found.`, {
+          details: { field: 'currentRunId', runId: normalizedCurrentRunId },
+        });
+      }
+      const currentSummary = currentRecord.summary;
 
       const baselineRunId = await resolveBaselineRunIdInput(
         options.baselineRunId,
         normalizedCurrentRunId,
-        currentStore.resultStore,
+        resultStoreAdapter,
       );
 
-      const baselineStore = options.baselineRunId
-        ? await resolveRunStoreOrThrow(baselineRunId, dependencies, 'baselineRunId')
-        : (() => {
-            return currentStore;
-          })();
-
-      const baselineSummary = options.baselineRunId
-        ? baselineStore.summary
-        : await currentStore.resultStore.getRunSummary(baselineRunId).then((record) => {
-            if (record) {
-              return record.summary;
-            }
-
-            throw new ValidationError(`Run summary for '${baselineRunId}' was not found.`, {
-              details: {
-                field: 'baselineRunId',
-                runId: baselineRunId,
-              },
-            });
-          });
-
-      const currentSummary = currentStore.summary;
+      const baselineRecord = await resultStoreAdapter.getRunSummary(baselineRunId);
+      if (!baselineRecord) {
+        throw new ValidationError(`Run summary for '${baselineRunId}' was not found.`, {
+          details: { field: 'baselineRunId', runId: baselineRunId },
+        });
+      }
+      const baselineSummary = baselineRecord.summary;
 
       const passRateDelta = currentSummary.passRate - baselineSummary.passRate;
       const passHatKDelta =
@@ -329,8 +254,8 @@ export function createCore(dependencies: RuntimeDependencyContainer): CoreApi {
         'runSummary.avgLatencyMs',
       );
 
-      const baselineTrials = await baselineStore.resultStore.listTrials(baselineRunId);
-      const currentTrials = await currentStore.resultStore.listTrials(normalizedCurrentRunId);
+      const baselineTrials = await resultStoreAdapter.listTrials(baselineRunId);
+      const currentTrials = await resultStoreAdapter.listTrials(normalizedCurrentRunId);
       const { regressions, improvements } = computeRegressionDiff(baselineTrials, currentTrials);
 
       const comparison: BaselineComparison = {
@@ -367,52 +292,17 @@ export function createCore(dependencies: RuntimeDependencyContainer): CoreApi {
     },
 
     async listRuns(): Promise<RunSummaryRecord[]> {
-      const entries = Object.entries(dependencies.resultStoreAdapters);
-      const allRecords = new Map<string, RunSummaryRecord>();
-      const runIdToAdapter = new Map<string, string>();
+      const runIds = await resultStoreAdapter.listRunIds();
+      const records: RunSummaryRecord[] = [];
 
-      for (const [adapterId, resultStore] of entries) {
-        const runIds = await resultStore.listRunIds();
-        for (const runId of runIds) {
-          const existingAdapter = runIdToAdapter.get(runId);
-          if (existingAdapter && existingAdapter !== adapterId) {
-            throw new RuntimeError(
-              `Run '${runId}' was found in multiple result stores and cannot be resolved unambiguously.`,
-              {
-                code: ERROR_CODES.RUNTIME_DEPENDENCY_AMBIGUOUS,
-                details: {
-                  field: 'runId',
-                  runId,
-                  matchedAdapters: [existingAdapter, adapterId].sort(),
-                },
-              },
-            );
-          }
-
-          const record = await resultStore.getRunSummary(runId);
-          if (record) {
-            runIdToAdapter.set(runId, adapterId);
-            allRecords.set(runId, record);
-          }
+      for (const runId of runIds) {
+        const record = await resultStoreAdapter.getRunSummary(runId);
+        if (record) {
+          records.push(record);
         }
       }
 
-      return [...allRecords.values()].sort((a, b) => a.runId.localeCompare(b.runId));
+      return records.sort((a, b) => a.runId.localeCompare(b.runId));
     },
-
-    getDiscoveryHints(): CoreDiscoveryHints | undefined {
-      return discoveryHints;
-    },
-  };
-}
-
-export function createEmptyRunSummary(runId: string, runName: string): RunSummary {
-  return {
-    schemaVersion: SCHEMA_VERSIONS.RUN_SUMMARY,
-    runId,
-    runName,
-    totalTasks: 0,
-    totalTrials: 0,
-    passRate: 0,
   };
 }

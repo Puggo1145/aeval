@@ -30,17 +30,6 @@ function reportError(error: unknown): void {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
-  if (args.length === 0) {
-    try {
-      const { runAppTui } = await import('./tui/index.js');
-      await runAppTui();
-    } catch (error) {
-      reportError(error);
-      process.exitCode = 1;
-    }
-    return;
-  }
-
   try {
     const core = createAppCore();
     const exitCode = await runCli(args, core);

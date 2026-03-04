@@ -84,8 +84,9 @@
 │  - Experiment    - Trial engine     - LLM judge adapter   │
 │                                                            │
 │  Input Layer     Storage Layer      Core API Layer         │
-│  - TaskSource    - ResultStore      - runExperiment()      │
-│  - Resolver      - Baselines        - streamRun()          │
+│  - TaskSource    - ResultStore      - loadExperiment()     │
+│  - Resolver      - Baselines        - LoadedExperiment.run │
+│                                    - LoadedExperiment.stream│
 │                                    - getRunSummary()       │
 │                                    - listTrials()          │
 └────────────────────────────────────────────────────────────┘
@@ -155,19 +156,19 @@ apps/youeval/
 Core 对外只暴露稳定的程序化 API，交互模式作为 interface adapter 按需接入：
 
 1. `createCore(deps) -> CoreApi`：在组合根一次性注入依赖。
-2. `core.runExperiment(input) -> Promise<RunSummary>`：批处理执行一次 run。
-3. `core.streamRun(input) -> AsyncIterable<RunEvent>`：返回事件流，供交互模式实时展示进度。
-4. `core.getRunSummary(runId)` / `core.listTrials(runId)`：按 `runId` 查询结果，来源仅 `ResultStoreAdapter`。
-5. `core.listRuns() -> Promise<RunSummaryRecord[]>`：列出所有已落盘 run summary。
-6. `core.setBaseline(runId)` / `core.compareBaseline(currentRunId, baselineRunId?)`：基线管理。
+2. `core.loadExperiment(input) -> Promise<LoadedExperiment>`：加载并校验实验定义。
+3. `loadedExperiment.run(runName) -> Promise<RunSummary>`：批处理执行一次 run。
+4. `loadedExperiment.stream(runName) -> AsyncIterable<RunEvent>`：返回事件流，供交互模式实时展示进度。
+5. `core.getRunSummary(runId)` / `core.listTrials(runId)`：按 `runId` 查询结果，来源仅 `ResultStoreAdapter`。
+6. `core.listRuns() -> Promise<RunSummaryRecord[]>`：列出所有已落盘 run summary。
+7. `core.setBaseline(runId)` / `core.compareBaseline(currentRunId, baselineRunId?)`：基线管理。
 
 连接规则：
 
-1. CLI 是一种 interface adapter 具体实现：解析命令参数，调用 `CoreApi`，并可在交互会话中消费 `streamRun` 事件。
+1. CLI 是一种 interface adapter 具体实现：解析命令参数，调用 `CoreApi`，并可在交互会话中消费 `stream(runName)` 事件。
 2. v1 至少提供一个可用的 interactive interface adapter 具体实现（可由 CLI 承担）。
 3. 未来 HTTP/TUI 作为其他 interface adapter，复用同一组 Core API，不复制 orchestration 逻辑。
-4. Query/Baseline API 按 `runId` 自动路由到目标 `ResultStoreAdapter`；未命中时 query 返回空值，冲突命中 fail fast。
-5. `listRuns()` 聚合所有 `ResultStoreAdapter` 的 run summary；若同一 `runId` 在多个 store 命中，必须 fail fast。
+4. Query/Baseline API 统一读取注入的 `ResultStoreAdapter`；未命中时 query 返回空值。
 
 ---
 
@@ -495,10 +496,7 @@ task:
 
 ```yaml
 experiment:
-  schemaVersion: "experiment.v1"
   name: "chat-agent-model-compare"
-  taskSource:
-    adapter: "task-source-adapter-id"
   runs:
     - name: "model-a"
       overrides:
@@ -509,30 +507,23 @@ experiment:
   trialsPerTask: 3
   maxConcurrency: 5
   timeoutMs: 120000
-  resultStore:
-    adapter: "result-store-adapter-id"
-
-  observers:
-    - type: "observer-adapter-id"
 ```
 
 ### 5.3 DSL 校验规则
 
 1. `task.schemaVersion` 必须受支持（当前仅 `task.v1`）。
-2. `experiment.schemaVersion` 必须受支持（当前仅 `experiment.v1`）。
-3. `task.id` 在同一 dataset revision 内全局唯一。
-4. `provider.id` 必须能在 `ProviderRegistry` 解析。
-5. `graders.layers` 至少一个。
-6. `strategy=WEIGHTED` 时必须提供 `passThreshold`。
-7. `strategy=WEIGHTED` 时，每个 `layers[]` 必须提供 `weight (>0)`。
-8. `strategy=ALL|ANY` 时，不允许出现 `passThreshold` 与 `weight` 字段。
-9. `execution.timeoutMs` 必须 > 0。
-10. 若使用 `experiment.taskSource`，`adapter` 必填且必须能解析到已注册 `TaskSourceAdapter`。
-11. 运行前必须通过 `TaskSourceAdapter.resolveDataset()` 解析到不可变 `revision`。
-12. `task.tags` 若提供，必须是 `string[]`。
-13. `task.lifecycle` 若提供，必须是对象。
-14. `task.desc/category/capability/tier/difficulty` 若提供，必须是 string。
-15. Task/Experiment DSL 对象内的未知字段必须在校验阶段直接报错（fail fast）。
+2. `task.id` 在同一 dataset revision 内全局唯一。
+3. `provider.id` 必须能在 `ProviderRegistry` 解析。
+4. `graders.layers` 至少一个。
+5. `strategy=WEIGHTED` 时必须提供 `passThreshold`。
+6. `strategy=WEIGHTED` 时，每个 `layers[]` 必须提供 `weight (>0)`。
+7. `strategy=ALL|ANY` 时，不允许出现 `passThreshold` 与 `weight` 字段。
+8. `execution.timeoutMs` 必须 > 0。
+9. 运行前必须通过 `TaskSourceAdapter.resolveDataset()` 解析到不可变 `revision`。
+10. `task.tags` 若提供，必须是 `string[]`。
+11. `task.lifecycle` 若提供，必须是对象。
+12. `task.desc/category/capability/tier/difficulty` 若提供，必须是 string。
+13. Task/Experiment DSL 对象内的未知字段必须在校验阶段直接报错（fail fast）。
 
 ---
 
