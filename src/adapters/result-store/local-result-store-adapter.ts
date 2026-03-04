@@ -9,6 +9,7 @@ import type { RunManifest } from '../../core/contracts/run-manifest.js';
 import type { RunSummaryRecord } from '../../core/contracts/run-summary.js';
 import type { TrialResultRecord } from '../../core/contracts/trial.js';
 import { StoreError, ValidationError } from '../../core/errors/index.js';
+import { ensureNonEmptyString } from '../../core/validation/helpers.js';
 
 const MANIFEST_FILE = 'manifest.json';
 const SUMMARY_FILE = 'summary.json';
@@ -19,20 +20,6 @@ export interface LocalResultStoreAdapterOptions {
   rootDir: string;
 }
 
-function ensureNonEmptyString(value: string, field: string): string {
-  const normalized = value.trim();
-  if (normalized.length > 0) {
-    return normalized;
-  }
-
-  throw new ValidationError(`Field '${field}' must be a non-empty string.`, {
-    details: {
-      field,
-      value,
-    },
-  });
-}
-
 function trialFileName(taskId: string, trialIndex: number): string {
   // Encode taskId to avoid collisions between values like "a/b" and "a--b".
   const encodedTaskId = Buffer.from(taskId, 'utf-8').toString('base64url');
@@ -40,15 +27,7 @@ function trialFileName(taskId: string, trialIndex: number): string {
 }
 
 function normalizeRunId(runId: string): string {
-  const normalized = runId.trim();
-  if (normalized.length === 0) {
-    throw new ValidationError("Field 'runId' must be a non-empty string.", {
-      details: {
-        field: 'runId',
-        value: runId,
-      },
-    });
-  }
+  const normalized = ensureNonEmptyString(runId, 'runId');
 
   if (normalized.includes('/') || normalized.includes('\\')) {
     throw new ValidationError("Field 'runId' must not contain path separators.", {

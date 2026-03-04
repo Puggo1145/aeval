@@ -10,20 +10,13 @@ import {
   type RuntimeDependencyContainer,
   resolveRuntimeDependencies,
 } from '../runtime/dependency-resolver.js';
-
-function ensureNonEmptyString(value: string, field: string): string {
-  const normalizedValue = value.trim();
-  if (normalizedValue.length > 0) {
-    return normalizedValue;
-  }
-
-  throw new ValidationError(`Field '${field}' must be a non-empty string.`, {
-    details: {
-      field,
-      value,
-    },
-  });
-}
+import { ensureNonEmptyString } from '../validation/helpers.js';
+import {
+  computeRegressionDiff,
+  computeVerdict,
+  validateBaselineThresholds,
+  validateComparableDelta,
+} from './baseline-utils.js';
 
 function ensureRunExists(runName: string, experiment: ExperimentDefinition): void {
   const hasMatchingRun = experiment.runs.some((run) => run.name === runName);
@@ -76,7 +69,6 @@ async function collectMatchedRunStores(
 async function resolveRunStoreOrNull(
   runId: string,
   dependencies: RuntimeDependencyContainer,
-  field: string,
 ): Promise<ResolvedRunStore | null> {
   const matches = await collectMatchedRunStores(runId, dependencies.resultStoreAdapters);
   if (matches.length === 0) {
@@ -92,7 +84,6 @@ async function resolveRunStoreOrNull(
     {
       code: ERROR_CODES.RUNTIME_DEPENDENCY_AMBIGUOUS,
       details: {
-        field,
         runId,
         matchedAdapters: matches.map((match) => match.adapterId).sort(),
       },
@@ -105,7 +96,7 @@ async function resolveRunStoreOrThrow(
   dependencies: RuntimeDependencyContainer,
   field: string,
 ): Promise<ResolvedRunStore> {
-  const resolved = await resolveRunStoreOrNull(runId, dependencies, field);
+  const resolved = await resolveRunStoreOrNull(runId, dependencies);
   if (resolved) {
     return resolved;
   }
@@ -118,100 +109,7 @@ async function resolveRunStoreOrThrow(
   });
 }
 
-function buildTaskPassIndex(trials: TrialResultRecord[]): Map<string, boolean> {
-  const index = new Map<string, boolean>();
-
-  for (const record of trials) {
-    const current = index.get(record.trial.taskId) ?? false;
-    index.set(record.trial.taskId, current || record.trial.aggregate.pass);
-  }
-
-  return index;
-}
-
-function computeRegressionDiff(
-  baselineTrials: TrialResultRecord[],
-  currentTrials: TrialResultRecord[],
-): { regressions: string[]; improvements: string[] } {
-  const baselinePassIndex = buildTaskPassIndex(baselineTrials);
-  const currentPassIndex = buildTaskPassIndex(currentTrials);
-  const allTaskIds = new Set<string>([...baselinePassIndex.keys(), ...currentPassIndex.keys()]);
-
-  const regressions: string[] = [];
-  const improvements: string[] = [];
-
-  for (const taskId of allTaskIds) {
-    const baselinePass = baselinePassIndex.get(taskId) ?? false;
-    const currentPass = currentPassIndex.get(taskId) ?? false;
-
-    if (baselinePass && !currentPass) {
-      regressions.push(taskId);
-      continue;
-    }
-
-    if (!baselinePass && currentPass) {
-      improvements.push(taskId);
-    }
-  }
-
-  regressions.sort();
-  improvements.sort();
-
-  return { regressions, improvements };
-}
-
-function validateComparableDelta(
-  threshold: number | undefined,
-  delta: number | undefined,
-  field: string,
-): void {
-  if (threshold === undefined) {
-    return;
-  }
-
-  if (delta !== undefined) {
-    return;
-  }
-
-  throw new ValidationError(`Field '${field}' is required when a threshold is provided.`, {
-    details: {
-      field,
-      threshold,
-    },
-  });
-}
-
-function validateNonNegativeFiniteThreshold(
-  value: number | undefined,
-  field: keyof BaselineThresholds,
-): void {
-  if (value === undefined) {
-    return;
-  }
-
-  if (Number.isFinite(value) && value >= 0) {
-    return;
-  }
-
-  throw new ValidationError(`Field 'thresholds.${field}' must be a non-negative finite number.`, {
-    details: {
-      field: `thresholds.${field}`,
-      value,
-    },
-  });
-}
-
-function validateBaselineThresholds(thresholds: BaselineThresholds | undefined): void {
-  if (!thresholds) {
-    return;
-  }
-
-  validateNonNegativeFiniteThreshold(thresholds.passRateDrop, 'passRateDrop');
-  validateNonNegativeFiniteThreshold(thresholds.passHatKDrop, 'passHatKDrop');
-  validateNonNegativeFiniteThreshold(thresholds.avgLatencyIncrease, 'avgLatencyIncrease');
-}
-
-function resolveBaselineRunIdInput(
+async function resolveBaselineRunIdInput(
   baselineRunId: string | undefined,
   currentRunId: string,
   resultStore: ResultStoreAdapter,
@@ -232,43 +130,6 @@ function resolveBaselineRunIdInput(
       },
     });
   });
-}
-
-function computeVerdict(
-  comparison: {
-    passRateDelta: number;
-    passHatKDelta?: number;
-    avgLatencyDelta?: number;
-    tokenBudgetBreached?: boolean;
-    improvements: string[];
-  },
-  thresholds: BaselineThresholds | undefined,
-): BaselineComparison['verdict'] {
-  const passRateRegressed =
-    thresholds?.passRateDrop !== undefined && comparison.passRateDelta < -thresholds.passRateDrop;
-  const passHatKRegressed =
-    thresholds?.passHatKDrop !== undefined &&
-    comparison.passHatKDelta !== undefined &&
-    comparison.passHatKDelta < -thresholds.passHatKDrop;
-  const latencyRegressed =
-    thresholds?.avgLatencyIncrease !== undefined &&
-    comparison.avgLatencyDelta !== undefined &&
-    comparison.avgLatencyDelta > thresholds.avgLatencyIncrease;
-  const tokenBudgetRegressed = comparison.tokenBudgetBreached === true;
-
-  if (passRateRegressed || passHatKRegressed || latencyRegressed || tokenBudgetRegressed) {
-    return 'regressed';
-  }
-
-  const hasMetricImprovement =
-    comparison.passRateDelta > 0 ||
-    (comparison.passHatKDelta !== undefined && comparison.passHatKDelta > 0) ||
-    (comparison.avgLatencyDelta !== undefined && comparison.avgLatencyDelta < 0);
-  if (hasMetricImprovement || comparison.improvements.length > 0) {
-    return 'improved';
-  }
-
-  return 'pass';
 }
 
 export interface RunExperimentInput {
@@ -334,13 +195,13 @@ export function createCore(dependencies: RuntimeDependencyContainer): CoreApi {
 
     async getRunSummary(runId): Promise<RunSummary | null> {
       const normalizedRunId = ensureNonEmptyString(runId, 'runId');
-      const resolved = await resolveRunStoreOrNull(normalizedRunId, dependencies, 'runId');
+      const resolved = await resolveRunStoreOrNull(normalizedRunId, dependencies);
       return resolved?.summary ?? null;
     },
 
     async listTrials(runId): Promise<TrialResultRecord[]> {
       const normalizedRunId = ensureNonEmptyString(runId, 'runId');
-      const resolved = await resolveRunStoreOrNull(normalizedRunId, dependencies, 'runId');
+      const resolved = await resolveRunStoreOrNull(normalizedRunId, dependencies);
       if (!resolved) {
         return [];
       }

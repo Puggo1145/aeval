@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { NonEmptyStringSchema, UnknownRecordSchema } from '../utils/zod.js';
+import { NonEmptyStringSchema, UnknownRecordSchema } from './schema-primitives.js';
 import { SCHEMA_VERSIONS } from './schema-versions.js';
 
 /**

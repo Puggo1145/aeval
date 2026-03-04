@@ -105,6 +105,17 @@ export function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+export function ensureNonEmptyString(value: string, field: string): string {
+  const normalizedValue = value.trim();
+  if (normalizedValue.length > 0) {
+    return normalizedValue;
+  }
+
+  throwValidationError(`Field '${field}' must be a non-empty string.`, field, {
+    value,
+  });
+}
+
 export function ensureSchemaVersion(value: unknown, expected: string, field: string): void {
   if (value !== expected) {
     throwValidationError(`Unsupported schema version at '${field}'.`, field, {

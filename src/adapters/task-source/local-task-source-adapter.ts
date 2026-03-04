@@ -9,6 +9,7 @@ import type {
   ResolvedDataset,
   TaskSourceAdapter,
 } from '../../core/adapters/task-source-adapter.js';
+import { ensureNonEmptyString } from '../../core/validation/helpers.js';
 
 const ADAPTER_ID = 'local';
 const YAML_EXTENSIONS = new Set(['.yaml', '.yml']);
@@ -42,13 +43,7 @@ function ensureNonEmptyStringOption(value: unknown, field: string): string {
   if (typeof value !== 'string') {
     throw new Error(`Field '${field}' must be a non-empty string.`);
   }
-
-  const normalized = value.trim();
-  if (normalized.length === 0) {
-    throw new Error(`Field '${field}' must be a non-empty string.`);
-  }
-
-  return normalized;
+  return ensureNonEmptyString(value, field);
 }
 
 function normalizeOptionalSelector(value: unknown, field: string): string | undefined {
