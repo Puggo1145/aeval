@@ -84,6 +84,7 @@ function makeTask(overrides: Partial<TaskDefinition> = {}): TaskDefinition {
 function makeExperiment(overrides: Partial<ExperimentDefinition> = {}): ExperimentDefinition {
   return validateExperimentDefinition({
     name: 'test-experiment',
+    dataset: 'test-dataset',
     runs: [{ name: 'default' }],
     maxConcurrency: 2,
     ...overrides,
@@ -92,7 +93,7 @@ function makeExperiment(overrides: Partial<ExperimentDefinition> = {}): Experime
 
 function createMockTaskSource(tasks: unknown[] = []): TaskSourceAdapter {
   return {
-    async resolveDataset(): Promise<ResolvedDataset> {
+    async resolveDataset(_selector): Promise<ResolvedDataset> {
       return {
         source: {
           adapter: 'local',
@@ -919,7 +920,7 @@ test('avgLatencyMs is computed from execution metrics', async () => {
 
 test('dataset resolve failure terminates run before trial execution', async () => {
   const failingTaskSource: TaskSourceAdapter = {
-    async resolveDataset(): Promise<ResolvedDataset> {
+    async resolveDataset(_selector): Promise<ResolvedDataset> {
       throw new Error('dataset not found');
     },
   };

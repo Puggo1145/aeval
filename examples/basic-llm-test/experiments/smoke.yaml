@@ -1,4 +1,5 @@
 name: "basic-llm-test"
+dataset: "datasets"
 runs:
   - name: "4o-mini"
   - name: "5-mini"

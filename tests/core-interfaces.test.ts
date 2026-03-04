@@ -77,6 +77,7 @@ class InMemoryResultStoreAdapter implements ResultStoreAdapter {
 function createExperimentDefinition(): ExperimentDefinition {
   return validateExperimentDefinition({
     name: 'milestone-2-smoke',
+    dataset: 'chat-agent/smoke',
     runs: [
       {
         name: 'baseline',
@@ -88,7 +89,7 @@ function createExperimentDefinition(): ExperimentDefinition {
 
 function createTaskSourceAdapter(): TaskSourceAdapter {
   return {
-    async resolveDataset(): Promise<ResolvedDataset> {
+    async resolveDataset(_selector): Promise<ResolvedDataset> {
       return {
         source: {
           adapter: 'local-task-source',

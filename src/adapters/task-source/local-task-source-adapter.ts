@@ -6,6 +6,7 @@ import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { parse } from 'yaml';
 
 import type {
+  DatasetSelector,
   ResolvedDataset,
   TaskSourceAdapter,
 } from '../../core/adapters/task-source-adapter.js';
@@ -295,9 +296,6 @@ async function resolveSelectorRevision(
 
 export interface LocalTaskSourceAdapterOptions {
   datasetsRoot: unknown;
-  dataset: unknown;
-  revision?: unknown;
-  tag?: unknown;
 }
 
 export function createLocalTaskSourceAdapter(
@@ -307,18 +305,17 @@ export function createLocalTaskSourceAdapter(
     options.datasetsRoot,
     'datasetsRoot',
   );
-  const dataset = normalizeDatasetPath(
-    ensureNonEmptyStringOption(options.dataset, 'dataset'),
-  );
-  const requestedRevision = normalizeOptionalSelector(
-    options.revision,
-    'revision',
-  );
-  const requestedTag = normalizeOptionalSelector(options.tag, 'tag');
   const absoluteDatasetsRoot = resolve(datasetsRoot);
 
   return {
-    async resolveDataset() {
+    async resolveDataset(selector: DatasetSelector) {
+      const dataset = normalizeDatasetPath(selector.dataset);
+      const requestedRevision = normalizeOptionalSelector(
+        selector.revision,
+        'revision',
+      );
+      const requestedTag = normalizeOptionalSelector(selector.tag, 'tag');
+
       const datasetDir = resolve(absoluteDatasetsRoot, dataset);
       assertPathInsideRoot(absoluteDatasetsRoot, datasetDir, dataset);
 

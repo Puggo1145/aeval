@@ -78,6 +78,9 @@ Experiment (实验定义) → 加载 Tasks (任务集) → 执行 Provider (被�
 
 ```yaml
 name: "chat-agent-smoke"
+dataset: "chat-agent/smoke"            # 必填：数据集相对 datasetsRoot 的路径
+revision: "rev-2026-02-28-001"         # 可选：固定 revision（与 tag 二选一）
+# tag: "stable"                         # 可选：按 tag 选择 revision（与 revision 二选一）
 runs:
   - name: "smoke"                     # run 配置名（一个实验可定义多个 run）
     overrides: {}                     # 可选：传给 provider 的覆盖参数
@@ -87,10 +90,14 @@ timeoutMs: 30000                      # 可选：全局超时覆盖
 ```
 
 关键字段说明：
+- **dataset**: 必填。告诉 `TaskSourceAdapter` 本次 run 要读取哪个数据集目录。
+- **revision/tag**: 可选且互斥。用于选择不可变数据集版本；都不传时由 adapter 使用默认解析规则。
 - **runs**: 数组，每个元素是一个 run 配置。run name 在实验内必须唯一。执行时通过 `--run` 指定跑哪个。
 - **maxConcurrency**: 控制 trial 级别的并发数。
 - **trialsPerTask**: 全局默认值，task 级可覆盖。当 > 1 时，summary 会产出 pass@k / pass^k 指标。
-- `taskSource` / `resultStore` / `observer` 实例通过 `createCore(...)` 依赖注入，不再由 Experiment DSL 声明。
+- `taskSource` / `resultStore` / `observer` adapter 实例通过 `createCore(...)` 依赖注入；但数据集选择（`dataset/revision/tag`）由 Experiment DSL 声明。
+
+迁移说明：`dataset/revision/tag` 已从 `createLocalTaskSourceAdapter` 的 options 移到 Experiment DSL。
 
 ### 2. Task（任务）
 
@@ -349,7 +356,7 @@ verdict 逻辑：
 `orchestrateRun()` 是核心编排流程：
 
 1. **解析 run 配置** — 从 experiment.runs 中找到指定 runName
-2. **加载数据集** — 调用 `taskSourceAdapter.resolveDataset()`（数据定位参数来自组合根注入的 adapter 实例）
+2. **加载数据集** — 调用 `taskSourceAdapter.resolveDataset({ dataset, revision?, tag? })`（selector 来自 experiment 定义）
 3. **校验 tasks** — 验证 schema、检查 provider/grader 是否注册、校验 grader config
 4. **保存 RunManifest** — 记录 run 元数据
 5. **生成 trial 队列** — 每个 task × trialsPerTask
@@ -409,17 +416,22 @@ youeval baseline compare <runId> \
         └── .tags.json         # 可选：tag 过滤文件
 ```
 
-`local` task source 的数据集在组合根配置，例如：
+`local` task source 在组合根只配置 `datasetsRoot`；具体选择哪个 dataset/revision/tag 在 Experiment DSL 里声明：
 
 ```typescript
 import { createAppCore } from './src/bootstrap/create-app-core.js';
 
-const core = createAppCore({
-  datasetsRoot: '.datasets',
-  dataset: 'chat-agent/smoke',
-  revision: 'rev-2026-02-28-001', // 可选，和 tag 二选一
-  // tag: 'stable',               // 可选，和 revision 二选一
-});
+const core = createAppCore();
+```
+
+```yaml
+name: "chat-agent-smoke"
+dataset: "chat-agent/smoke"
+revision: "rev-2026-02-28-001" # 可选，和 tag 二选一
+# tag: "stable"                # 可选，和 revision 二选一
+runs:
+  - name: "smoke"
+maxConcurrency: 2
 ```
 
 ---

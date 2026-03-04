@@ -40,6 +40,7 @@ function createValidTaskInput() {
 function createValidExperimentInput() {
   return {
     name: 'smoke-run',
+    dataset: 'test-dataset',
     runs: [
       {
         name: 'baseline',
@@ -452,8 +453,30 @@ test('validateExperimentDefinition accepts a valid experiment', () => {
   const experiment = validateExperimentDefinition(createValidExperimentInput());
 
   assert.equal(experiment.name, 'smoke-run');
+  assert.equal(experiment.dataset, 'test-dataset');
   assert.equal(experiment.runs.length, 1);
   assert.equal(experiment.maxConcurrency, 2);
+});
+
+test('validateExperimentDefinition fails when dataset is missing', async () => {
+  const { dataset: _dataset, ...inputWithoutDataset } = createValidExperimentInput();
+
+  await assert.rejects(
+    async () => validateExperimentDefinition(inputWithoutDataset),
+    (error: unknown) => expectValidationField(error, 'experiment.dataset'),
+  );
+});
+
+test('validateExperimentDefinition fails when revision and tag are both provided', async () => {
+  await assert.rejects(
+    async () =>
+      validateExperimentDefinition({
+        ...createValidExperimentInput(),
+        revision: 'rev-2026-03-04-001',
+        tag: 'stable',
+      }),
+    (error: unknown) => expectValidationField(error, 'experiment.revision'),
+  );
 });
 
 test('validateExperimentDefinition rejects wrapped experiment input', async () => {

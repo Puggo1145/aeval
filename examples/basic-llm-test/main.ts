@@ -46,7 +46,6 @@ async function main(): Promise<void> {
   const core = createCore({
     taskSourceAdapter: createLocalTaskSourceAdapter({
       datasetsRoot: currentDir,
-      dataset: 'datasets',
     }),
     resultStoreAdapter: createLocalResultStoreAdapter({
       rootDir: resolve(currentDir, 'results'),

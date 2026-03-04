@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { ObserverAdapter } from '../adapters/observer-adapter.js';
 import type { ResultStoreAdapter } from '../adapters/result-store-adapter.js';
-import type { ResolvedDataset, TaskSourceAdapter } from '../adapters/task-source-adapter.js';
+import type { DatasetSelector, ResolvedDataset, TaskSourceAdapter } from '../adapters/task-source-adapter.js';
 import { SYSTEM_ERROR_CODES } from '../contracts/execution.js';
 import type { ExperimentDefinition } from '../contracts/experiment.js';
 import type { RunManifest } from '../contracts/run-manifest.js';
@@ -75,9 +75,14 @@ export async function* orchestrateRun(
   const overrides = cloneAndDeepFreezeRecord(runConfig.overrides);
 
   // 1. run 启动前先解析数据集，失败即终止
+  const selector: DatasetSelector = {
+    dataset: input.experiment.dataset,
+    revision: input.experiment.revision,
+    tag: input.experiment.tag,
+  };
   let resolved: ResolvedDataset;
   try {
-    resolved = await deps.taskSourceAdapter.resolveDataset();
+    resolved = await deps.taskSourceAdapter.resolveDataset(selector);
   } catch (cause) {
     const message =
       cause instanceof Error && cause.message.trim().length > 0 ? cause.message : 'Unknown error.';

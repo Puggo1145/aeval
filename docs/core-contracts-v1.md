@@ -78,8 +78,9 @@ Validation rules:
 Required fields:
 
 1. `experiment.name`
-2. `experiment.runs[]` (at least one `RunConfig`)
-3. `experiment.maxConcurrency` (> 0)
+2. `experiment.dataset` (non-empty string)
+3. `experiment.runs[]` (at least one `RunConfig`)
+4. `experiment.maxConcurrency` (> 0)
 
 RunConfig structure (each element of `experiment.runs[]`):
 
@@ -88,15 +89,18 @@ RunConfig structure (each element of `experiment.runs[]`):
 
 Optional but standardized fields:
 
-1. `experiment.trialsPerTask`
-2. `experiment.timeoutMs`
+1. `experiment.revision` (optional, mutually exclusive with `experiment.tag`)
+2. `experiment.tag` (optional, mutually exclusive with `experiment.revision`)
+3. `experiment.trialsPerTask`
+4. `experiment.timeoutMs`
 
 Validation rules:
 
 1. `experiment.runs.length >= 1`.
 2. `experiment.runs[].name` must be unique within the experiment.
 3. `experiment.maxConcurrency > 0`.
-4. Unknown fields in Experiment DSL must fail fast.
+4. `experiment.revision` and `experiment.tag` must not be provided together.
+5. Unknown fields in Experiment DSL must fail fast.
 
 ## 4. Runtime 契约（v1 必选）
 
@@ -178,8 +182,14 @@ Required behaviors:
 ### 4.6 TaskSourceAdapter
 
 ```typescript
+export interface DatasetSelector {
+  dataset: string
+  revision?: string
+  tag?: string
+}
+
 export interface TaskSourceAdapter {
-  resolveDataset(): Promise<ResolvedDataset>
+  resolveDataset(selector: DatasetSelector): Promise<ResolvedDataset>
 }
 
 export interface ResolvedDataset {
@@ -196,7 +206,7 @@ export interface ResolvedDataset {
 
 Required behaviors:
 
-1. Resolve dataset before run starts.
+1. Resolve dataset before run starts using selector from experiment (`dataset`, optional `revision`/`tag`).
 2. Resolve to immutable revision before trial execution.
 3. Persist `adapter/ref/revision/datasetHash` in run manifest.
 4. v1 must provide at least one usable reference adapter implementation.

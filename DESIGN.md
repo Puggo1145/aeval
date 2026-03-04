@@ -378,8 +378,14 @@ export interface BaselineRecord {
 Core 必须通过 `TaskSourceAdapter` 读取 task 输入，不直接绑死某种存储介质。
 
 ```typescript
+export interface DatasetSelector {
+  dataset: string
+  revision?: string
+  tag?: string
+}
+
 export interface TaskSourceAdapter {
-  resolveDataset(): Promise<ResolvedDataset>
+  resolveDataset(selector: DatasetSelector): Promise<ResolvedDataset>
 }
 
 export interface ResolvedDataset {
@@ -497,6 +503,9 @@ task:
 ```yaml
 experiment:
   name: "chat-agent-model-compare"
+  dataset: "chat-agent/smoke"
+  revision: "rev-2026-02-28-001" # optional, mutually exclusive with tag
+  # tag: "stable"                # optional, mutually exclusive with revision
   runs:
     - name: "model-a"
       overrides:
@@ -519,11 +528,13 @@ experiment:
 6. `strategy=WEIGHTED` 时，每个 `layers[]` 必须提供 `weight (>0)`。
 7. `strategy=ALL|ANY` 时，不允许出现 `passThreshold` 与 `weight` 字段。
 8. `execution.timeoutMs` 必须 > 0。
-9. 运行前必须通过 `TaskSourceAdapter.resolveDataset()` 解析到不可变 `revision`。
-10. `task.tags` 若提供，必须是 `string[]`。
-11. `task.lifecycle` 若提供，必须是对象。
-12. `task.desc/category/capability/tier/difficulty` 若提供，必须是 string。
-13. Task/Experiment DSL 对象内的未知字段必须在校验阶段直接报错（fail fast）。
+9. `experiment.dataset` 必填且必须是非空字符串。
+10. `experiment.revision` 与 `experiment.tag` 不能同时提供。
+11. 运行前必须通过 `TaskSourceAdapter.resolveDataset({ dataset, revision?, tag? })` 解析到不可变 `revision`。
+12. `task.tags` 若提供，必须是 `string[]`。
+13. `task.lifecycle` 若提供，必须是对象。
+14. `task.desc/category/capability/tier/difficulty` 若提供，必须是 string。
+15. Task/Experiment DSL 对象内的未知字段必须在校验阶段直接报错（fail fast）。
 
 ---
 

@@ -12,6 +12,9 @@ export type ExperimentRunConfig = z.infer<typeof ExperimentRunConfigSchema>;
 export const ExperimentSchema = z
   .object({
     name: NonEmptyStringSchema,
+    dataset: NonEmptyStringSchema,
+    revision: NonEmptyStringSchema.optional(),
+    tag: NonEmptyStringSchema.optional(),
     runs: z.array(ExperimentRunConfigSchema).min(1, {
       message: "Field 'experiment.runs' must contain at least one run.",
     }),
@@ -21,6 +24,14 @@ export const ExperimentSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
+    if (value.revision !== undefined && value.tag !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Fields 'revision' and 'tag' cannot be used together in experiment definition.",
+        path: ['revision'],
+      });
+    }
+
     const seenNames = new Set<string>();
 
     value.runs.forEach((run, index) => {

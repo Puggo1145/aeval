@@ -1,5 +1,11 @@
+export interface DatasetSelector {
+  dataset: string;
+  revision?: string;
+  tag?: string;
+}
+
 export interface TaskSourceAdapter {
-  resolveDataset(): Promise<ResolvedDataset>;
+  resolveDataset(selector: DatasetSelector): Promise<ResolvedDataset>;
 }
 
 export interface ResolvedDataset {

@@ -17,7 +17,6 @@ export function createAppCore(): CoreApi {
   return createCore({
     taskSourceAdapter: createLocalTaskSourceAdapter({
       datasetsRoot: '.datasets',
-      dataset: 'chat-agent/smoke',
     }),
     resultStoreAdapter: createLocalResultStoreAdapter({ rootDir: '.youeval/runs' }),
     providerRegistry,

@@ -531,7 +531,7 @@ test('local ResultStoreAdapter supports full core run persistence and query read
   try {
     const resultStore = createLocalResultStoreAdapter({ rootDir });
     const taskSourceAdapter: TaskSourceAdapter = {
-      async resolveDataset() {
+      async resolveDataset(_selector) {
         return {
           source: {
             adapter: 'local',
@@ -574,6 +574,7 @@ test('local ResultStoreAdapter supports full core run persistence and query read
 
     const experiment = validateExperimentDefinition({
       name: 'result-store-smoke',
+      dataset: 'smoke',
       runs: [{ name: 'default' }],
       maxConcurrency: 1,
     });

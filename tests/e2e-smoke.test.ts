@@ -19,6 +19,7 @@ import { registerReferenceProvider } from '../src/providers/index.js';
 function buildSmokeExperiment(): ExperimentDefinition {
   return {
     name: 'chat-agent-smoke',
+    dataset: 'chat-agent/smoke',
     runs: [{ name: 'smoke' }],
     maxConcurrency: 2,
   };
@@ -87,7 +88,6 @@ test('E2E smoke: full chain from taskSource.resolve to resultStore.read', async 
     const core = createCore({
       taskSourceAdapter: createLocalTaskSourceAdapter({
         datasetsRoot,
-        dataset: 'chat-agent/smoke',
       }),
       resultStoreAdapter: createLocalResultStoreAdapter({ rootDir: tmpDir }),
       providerRegistry,
@@ -229,7 +229,6 @@ test('E2E smoke: llm-judge protocol chain with mock JudgeProvider', async () => 
     const core = createCore({
       taskSourceAdapter: createLocalTaskSourceAdapter({
         datasetsRoot,
-        dataset: 'judge-test',
       }),
       resultStoreAdapter: createLocalResultStoreAdapter({ rootDir: runsDir }),
       providerRegistry,
@@ -239,6 +238,7 @@ test('E2E smoke: llm-judge protocol chain with mock JudgeProvider', async () => 
 
     const experiment: ExperimentDefinition = {
       name: 'judge-protocol-test',
+      dataset: 'judge-test',
       runs: [{ name: 'judge-run' }],
       maxConcurrency: 1,
     };
