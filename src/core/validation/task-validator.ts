@@ -14,6 +14,7 @@ export function validateTaskDefinition(
   input: unknown,
   options: TaskValidationOptions,
 ): TaskDefinition {
+  // 先瞅瞅是不是对象，不然没法 parse
   const rawTaskResult = DefinitionInputSchema.safeParse(input);
   if (!rawTaskResult.success) {
     throwFirstZodValidationError(rawTaskResult.error, 'task');

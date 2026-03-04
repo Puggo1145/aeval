@@ -1,3 +1,5 @@
+// youeval 的调度核心，负责把一次 run 从头跑到尾
+
 import { randomUUID } from 'node:crypto';
 
 import type { ObserverAdapter } from '../adapters/observer-adapter.js';
@@ -78,15 +80,12 @@ export async function* orchestrateRun(
   } catch (cause) {
     const message =
       cause instanceof Error && cause.message.trim().length > 0 ? cause.message : 'Unknown error.';
-    throw new RuntimeError(
-      `Task source adapter dataset resolution failed: ${message}`,
-      {
-        details: {
-          field: 'experiment.taskSource',
-        },
-        cause,
+    throw new RuntimeError(`Task source adapter dataset resolution failed: ${message}`, {
+      details: {
+        field: 'experiment.taskSource',
       },
-    );
+      cause,
+    });
   }
 
   // 2. 校验任务定义
@@ -98,6 +97,7 @@ export async function* orchestrateRun(
     ...task,
     provider: {
       ...task.provider,
+      // deep copy 并冻结 provider 的覆盖参数，避免运行时跨 trial 修改影响其他 trial
       params: cloneAndDeepFreezeRecord(task.provider.params),
     },
   }));
@@ -142,12 +142,13 @@ export async function* orchestrateRun(
   };
   await deps.resultStoreAdapter.saveRunManifest(manifest);
 
-  // 计算每个 task 的 trial 数
+  // 计算每个 task 的 trial 数（experiment 级别）
   const trialsPerTask = input.experiment.trialsPerTask ?? 1;
 
   // 生成完整 trial 工作队列
   const trialWork: Array<{ task: TaskDefinition; trialIndex: number }> = [];
   for (const task of tasks) {
+    // task 级别可覆盖 experiment 级别
     const taskTrials = task.execution.trialsPerTask ?? trialsPerTask;
     for (let i = 0; i < taskTrials; i++) {
       trialWork.push({ task, trialIndex: i });

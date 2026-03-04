@@ -9,23 +9,6 @@ import type { TaskDefinition } from '../contracts/task.js';
 import type { TrialResult } from '../contracts/trial.js';
 import { aggregateGraders } from './grader-aggregate.js';
 
-export interface TrialExecutionDeps {
-  resolveProvider: (
-    providerId: string,
-  ) => (ctx: TaskContext, params: Readonly<Record<string, unknown>>) => Promise<ExecutionResult>;
-  resolveGrader: (type: string) => Grader;
-}
-
-export interface TrialExecutionInput {
-  task: TaskDefinition;
-  trialIndex: number;
-  runId: string;
-  runName: string;
-  overrides: Readonly<Record<string, unknown>>;
-  timeoutMs: number;
-  parentSignal?: AbortSignal;
-}
-
 class TrialTimeoutError extends Error {
   constructor(timeoutMs: number) {
     super(`Trial timed out after ${timeoutMs}ms`);
@@ -55,7 +38,7 @@ function classifySystemError(
   if (signal.aborted) {
     return {
       code: SYSTEM_ERROR_CODES.ABORTED,
-      message: 'Trial aborted by parent signal.',
+      message: 'Trial aborted by parent.',
       retryable: false,
     };
   }
@@ -73,6 +56,23 @@ function classifySystemError(
     message: String(error),
     retryable: true,
   };
+}
+
+export interface TrialExecutionDeps {
+  resolveProvider: (
+    providerId: string,
+  ) => (ctx: TaskContext, params: Readonly<Record<string, unknown>>) => Promise<ExecutionResult>;
+  resolveGrader: (type: string) => Grader;
+}
+
+export interface TrialExecutionInput {
+  task: TaskDefinition;
+  trialIndex: number;
+  runId: string;
+  runName: string;
+  overrides: Readonly<Record<string, unknown>>;
+  timeoutMs: number;
+  parentSignal?: AbortSignal;
 }
 
 /**
@@ -94,10 +94,14 @@ export async function executeTrial(
 
   // 将父级 signal 透传到当前 trial 的 abort controller
   if (input.parentSignal) {
-    if (input.parentSignal.aborted) {
-      abortController.abort(input.parentSignal.reason);
+    // 保存一个指针，对 TS 确保 signal 不会被 GC 回收
+    const parentSignal = input.parentSignal;
+    // 父级 abort 已经中止，终止当前 trial 并使用和父级相同的 reason
+    if (parentSignal.aborted) {
+      abortController.abort(parentSignal.reason);
     } else {
-      const onParentAbort = () => abortController.abort(input.parentSignal!.reason);
+      // 父级暂未终止，监听父级 abort 事件，并使用和父级相同的 reason 中止当前 trial
+      const onParentAbort = () => abortController.abort(parentSignal.reason);
       input.parentSignal.addEventListener('abort', onParentAbort, { once: true });
       removeParentAbortListener = () =>
         input.parentSignal?.removeEventListener('abort', onParentAbort);
