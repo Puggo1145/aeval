@@ -2,6 +2,7 @@ import * as p from '@clack/prompts';
 
 import type { RunSummary, RunSummaryRecord } from '../../../core/contracts/run-summary.js';
 import type { BaselineComparison } from '../../../core/contracts/runtime.js';
+import type { TrialResult, TrialResultRecord } from '../../../core/contracts/trial.js';
 
 function formatPassRate(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`;
@@ -11,10 +12,30 @@ function signedPassRate(delta: number): string {
   return `${delta >= 0 ? '+' : ''}${formatPassRate(delta)}`;
 }
 
-export function formatSummaryNote(summary: RunSummary): void {
+export function formatExperimentText(value: string | undefined): string {
+  if (!value || value.trim().length === 0) {
+    return 'unknown';
+  }
+  return value.trim();
+}
+
+export function formatRunOptionLabel(record: RunSummaryRecord): string {
+  return record.summary.runName;
+}
+
+export function formatRunOptionHint(experiment: string | undefined): string {
+  return `experiment: ${formatExperimentText(experiment)}`;
+}
+
+export function formatRunOptionStatsHint(record: RunSummaryRecord): string {
+  return `pass=${formatPassRate(record.summary.passRate)} | tasks=${record.summary.totalTasks} | trials=${record.summary.totalTrials}`;
+}
+
+export function formatSummaryNote(summary: RunSummary, experiment?: string): void {
   const lines: string[] = [
     `Run ID:       ${summary.runId}`,
     `Run Name:     ${summary.runName}`,
+    `Experiment:   ${formatExperimentText(experiment)}`,
     `Pass Rate:    ${formatPassRate(summary.passRate)}`,
     `Total Tasks:  ${summary.totalTasks}`,
     `Total Trials: ${summary.totalTrials}`,
@@ -59,15 +80,19 @@ export function formatComparisonNote(comparison: BaselineComparison): void {
   p.note(lines.join('\n'), 'Baseline Comparison');
 }
 
-export function formatRunsTable(records: RunSummaryRecord[]): string {
+export function formatRunsTable(
+  records: RunSummaryRecord[],
+  experimentsByRunId: ReadonlyMap<string, string> = new Map(),
+): string {
   if (records.length === 0) {
     return 'No runs found.';
   }
 
-  const header = ['Run ID', 'Run Name', 'Pass Rate', 'Tasks', 'Trials'];
+  const header = ['Run ID', 'Run Name', 'Experiment', 'Pass Rate', 'Tasks', 'Trials'];
   const rows = records.map((r) => [
     r.summary.runId,
     r.summary.runName,
+    formatExperimentText(experimentsByRunId.get(r.runId)),
     formatPassRate(r.summary.passRate),
     String(r.summary.totalTasks),
     String(r.summary.totalTrials),
@@ -83,6 +108,73 @@ export function formatRunsTable(records: RunSummaryRecord[]): string {
   const lines = [formatRow(header), widths.map((w) => '-'.repeat(w)).join('  ')];
   for (const row of rows) {
     lines.push(formatRow(row));
+  }
+
+  return lines.join('\n');
+}
+
+export function formatTrialsTable(records: TrialResultRecord[]): string {
+  if (records.length === 0) {
+    return 'No trials found.';
+  }
+
+  const header = ['Task ID', 'Trial', 'Status', 'Score', 'Duration'];
+  const rows = records.map((record) => {
+    const trial = record.trial;
+    return [
+      trial.taskId,
+      String(trial.trialIndex),
+      trial.aggregate.pass ? 'PASS' : 'FAIL',
+      trial.aggregate.score !== undefined ? trial.aggregate.score.toFixed(2) : '-',
+      `${trial.timings.durationMs}ms`,
+    ];
+  });
+
+  const widths = header.map((h, i) =>
+    Math.max(h.length, ...rows.map((row) => (row[i] ?? '').length)),
+  );
+
+  const formatRow = (cells: string[]): string =>
+    cells.map((cell, i) => cell.padEnd(widths[i] ?? 0)).join('  ');
+
+  const lines = [formatRow(header), widths.map((w) => '-'.repeat(w)).join('  ')];
+  for (const row of rows) {
+    lines.push(formatRow(row));
+  }
+
+  return lines.join('\n');
+}
+
+function truncateText(text: string, maxLength: number): string {
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+export function formatTrialGraderDetails(trial: TrialResult): string {
+  const score = trial.aggregate.score !== undefined ? trial.aggregate.score.toFixed(2) : '-';
+  const lines = [
+    `Task:      ${trial.taskId}`,
+    `Trial:     #${trial.trialIndex}`,
+    `Aggregate: ${trial.aggregate.pass ? 'PASS' : 'FAIL'} (score=${score})`,
+    `Run:       ${trial.runName} (${trial.runId})`,
+    `Duration:  ${trial.timings.durationMs}ms`,
+    '',
+    'Graders:',
+  ];
+
+  if (trial.graderResults.length === 0) {
+    lines.push('  (no grader results)');
+    return lines.join('\n');
+  }
+
+  for (const grader of trial.graderResults) {
+    const graderScore = grader.result.score !== undefined ? grader.result.score.toFixed(2) : '-';
+    lines.push(
+      `  [${grader.result.pass ? 'PASS' : 'FAIL'}] ${grader.name} (${grader.type}) score=${graderScore}`,
+    );
+    lines.push(`    reason: ${truncateText(grader.result.reason, 140)}`);
   }
 
   return lines.join('\n');

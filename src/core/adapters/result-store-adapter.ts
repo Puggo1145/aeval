@@ -7,6 +7,11 @@ export interface BaselineRecord {
   updatedAt: string;
 }
 
+export interface ClearedResultEntry {
+  path: string;
+  kind: 'file' | 'dir';
+}
+
 export interface ResultStoreAdapter {
   saveRunManifest(input: RunManifest): Promise<void>;
   saveRunSummary(input: RunSummaryRecord): Promise<void>;
@@ -17,4 +22,6 @@ export interface ResultStoreAdapter {
   saveBaseline(input: BaselineRecord): Promise<void>;
   getBaselineRunId(): Promise<string | null>;
   listRunIds(): Promise<string[]>;
+  clearResultsByRunIds(runIds: string[]): Promise<ClearedResultEntry[]>;
+  clearAllResults(): Promise<ClearedResultEntry[]>;
 }

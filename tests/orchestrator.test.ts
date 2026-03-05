@@ -3,6 +3,7 @@ import test from 'node:test';
 import type { ObserverAdapter } from '../src/core/adapters/observer-adapter.js';
 import type {
   BaselineRecord,
+  ClearedResultEntry,
   ResultStoreAdapter,
 } from '../src/core/adapters/result-store-adapter.js';
 import type {
@@ -64,6 +65,49 @@ class InMemoryResultStoreAdapter implements ResultStoreAdapter {
   }
   async listRunIds(): Promise<string[]> {
     return [...this.runSummaries.keys()].sort();
+  }
+  async clearAllResults(): Promise<ClearedResultEntry[]> {
+    const deletedEntries: ClearedResultEntry[] = [];
+    const runIds = new Set([
+      ...this.runManifests.keys(),
+      ...this.runSummaries.keys(),
+      ...this.trialRecords.keys(),
+    ]);
+    for (const runId of [...runIds].sort()) {
+      deletedEntries.push({ path: runId, kind: 'dir' });
+    }
+    if (this.baselineRunId) {
+      deletedEntries.push({ path: 'baseline.json', kind: 'file' });
+    }
+
+    this.runManifests.clear();
+    this.runSummaries.clear();
+    this.trialRecords.clear();
+    this.baselineRunId = null;
+    return deletedEntries;
+  }
+
+  async clearResultsByRunIds(runIds: string[]): Promise<ClearedResultEntry[]> {
+    const normalizedRunIds = [...new Set(runIds)].sort();
+    const deletedEntries: ClearedResultEntry[] = [];
+
+    for (const runId of normalizedRunIds) {
+      const hadAnyData =
+        this.runManifests.has(runId) || this.runSummaries.has(runId) || this.trialRecords.has(runId);
+      this.runManifests.delete(runId);
+      this.runSummaries.delete(runId);
+      this.trialRecords.delete(runId);
+      if (hadAnyData) {
+        deletedEntries.push({ path: runId, kind: 'dir' });
+      }
+    }
+
+    if (this.baselineRunId && normalizedRunIds.includes(this.baselineRunId)) {
+      this.baselineRunId = null;
+      deletedEntries.push({ path: 'baseline.json', kind: 'file' });
+    }
+
+    return deletedEntries;
   }
 }
 

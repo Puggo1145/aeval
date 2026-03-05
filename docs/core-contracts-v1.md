@@ -219,9 +219,15 @@ Core 通过工厂函数创建：
 
 #### 4.7.1 Experiment Loading
 
-1. `core.loadExperiment(input) -> Promise<LoadedExperiment>` — 加载并校验 ExperimentDefinition。
-2. `input` 支持直接对象或 `Promise<unknown>`（例如 YAML 解析结果）。
-3. `core.experiments` 暴露当前已加载实验列表（只读）。
+1. `core.loadExperiment(input) -> Promise<LoadedExperiment>` — 加载并校验单个 ExperimentDefinition。
+2. `core.loadExperiments(...inputs) -> Promise<LoadedExperiment[]>` — 批量加载并校验多个 ExperimentDefinition。
+3. `input` 支持直接对象或 `Promise<unknown>`（例如 YAML 解析结果）。
+4. `core.experiments` 暴露当前已加载实验列表（只读）。
+
+Required behaviors:
+
+1. `loadExperiments(...inputs)` 的单个元素校验/加载语义必须与对每个输入依次调用 `loadExperiment(input)` 一致。
+2. `core.experiments` 中的追加顺序与实际加载顺序一致。
 
 #### 4.7.2 LoadedExperiment Runtime API（v1 必选）
 
@@ -251,12 +257,16 @@ Required behaviors:
 1. `core.getRunSummary(runId) -> RunSummary | null` — 通过 `ResultStoreAdapter` 读取。
 2. `core.listTrials(runId) -> TrialResultRecord[]` — 通过 `ResultStoreAdapter` 读取。
 3. `core.listRuns() -> RunSummaryRecord[]` — 从注入的 `ResultStoreAdapter` 列出 run summaries。
+4. `core.clearResultsByRunIds(runIds) -> ClearedResultEntry[]` — 按选中 `runId` 删除结果数据。
+5. `core.clearResults() -> ClearedResultEntry[]` — 清除全部结果数据。
 
 Required behaviors:
 
 1. `core.getRunSummary` 在未命中时返回 `null`。
 2. `core.listTrials` 在未命中时返回空数组。
-3. `core.listRuns` 仅返回存在 run summary 的 `runId`。
+3. `core.listRuns` 仅返回可解析为 run summary 的 `runId`（包括 adapter 基于 trial 记录恢复出的 summary）。
+4. `core.clearResultsByRunIds` 仅删除传入的 `runId`；当 baseline 指向被删 run 时必须清除 baseline 指针。
+5. `core.clearResults` 删除全部结果与 baseline 指针。
 
 ### 4.8 Baseline Contracts
 
@@ -313,6 +323,8 @@ Required methods:
 7. `listRunIds`
 8. `saveBaseline`
 9. `getBaselineRunId`
+10. `clearResultsByRunIds`
+11. `clearAllResults`
 
 ### 5.2 Manifest / Records
 

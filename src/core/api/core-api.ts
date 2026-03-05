@@ -1,7 +1,8 @@
 import type { ObserverAdapter } from '../adapters/observer-adapter.js';
-import type { ResultStoreAdapter } from '../adapters/result-store-adapter.js';
+import type { ClearedResultEntry, ResultStoreAdapter } from '../adapters/result-store-adapter.js';
 import type { TaskSourceAdapter } from '../adapters/task-source-adapter.js';
 import type { ExperimentDefinition } from '../contracts/experiment.js';
+import type { RunManifest } from '../contracts/run-manifest.js';
 import type { RunSummary, RunSummaryRecord } from '../contracts/run-summary.js';
 import type {
   BaselineComparison,
@@ -49,6 +50,8 @@ export interface CompareBaselineOptions {
 export interface CoreApi {
   readonly experiments: readonly LoadedExperiment[];
   loadExperiment(input: unknown | Promise<unknown>): Promise<LoadedExperiment>;
+  loadExperiments(...inputs: Array<unknown | Promise<unknown>>): Promise<LoadedExperiment[]>;
+  getRunManifest(runId: string): Promise<RunManifest | null>;
   getRunSummary(runId: string): Promise<RunSummary | null>;
   listTrials(runId: string): Promise<TrialResultRecord[]>;
   setBaseline(runId: string): Promise<void>;
@@ -57,6 +60,8 @@ export interface CoreApi {
     options?: CompareBaselineOptions,
   ): Promise<BaselineComparison>;
   listRuns(): Promise<RunSummaryRecord[]>;
+  clearResultsByRunIds(runIds: string[]): Promise<ClearedResultEntry[]>;
+  clearResults(): Promise<ClearedResultEntry[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -161,16 +166,34 @@ export function createCore(deps: CoreDependencies): CoreApi {
 
   const loadedExperiments: LoadedExperiment[] = [];
 
+  async function loadExperimentInternal(input: unknown | Promise<unknown>): Promise<LoadedExperiment> {
+    const raw = await input;
+    const definition = validateExperimentDefinition(raw);
+    const loaded = buildLoadedExperiment(definition);
+    loadedExperiments.push(loaded);
+    return loaded;
+  }
+
   return {
     get experiments(): readonly LoadedExperiment[] {
       return loadedExperiments;
     },
 
     async loadExperiment(input): Promise<LoadedExperiment> {
-      const raw = await input;
-      const definition = validateExperimentDefinition(raw);
-      const loaded = buildLoadedExperiment(definition);
-      loadedExperiments.push(loaded);
+      return loadExperimentInternal(input);
+    },
+
+    async loadExperiments(...inputs): Promise<LoadedExperiment[]> {
+      if (inputs.length === 0) {
+        throw new ValidationError('At least one experiment input is required.', {
+          details: { field: 'inputs' },
+        });
+      }
+
+      const loaded: LoadedExperiment[] = [];
+      for (const input of inputs) {
+        loaded.push(await loadExperimentInternal(input));
+      }
       return loaded;
     },
 
@@ -180,12 +203,13 @@ export function createCore(deps: CoreDependencies): CoreApi {
       return record?.summary ?? null;
     },
 
+    async getRunManifest(runId): Promise<RunManifest | null> {
+      const normalizedRunId = ensureNonEmptyString(runId, 'runId');
+      return resultStoreAdapter.getRunManifest(normalizedRunId);
+    },
+
     async listTrials(runId): Promise<TrialResultRecord[]> {
       const normalizedRunId = ensureNonEmptyString(runId, 'runId');
-      const record = await resultStoreAdapter.getRunSummary(normalizedRunId);
-      if (!record) {
-        return [];
-      }
       return resultStoreAdapter.listTrials(normalizedRunId);
     },
 
@@ -303,6 +327,14 @@ export function createCore(deps: CoreDependencies): CoreApi {
       }
 
       return records.sort((a, b) => a.runId.localeCompare(b.runId));
+    },
+
+    async clearResults(): Promise<ClearedResultEntry[]> {
+      return resultStoreAdapter.clearAllResults();
+    },
+
+    async clearResultsByRunIds(runIds: string[]): Promise<ClearedResultEntry[]> {
+      return resultStoreAdapter.clearResultsByRunIds(runIds);
     },
   };
 }

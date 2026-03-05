@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import type {
   BaselineRecord,
+  ClearedResultEntry,
   ResultStoreAdapter,
 } from '../src/core/adapters/result-store-adapter.js';
 import type {
@@ -72,15 +73,65 @@ class InMemoryResultStoreAdapter implements ResultStoreAdapter {
   async listRunIds(): Promise<string[]> {
     return [...this.runSummaries.keys()].sort();
   }
+
+  async clearAllResults(): Promise<ClearedResultEntry[]> {
+    const deletedEntries: ClearedResultEntry[] = [];
+    const runIds = new Set([
+      ...this.runManifests.keys(),
+      ...this.runSummaries.keys(),
+      ...this.trialRecords.keys(),
+    ]);
+    for (const runId of [...runIds].sort()) {
+      deletedEntries.push({ path: runId, kind: 'dir' });
+    }
+    if (this.baselineRunId) {
+      deletedEntries.push({ path: 'baseline.json', kind: 'file' });
+    }
+
+    this.runManifests.clear();
+    this.runSummaries.clear();
+    this.trialRecords.clear();
+    this.baselineRunId = null;
+    return deletedEntries;
+  }
+
+  async clearResultsByRunIds(runIds: string[]): Promise<ClearedResultEntry[]> {
+    const normalizedRunIds = [...new Set(runIds)].sort();
+    const deletedEntries: ClearedResultEntry[] = [];
+
+    for (const runId of normalizedRunIds) {
+      const hadAnyData =
+        this.runManifests.has(runId) || this.runSummaries.has(runId) || this.trialRecords.has(runId);
+      this.runManifests.delete(runId);
+      this.runSummaries.delete(runId);
+      this.trialRecords.delete(runId);
+      if (hadAnyData) {
+        deletedEntries.push({ path: runId, kind: 'dir' });
+      }
+    }
+
+    if (this.baselineRunId && normalizedRunIds.includes(this.baselineRunId)) {
+      this.baselineRunId = null;
+      deletedEntries.push({ path: 'baseline.json', kind: 'file' });
+    }
+
+    return deletedEntries;
+  }
 }
 
-function createExperimentDefinition(): ExperimentDefinition {
+function createExperimentDefinition(
+  input: {
+    name?: string;
+    dataset?: string;
+    runName?: string;
+  } = {},
+): ExperimentDefinition {
   return validateExperimentDefinition({
-    name: 'milestone-2-smoke',
-    dataset: 'chat-agent/smoke',
+    name: input.name ?? 'milestone-2-smoke',
+    dataset: input.dataset ?? 'chat-agent/smoke',
     runs: [
       {
-        name: 'baseline',
+        name: input.runName ?? 'baseline',
       },
     ],
     maxConcurrency: 1,
@@ -287,6 +338,53 @@ test('loadExperiment + stream emits run:started and run:completed events', async
   assert.equal(events[1]?.type, 'run:completed');
 });
 
+test('loadExperiments loads multiple definitions and appends to core.experiments', async () => {
+  const core = createCore({
+    taskSourceAdapter: createTaskSourceAdapter(),
+    resultStoreAdapter: new InMemoryResultStoreAdapter(),
+    observerAdapters: [
+      {
+        onEvent: () => {},
+      },
+    ],
+    providerRegistry: new InMemoryProviderRegistry(),
+    graderRegistry: new InMemoryGraderRegistry(),
+  });
+
+  const loaded = await core.loadExperiments(
+    createExperimentDefinition({ name: 'exp-a', runName: 'run-a' }),
+    Promise.resolve(createExperimentDefinition({ name: 'exp-b', runName: 'run-b' })),
+  );
+
+  assert.equal(loaded.length, 2);
+  assert.equal(loaded[0]?.definition.name, 'exp-a');
+  assert.equal(loaded[1]?.definition.name, 'exp-b');
+  assert.equal(core.experiments.length, 2);
+});
+
+test('loadExperiments rejects when called without inputs', async () => {
+  const core = createCore({
+    taskSourceAdapter: createTaskSourceAdapter(),
+    resultStoreAdapter: new InMemoryResultStoreAdapter(),
+    observerAdapters: [
+      {
+        onEvent: () => {},
+      },
+    ],
+    providerRegistry: new InMemoryProviderRegistry(),
+    graderRegistry: new InMemoryGraderRegistry(),
+  });
+
+  await assert.rejects(
+    async () => core.loadExperiments(),
+    (error: unknown) => {
+      assert.ok(error instanceof ValidationError);
+      assert.equal(error.code, ERROR_CODES.VALIDATION_INVALID_INPUT);
+      return true;
+    },
+  );
+});
+
 test('getRunSummary and listTrials return data from the ResultStoreAdapter', async () => {
   const store = new InMemoryResultStoreAdapter();
   await store.saveRunSummary(createRunSummaryRecord('run-1', 'run-1'));
@@ -298,6 +396,17 @@ test('getRunSummary and listTrials return data from the ResultStoreAdapter', asy
   const trials = await core.listTrials('run-1');
 
   assert.equal(summary?.runId, 'run-1');
+  assert.equal(trials.length, 1);
+  assert.equal(trials[0]?.trial.taskId, 'task-1');
+});
+
+test('listTrials returns trial records even when run summary is missing', async () => {
+  const store = new InMemoryResultStoreAdapter();
+  await store.saveTrial(createTrialRecord('run-only-trials', 'task-1', true));
+
+  const core = createCoreWithStore(store);
+  const trials = await core.listTrials('run-only-trials');
+
   assert.equal(trials.length, 1);
   assert.equal(trials[0]?.trial.taskId, 'task-1');
 });
@@ -470,4 +579,44 @@ test('listRuns returns sorted run summaries from the store', async () => {
     runs.map((record) => record.runId),
     ['run-a', 'run-b'],
   );
+});
+
+test('clearResults delegates to result store and removes runs/baseline data', async () => {
+  const store = new InMemoryResultStoreAdapter();
+  await store.saveRunSummary(createRunSummaryRecord('run-a', 'run-a'));
+  await store.saveTrial(createTrialRecord('run-a', 'task-a', true));
+  await store.saveBaseline({
+    runId: 'run-a',
+    updatedAt: '2026-03-04T00:00:00.000Z',
+  });
+
+  const core = createCoreWithStore(store);
+  const deletedEntries = await core.clearResults();
+
+  assert.deepEqual(deletedEntries, [
+    { path: 'run-a', kind: 'dir' },
+    { path: 'baseline.json', kind: 'file' },
+  ]);
+  assert.deepEqual(await core.listRuns(), []);
+  assert.equal(await store.getBaselineRunId(), null);
+});
+
+test('clearResultsByRunIds delegates to result store and removes selected runs only', async () => {
+  const store = new InMemoryResultStoreAdapter();
+  await store.saveRunSummary(createRunSummaryRecord('run-a', 'run-a'));
+  await store.saveRunSummary(createRunSummaryRecord('run-b', 'run-b'));
+  await store.saveBaseline({
+    runId: 'run-b',
+    updatedAt: '2026-03-04T00:00:00.000Z',
+  });
+
+  const core = createCoreWithStore(store);
+  const deletedEntries = await core.clearResultsByRunIds(['run-a']);
+
+  assert.deepEqual(deletedEntries, [{ path: 'run-a', kind: 'dir' }]);
+  assert.deepEqual(
+    (await core.listRuns()).map((record) => record.runId),
+    ['run-b'],
+  );
+  assert.equal(await store.getBaselineRunId(), 'run-b');
 });

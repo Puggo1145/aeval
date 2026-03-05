@@ -84,7 +84,7 @@
 │  - Experiment    - Trial engine     - LLM judge adapter   │
 │                                                            │
 │  Input Layer     Storage Layer      Core API Layer         │
-│  - TaskSource    - ResultStore      - loadExperiment()     │
+│  - TaskSource    - ResultStore      - loadExperiment(s)    │
 │  - Resolver      - Baselines        - LoadedExperiment.run │
 │                                    - LoadedExperiment.stream│
 │                                    - getRunSummary()       │
@@ -156,12 +156,13 @@ apps/youeval/
 Core 对外只暴露稳定的程序化 API，交互模式作为 interface adapter 按需接入：
 
 1. `createCore(deps) -> CoreApi`：在组合根一次性注入依赖。
-2. `core.loadExperiment(input) -> Promise<LoadedExperiment>`：加载并校验实验定义。
-3. `loadedExperiment.run(runName) -> Promise<RunSummary>`：批处理执行一次 run。
-4. `loadedExperiment.stream(runName) -> AsyncIterable<RunEvent>`：返回事件流，供交互模式实时展示进度。
-5. `core.getRunSummary(runId)` / `core.listTrials(runId)`：按 `runId` 查询结果，来源仅 `ResultStoreAdapter`。
-6. `core.listRuns() -> Promise<RunSummaryRecord[]>`：列出所有已落盘 run summary。
-7. `core.setBaseline(runId)` / `core.compareBaseline(currentRunId, baselineRunId?)`：基线管理。
+2. `core.loadExperiment(input) -> Promise<LoadedExperiment>`：加载并校验单个实验定义。
+3. `core.loadExperiments(...inputs) -> Promise<LoadedExperiment[]>`：批量加载并校验多个实验定义。
+4. `loadedExperiment.run(runName) -> Promise<RunSummary>`：批处理执行一次 run。
+5. `loadedExperiment.stream(runName) -> AsyncIterable<RunEvent>`：返回事件流，供交互模式实时展示进度。
+6. `core.getRunSummary(runId)` / `core.listTrials(runId)`：按 `runId` 查询结果，来源仅 `ResultStoreAdapter`。
+7. `core.listRuns() -> Promise<RunSummaryRecord[]>`：列出所有可解析 run summary 的 run（含 adapter 基于 trial 记录恢复的中断 run）。
+8. `core.setBaseline(runId)` / `core.compareBaseline(currentRunId, baselineRunId?)`：基线管理。
 
 连接规则：
 
@@ -332,6 +333,8 @@ export interface ResultStoreAdapter {
   listRunIds(): Promise<string[]>
   saveBaseline(input: BaselineRecord): Promise<void>
   getBaselineRunId(): Promise<string | null>
+  clearResultsByRunIds(runIds: string[]): Promise<ClearedResultEntry[]>
+  clearAllResults(): Promise<ClearedResultEntry[]>
 }
 
 export interface RunManifest {

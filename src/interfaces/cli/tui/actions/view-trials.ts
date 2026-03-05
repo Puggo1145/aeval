@@ -1,6 +1,14 @@
 import * as p from '@clack/prompts';
 
 import type { CoreApi } from '../../../../core/api/index.js';
+import { readRunExperiments } from '../../run-metadata.js';
+import {
+  formatRunOptionLabel,
+  formatRunOptionStatsHint,
+  formatTrialGraderDetails,
+  formatTrialsTable,
+} from '../formatters.js';
+import { groupRunsByExperiment } from '../run-selection.js';
 import { handleCancel } from '../utils.js';
 
 export async function viewTrials(core: CoreApi): Promise<void> {
@@ -14,12 +22,35 @@ export async function viewTrials(core: CoreApi): Promise<void> {
     return;
   }
 
+  const experiments = await readRunExperiments(
+    core,
+    records.map((record) => record.runId),
+  );
+  const experimentGroups = groupRunsByExperiment(records, experiments);
+  const selectedExperiment = handleCancel(
+    await p.select({
+      message: 'Select an experiment:',
+      options: experimentGroups.map((group) => ({
+        value: group.experiment,
+        label: group.experiment,
+        hint: `${group.runs.length} run${group.runs.length === 1 ? '' : 's'}`,
+      })),
+    }),
+  );
+  const runsInExperiment =
+    experimentGroups.find((group) => group.experiment === selectedExperiment)?.runs ?? [];
+  if (runsInExperiment.length === 0) {
+    p.log.warn(`No runs found under experiment '${selectedExperiment}'.`);
+    return;
+  }
+
   const runId = handleCancel(
     await p.select({
       message: 'Select a run to view trials:',
-      options: records.map((r) => ({
+      options: runsInExperiment.map((r) => ({
         value: r.runId,
-        label: `${r.summary.runName} (${r.runId})`,
+        label: formatRunOptionLabel(r),
+        hint: formatRunOptionStatsHint(r),
       })),
     }),
   );
@@ -31,12 +62,39 @@ export async function viewTrials(core: CoreApi): Promise<void> {
     return;
   }
 
-  const lines = trials.map((record) => {
-    const t = record.trial;
-    const score = t.aggregate.score !== undefined ? t.aggregate.score.toFixed(2) : '-';
-    const status = t.aggregate.pass ? 'PASS' : 'FAIL';
-    return `${t.taskId} #${t.trialIndex}  ${status}  score=${score}  ${t.timings.durationMs}ms`;
-  });
+  p.note(formatTrialsTable(trials), 'Trials');
 
-  p.note(lines.join('\n'), 'Trials');
+  while (true) {
+    const selectedIndex = handleCancel(
+      await p.select<number | 'back'>({
+        message: 'Select a trial to view grader results:',
+        options: [
+          ...trials.map((record, index) => {
+            const trial = record.trial;
+            return {
+              value: index,
+              label: `${trial.taskId} #${trial.trialIndex}`,
+              hint: trial.aggregate.pass ? 'PASS' : 'FAIL',
+            };
+          }),
+          { value: 'back', label: 'Back' },
+        ],
+      }),
+    );
+
+    if (selectedIndex === 'back') {
+      return;
+    }
+
+    const selectedTrial = trials[selectedIndex]?.trial;
+    if (!selectedTrial) {
+      p.log.error('Selected trial not found.');
+      return;
+    }
+
+    p.note(
+      formatTrialGraderDetails(selectedTrial),
+      `Grader Results · ${selectedTrial.taskId} #${selectedTrial.trialIndex}`,
+    );
+  }
 }

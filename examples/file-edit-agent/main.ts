@@ -49,7 +49,10 @@ async function main(): Promise<void> {
     observerAdapters: [createConsoleObserverAdapter()],
   });
 
-  await core.loadExperiment(readFromYAML(resolve(currentDir, 'experiments/mini-models.yaml')));
+  await core.loadExperiments(
+    readFromYAML(resolve(currentDir, 'experiments/mini-models.yaml')),
+    readFromYAML(resolve(currentDir, 'experiments/nano-models.yaml')),
+  );
 
   await runTui(core);
 }

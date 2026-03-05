@@ -218,17 +218,41 @@ test('listTrials returns empty array when trials dir exists but is empty', async
 
 // --- listRunIds ---
 
-test('listRunIds returns sorted runIds for runs with summary records', async () => {
+test('listRunIds returns sorted runIds for runs with summary or trial records', async () => {
   const rootDir = await createTempDir();
   try {
     const store = createLocalResultStoreAdapter({ rootDir });
 
     await store.saveRunSummary(makeSummaryRecord('run-b'));
     await store.saveRunSummary(makeSummaryRecord('run-a'));
+    await store.saveTrial(makeTrialRecord('run-c', 'task/trial-only', 0, true));
     await store.saveRunManifest(makeManifest('run-manifest-only'));
 
     const runIds = await store.listRunIds();
-    assert.deepStrictEqual(runIds, ['run-a', 'run-b']);
+    assert.deepStrictEqual(runIds, ['run-a', 'run-b', 'run-c']);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('getRunSummary recovers interrupted run summary from trials when summary file is missing', async () => {
+  const rootDir = await createTempDir();
+  try {
+    const store = createLocalResultStoreAdapter({ rootDir });
+    const runId = 'run-interrupted';
+    await store.saveTrial(makeTrialRecord(runId, 'task/a', 0, true));
+    await store.saveTrial(makeTrialRecord(runId, 'task/a', 1, false));
+    await store.saveTrial(makeTrialRecord(runId, 'task/b', 0, true));
+
+    const recovered = await store.getRunSummary(runId);
+    assert.ok(recovered);
+    assert.strictEqual(recovered.runId, runId);
+    assert.strictEqual(recovered.summary.runName, 'model-a');
+    assert.strictEqual(recovered.summary.totalTasks, 2);
+    assert.strictEqual(recovered.summary.totalTrials, 3);
+    assert.strictEqual(recovered.summary.passRate, 1);
+    assert.strictEqual(recovered.summary.passAtK, 1);
+    assert.strictEqual(recovered.summary.passHatK, 0.5);
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
@@ -240,6 +264,111 @@ test('listRunIds returns empty array when root directory does not exist', async 
 
   const runIds = await store.listRunIds();
   assert.deepStrictEqual(runIds, []);
+});
+
+// --- clearAllResults ---
+
+test('clearResultsByRunIds removes only selected runs and clears baseline when selected run is baseline', async () => {
+  const rootDir = await createTempDir();
+  try {
+    const store = createLocalResultStoreAdapter({ rootDir });
+    const runIdA = 'run-selected-a';
+    const runIdB = 'run-selected-b';
+    await store.saveRunManifest(makeManifest(runIdA));
+    await store.saveRunSummary(makeSummaryRecord(runIdA));
+    await store.saveTrial(makeTrialRecord(runIdA, 'task/a', 0, true));
+    await store.saveRunManifest(makeManifest(runIdB));
+    await store.saveRunSummary(makeSummaryRecord(runIdB));
+    await store.saveTrial(makeTrialRecord(runIdB, 'task/b', 0, true));
+    await store.saveBaseline({
+      runId: runIdA,
+      updatedAt: '2026-03-01T00:00:00.000Z',
+    });
+
+    const deletedEntries = await store.clearResultsByRunIds([runIdA]);
+    assert.ok(
+      deletedEntries.some((entry) => entry.path === `${runIdA}/manifest.json` && entry.kind === 'file'),
+    );
+    assert.ok(deletedEntries.some((entry) => entry.path === runIdA && entry.kind === 'dir'));
+    assert.ok(
+      deletedEntries.some((entry) => entry.path === 'baseline.json' && entry.kind === 'file'),
+    );
+    assert.ok(
+      deletedEntries.every(
+        (entry) => !entry.path.startsWith(`${runIdB}/`) && entry.path !== runIdB,
+      ),
+    );
+
+    assert.equal(await store.getRunSummary(runIdA), null);
+    assert.notEqual(await store.getRunSummary(runIdB), null);
+    assert.equal(await store.getBaselineRunId(), null);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('clearResultsByRunIds keeps baseline when baseline run is not selected', async () => {
+  const rootDir = await createTempDir();
+  try {
+    const store = createLocalResultStoreAdapter({ rootDir });
+    const runIdA = 'run-clear-a';
+    const runIdB = 'run-clear-b';
+    await store.saveRunSummary(makeSummaryRecord(runIdA));
+    await store.saveRunSummary(makeSummaryRecord(runIdB));
+    await store.saveBaseline({
+      runId: runIdB,
+      updatedAt: '2026-03-01T00:00:00.000Z',
+    });
+
+    await store.clearResultsByRunIds([runIdA]);
+
+    assert.equal(await store.getRunSummary(runIdA), null);
+    assert.notEqual(await store.getRunSummary(runIdB), null);
+    assert.equal(await store.getBaselineRunId(), runIdB);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('clearAllResults removes all persisted results and returns deleted entries', async () => {
+  const rootDir = await createTempDir();
+  try {
+    const store = createLocalResultStoreAdapter({ rootDir });
+    const runId = 'run-clear-all';
+    await store.saveRunManifest(makeManifest(runId));
+    await store.saveRunSummary(makeSummaryRecord(runId));
+    await store.saveTrial(makeTrialRecord(runId, 'task/clear-001', 0, true));
+    await store.saveBaseline({
+      runId,
+      updatedAt: '2026-03-01T00:00:00.000Z',
+    });
+
+    const deletedEntries = await store.clearAllResults();
+
+    assert.ok(
+      deletedEntries.some((entry) => entry.path === 'baseline.json' && entry.kind === 'file'),
+    );
+    assert.ok(
+      deletedEntries.some(
+        (entry) => entry.path === `${runId}/manifest.json` && entry.kind === 'file',
+      ),
+    );
+    assert.ok(deletedEntries.some((entry) => entry.path === `${runId}` && entry.kind === 'dir'));
+    assert.deepStrictEqual(await store.listRunIds(), []);
+    assert.strictEqual(await store.getBaselineRunId(), null);
+    assert.strictEqual(await store.getRunSummary(runId), null);
+    assert.deepStrictEqual(await store.listTrials(runId), []);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('clearAllResults returns empty list when result root is missing', async () => {
+  const rootDir = join(tmpdir(), `youeval-result-store-clear-missing-${Date.now()}`);
+  const store = createLocalResultStoreAdapter({ rootDir });
+
+  const deletedEntries = await store.clearAllResults();
+  assert.deepStrictEqual(deletedEntries, []);
 });
 
 // --- saveBaseline / getBaselineRunId ---
