@@ -25,6 +25,7 @@ import { ValidationError } from '../src/core/errors/index.js';
 import { computeConfigHash } from '../src/core/orchestrator/config-hash.js';
 import { aggregateGraders } from '../src/core/orchestrator/grader-aggregate.js';
 import { orchestrateRun } from '../src/core/orchestrator/run-orchestrator.js';
+import { StreamClosedError } from '../src/core/runtime/abort-reasons.js';
 import { InMemoryGraderRegistry, InMemoryProviderRegistry } from '../src/core/runtime/index.js';
 import { validateExperimentDefinition } from '../src/core/validation/index.js';
 import { registerBuiltinGraders } from '../src/graders/register-builtins.js';
@@ -496,6 +497,45 @@ test('streamRun handles slow consumers without dropping events', async () => {
   assert.equal(events[events.length - 1]?.type, 'run:completed');
 });
 
+test('streamRun external signal abort interrupts pending next immediately', async () => {
+  const task = makeTask({
+    execution: { timeoutMs: 5000, trialsPerTask: 2 },
+  });
+  const { core, providerRegistry } = setupTestCore({ tasks: [task] });
+  providerRegistry.register('mock-provider', createNonCooperativeSlowProvider(300));
+
+  const abortController = new AbortController();
+  const iterator = (
+    await core.loadExperiment(makeExperiment({ maxConcurrency: 1 }))
+  ).stream('default', {
+    signal: abortController.signal,
+  })[Symbol.asyncIterator]();
+
+  while (true) {
+    const next = await iterator.next();
+    assert.equal(next.done, false);
+    if (
+      next.value.type === 'trial:started' &&
+      next.value.taskId === task.id &&
+      next.value.trialIndex === 1
+    ) {
+      break;
+    }
+  }
+
+  const startedAt = Date.now();
+  const pendingNext = iterator.next();
+  abortController.abort(new StreamClosedError());
+  const next = await pendingNext;
+  const elapsedMs = Date.now() - startedAt;
+
+  assert.ok(
+    elapsedMs < 250,
+    `Expected pending stream next() to resolve quickly after abort, got ${elapsedMs}ms`,
+  );
+  assert.equal(next.done, true);
+});
+
 test('streamRun early stop aborts workers and still persists consistent run records', async () => {
   const tasks = Array.from({ length: 3 }, (_, i) => makeTask({ id: `task-${i}` }));
   const { core, providerRegistry, resultStore } = setupTestCore({ tasks });
@@ -515,6 +555,27 @@ test('streamRun early stop aborts workers and still persists consistent run reco
   assert.equal(summaries.length, 0);
   assert.equal(manifests.length, 1);
   assert.equal(manifests[0]?.completedAt, undefined);
+});
+
+test('streamRun early stop returns quickly when provider ignores AbortSignal', async () => {
+  const tasks = [makeTask({ execution: { timeoutMs: 5000 } })];
+  const { core, providerRegistry } = setupTestCore({ tasks });
+  providerRegistry.register('mock-provider', createNonCooperativeSlowProvider(300));
+
+  const startedAt = Date.now();
+  for await (const event of (await core.loadExperiment(makeExperiment({ maxConcurrency: 1 }))).stream(
+    'default',
+  )) {
+    if (event.type === 'trial:started') {
+      break;
+    }
+  }
+  const elapsedMs = Date.now() - startedAt;
+
+  assert.ok(
+    elapsedMs < 250,
+    `Expected stream close to return quickly, got ${elapsedMs}ms`,
+  );
 });
 
 test('single trial failure does not affect other trials', async () => {
@@ -1320,6 +1381,35 @@ test('runExperiment surfaces trial persistence errors without hanging', async ()
   ]);
 
   assert.equal(result, 'save trial failed');
+});
+
+test('streamRun does not treat worker Error(\'stream closed\') as user cancellation', async () => {
+  class SaveTrialCollisionMessageResultStore extends InMemoryResultStoreAdapter {
+    override async saveTrial(): Promise<void> {
+      throw new Error('stream closed');
+    }
+  }
+
+  const task = makeTask();
+  const { core, providerRegistry } = setupTestCore({
+    tasks: [task],
+    resultStore: new SaveTrialCollisionMessageResultStore(),
+  });
+  providerRegistry.register('mock-provider', createPassingProvider());
+
+  await assert.rejects(
+    async () => {
+      for await (const _event of (await core.loadExperiment(makeExperiment())).stream('default')) {
+        // consume until stream ends or rejects
+      }
+    },
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.equal(error.message, 'stream closed');
+      assert.notEqual(error.name, 'StreamClosedError');
+      return true;
+    },
+  );
 });
 
 test('runExperiment waits for in-flight workers to settle before rejecting on worker fatal error', async () => {

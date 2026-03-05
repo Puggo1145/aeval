@@ -218,7 +218,7 @@ test('listTrials returns empty array when trials dir exists but is empty', async
 
 // --- listRunIds ---
 
-test('listRunIds returns sorted runIds for runs with summary or trial records', async () => {
+test('listRunIds returns sorted runIds for runs with summary/trial/manifest records', async () => {
   const rootDir = await createTempDir();
   try {
     const store = createLocalResultStoreAdapter({ rootDir });
@@ -229,7 +229,7 @@ test('listRunIds returns sorted runIds for runs with summary or trial records', 
     await store.saveRunManifest(makeManifest('run-manifest-only'));
 
     const runIds = await store.listRunIds();
-    assert.deepStrictEqual(runIds, ['run-a', 'run-b', 'run-c']);
+    assert.deepStrictEqual(runIds, ['run-a', 'run-b', 'run-c', 'run-manifest-only']);
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
@@ -253,6 +253,25 @@ test('getRunSummary recovers interrupted run summary from trials when summary fi
     assert.strictEqual(recovered.summary.passRate, 1);
     assert.strictEqual(recovered.summary.passAtK, 1);
     assert.strictEqual(recovered.summary.passHatK, 0.5);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('getRunSummary recovers interrupted run summary from manifest when only manifest exists', async () => {
+  const rootDir = await createTempDir();
+  try {
+    const store = createLocalResultStoreAdapter({ rootDir });
+    const runId = 'run-manifest-only';
+    await store.saveRunManifest(makeManifest(runId));
+
+    const recovered = await store.getRunSummary(runId);
+    assert.ok(recovered);
+    assert.strictEqual(recovered.runId, runId);
+    assert.strictEqual(recovered.summary.runName, 'interrupted');
+    assert.strictEqual(recovered.summary.totalTasks, 0);
+    assert.strictEqual(recovered.summary.totalTrials, 0);
+    assert.strictEqual(recovered.summary.passRate, 0);
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }

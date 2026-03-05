@@ -18,6 +18,7 @@ const MANIFEST_FILE = 'manifest.json';
 const SUMMARY_FILE = 'summary.json';
 const TRIALS_DIR = 'trials';
 const BASELINE_FILE = 'baseline.json';
+const INTERRUPTED_RUN_NAME = 'interrupted';
 
 export interface LocalResultStoreAdapterOptions {
   rootDir: string;
@@ -277,6 +278,21 @@ function summarizeTrialsAsRunSummary(
   };
 }
 
+function summarizeManifestAsRunSummary(runId: string): RunSummaryRecord {
+  const normalizedRunId = normalizeRunId(runId);
+  return {
+    runId: normalizedRunId,
+    summary: {
+      schemaVersion: SCHEMA_VERSIONS.RUN_SUMMARY,
+      runId: normalizedRunId,
+      runName: INTERRUPTED_RUN_NAME,
+      totalTasks: 0,
+      totalTrials: 0,
+      passRate: 0,
+    },
+  };
+}
+
 function assertTrialRunIdsMatch(input: TrialResultRecord): void {
   const normalizedRecordRunId = normalizeRunId(input.runId);
   const normalizedTrialRunId = normalizeRunId(input.trial.runId);
@@ -357,6 +373,10 @@ export function createLocalResultStoreAdapter(
     return records;
   }
 
+  async function getRunManifestByRunId(runId: string): Promise<RunManifest | null> {
+    return readJsonFileOrNull<RunManifest>(join(runDir(runId), MANIFEST_FILE));
+  }
+
   return {
     async saveRunManifest(input: RunManifest): Promise<void> {
       await writeStrict(async () => {
@@ -392,7 +412,7 @@ export function createLocalResultStoreAdapter(
     },
 
     async getRunManifest(runId: string): Promise<RunManifest | null> {
-      return readJsonFileOrNull<RunManifest>(join(runDir(runId), MANIFEST_FILE));
+      return getRunManifestByRunId(runId);
     },
 
     async getRunSummary(runId: string): Promise<RunSummaryRecord | null> {
@@ -405,7 +425,18 @@ export function createLocalResultStoreAdapter(
 
       // Recover interrupted runs that have trial records but no summary.json yet.
       const trials = await listTrialsByRunId(normalizedRunId);
-      return summarizeTrialsAsRunSummary(normalizedRunId, trials);
+      const trialSummary = summarizeTrialsAsRunSummary(normalizedRunId, trials);
+      if (trialSummary) {
+        return trialSummary;
+      }
+
+      // Recover runs interrupted before first trial completion (manifest-only).
+      const manifest = await getRunManifestByRunId(normalizedRunId);
+      if (manifest) {
+        return summarizeManifestAsRunSummary(normalizedRunId);
+      }
+
+      return null;
     },
 
     async listTrials(runId: string): Promise<TrialResultRecord[]> {
@@ -464,6 +495,13 @@ export function createLocalResultStoreAdapter(
         });
         const hasTrialRecord = trialEntries.some((entry) => entry.endsWith('.json'));
         if (hasTrialRecord) {
+          runIds.push(dirName);
+          continue;
+        }
+
+        const manifestPath = join(rootDirPath, dirName, MANIFEST_FILE);
+        const manifest = await readJsonFileOrNull(manifestPath);
+        if (manifest !== null) {
           runIds.push(dirName);
         }
       }

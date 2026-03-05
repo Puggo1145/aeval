@@ -7,6 +7,11 @@ import type { Grader, TaskContext } from '../contracts/runtime.js';
 import { SCHEMA_VERSIONS } from '../contracts/schema-versions.js';
 import type { TaskDefinition } from '../contracts/task.js';
 import type { TrialResult } from '../contracts/trial.js';
+import {
+  createTrialTimeoutAbortReason,
+  isStreamClosedError,
+  isTrialTimeoutAbortReason,
+} from '../runtime/abort-reasons.js';
 import { aggregateGraders } from './grader-aggregate.js';
 
 class TrialTimeoutError extends Error {
@@ -16,10 +21,25 @@ class TrialTimeoutError extends Error {
   }
 }
 
+class TrialAbortedError extends Error {
+  constructor() {
+    super('Trial aborted by parent.');
+    this.name = 'TrialAbortedError';
+  }
+}
+
 interface ClassifiedSystemError {
   code: SystemErrorCode;
   message: string;
   retryable: boolean;
+}
+
+function shouldShortCircuitOnAbort(reason: unknown): boolean {
+  if (isTrialTimeoutAbortReason(reason)) {
+    return true;
+  }
+
+  return isStreamClosedError(reason);
 }
 
 function classifySystemError(
@@ -27,7 +47,10 @@ function classifySystemError(
   timeoutMs: number,
   signal: AbortSignal,
 ): ClassifiedSystemError {
-  if (error instanceof TrialTimeoutError || (signal.aborted && signal.reason === 'timeout')) {
+  if (
+    error instanceof TrialTimeoutError ||
+    (signal.aborted && isTrialTimeoutAbortReason(signal.reason))
+  ) {
     return {
       code: SYSTEM_ERROR_CODES.TIMEOUT,
       message: `Trial timed out after ${timeoutMs}ms`,
@@ -91,6 +114,7 @@ export async function executeTrial(
   const abortController = new AbortController();
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   let removeParentAbortListener: (() => void) | undefined;
+  let removeAbortListener: (() => void) | undefined;
 
   // 将父级 signal 透传到当前 trial 的 abort controller
   if (input.parentSignal) {
@@ -128,17 +152,35 @@ export async function executeTrial(
 
     const timeoutPromise = new Promise<never>((_resolve, reject) => {
       timeoutId = setTimeout(() => {
-        abortController.abort('timeout');
+        abortController.abort(createTrialTimeoutAbortReason());
         reject(new TrialTimeoutError(input.timeoutMs));
       }, input.timeoutMs);
     });
 
-    execution = await Promise.race([providerPromise, timeoutPromise]);
+    const abortPromise = new Promise<never>((_resolve, reject) => {
+      const rejectIfShortCircuitReason = () => {
+        if (shouldShortCircuitOnAbort(abortController.signal.reason)) {
+          reject(new TrialAbortedError());
+        }
+      };
+
+      if (abortController.signal.aborted) {
+        rejectIfShortCircuitReason();
+        return;
+      }
+
+      const onAbort = () => rejectIfShortCircuitReason();
+      abortController.signal.addEventListener('abort', onAbort, { once: true });
+      removeAbortListener = () => abortController.signal.removeEventListener('abort', onAbort);
+    });
+
+    execution = await Promise.race([providerPromise, timeoutPromise, abortPromise]);
   } catch (error: unknown) {
     if (timeoutId !== undefined) {
       clearTimeout(timeoutId);
     }
     removeParentAbortListener?.();
+    removeAbortListener?.();
     const endedAt = new Date().toISOString();
     const durationMs = Math.round(performance.now() - startMs);
 
@@ -172,6 +214,7 @@ export async function executeTrial(
     clearTimeout(timeoutId);
   }
   removeParentAbortListener?.();
+  removeAbortListener?.();
 
   // provider 已返回 execution.error 时，跳过 grading
   if (execution.error) {

@@ -264,7 +264,7 @@ Required behaviors:
 
 1. `core.getRunSummary` 在未命中时返回 `null`。
 2. `core.listTrials` 在未命中时返回空数组。
-3. `core.listRuns` 仅返回可解析为 run summary 的 `runId`（包括 adapter 基于 trial 记录恢复出的 summary）。
+3. `core.listRuns` 仅返回可解析为 run summary 的 `runId`（包括 adapter 基于 trial/manifest 记录恢复出的 summary）。
 4. `core.clearResultsByRunIds` 仅删除传入的 `runId`；当 baseline 指向被删 run 时必须清除 baseline 指针。
 5. `core.clearResults` 删除全部结果与 baseline 指针。
 

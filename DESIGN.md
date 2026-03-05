@@ -161,7 +161,7 @@ Core 对外只暴露稳定的程序化 API，交互模式作为 interface adapte
 4. `loadedExperiment.run(runName) -> Promise<RunSummary>`：批处理执行一次 run。
 5. `loadedExperiment.stream(runName) -> AsyncIterable<RunEvent>`：返回事件流，供交互模式实时展示进度。
 6. `core.getRunSummary(runId)` / `core.listTrials(runId)`：按 `runId` 查询结果，来源仅 `ResultStoreAdapter`。
-7. `core.listRuns() -> Promise<RunSummaryRecord[]>`：列出所有可解析 run summary 的 run（含 adapter 基于 trial 记录恢复的中断 run）。
+7. `core.listRuns() -> Promise<RunSummaryRecord[]>`：列出所有可解析 run summary 的 run（含 adapter 基于 trial/manifest 记录恢复的中断 run）。
 8. `core.setBaseline(runId)` / `core.compareBaseline(currentRunId, baselineRunId?)`：基线管理。
 
 连接规则：

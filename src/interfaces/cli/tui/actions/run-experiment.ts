@@ -2,14 +2,22 @@ import * as p from '@clack/prompts';
 
 import type { CoreApi, LoadedExperiment } from '../../../../core/api/index.js';
 import type { RunSummary, RunSummaryRecord } from '../../../../core/contracts/run-summary.js';
+import { StreamClosedError } from '../../../../core/runtime/abort-reasons.js';
 import { formatRunsTable } from '../formatters.js';
-import { handleCancel } from '../utils.js';
+import { CancelError, handleCancel } from '../utils.js';
 
 const RUN_ALL_VALUE = '__run_all__';
 const RUN_PROGRESS_BAR_WIDTH = 24;
 const ANSI_MAGENTA = '\x1b[35m';
 const ANSI_DIM = '\x1b[2m';
 const ANSI_RESET = '\x1b[0m';
+const ESCAPE_CHAR = '\u001b';
+const CTRL_C_CHAR = '\u0003';
+
+interface CancelWatcher {
+  waitForCancel: Promise<void>;
+  dispose: () => void;
+}
 
 type ConsoleMethod = 'log' | 'info' | 'warn' | 'error' | 'debug';
 
@@ -72,6 +80,44 @@ function routeConsoleToPanel(
       }
     },
   };
+}
+
+function createRunCancelWatcher(): CancelWatcher | null {
+  const stdin = process.stdin;
+  if (!stdin.isTTY || typeof stdin.setRawMode !== 'function') {
+    return null;
+  }
+
+  const previousIsRaw = Boolean((stdin as NodeJS.ReadStream & { isRaw?: boolean }).isRaw);
+  let settled = false;
+  let resolveCancel!: () => void;
+  const waitForCancel = new Promise<void>((resolve) => {
+    resolveCancel = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve();
+    };
+  });
+
+  const onData = (chunk: Buffer): void => {
+    const input = chunk.toString('utf8');
+    if (input.includes(ESCAPE_CHAR) || input.includes(CTRL_C_CHAR)) {
+      resolveCancel();
+    }
+  };
+
+  stdin.setRawMode(true);
+  stdin.resume();
+  stdin.on('data', onData);
+
+  const dispose = (): void => {
+    stdin.off('data', onData);
+    stdin.setRawMode(previousIsRaw);
+  };
+
+  return { waitForCancel, dispose };
 }
 
 export async function runExperiment(core: CoreApi): Promise<void> {
@@ -149,9 +195,35 @@ export async function runExperiment(core: CoreApi): Promise<void> {
     const { restore } = routeConsoleToPanel(runName, appendLog);
     runSpinner.start(`${runLabel} starting...`);
     renderPanel();
+    const cancelWatcher = createRunCancelWatcher();
+    const streamAbortController = new AbortController();
+    const streamIterator = experiment
+      .stream(runName, { signal: streamAbortController.signal })
+      [Symbol.asyncIterator]();
+    const cancelledToken = Symbol('cancelled');
+    let runCancelledByUser = false;
 
     try {
-      for await (const event of experiment.stream(runName)) {
+      while (true) {
+        const nextResult = cancelWatcher
+          ? await Promise.race([
+              streamIterator.next(),
+              cancelWatcher.waitForCancel.then(() => cancelledToken),
+            ])
+          : await streamIterator.next();
+
+        if (typeof nextResult === 'symbol') {
+          runCancelledByUser = true;
+          streamAbortController.abort(new StreamClosedError());
+          break;
+        }
+
+        const streamResult = nextResult;
+        if (streamResult.done) {
+          break;
+        }
+
+        const event = streamResult.value;
         switch (event.type) {
           case 'run:started':
             totalTasks = event.totalTasks;
@@ -177,10 +249,22 @@ export async function runExperiment(core: CoreApi): Promise<void> {
             break;
         }
       }
+
+      if (runCancelledByUser) {
+        runSpinner.stop(`${runLabel} cancelled`);
+        throw new CancelError();
+      }
     } catch (error) {
+      if (error instanceof CancelError) {
+        throw error;
+      }
       runSpinner.error(`${runLabel} failed`);
       throw error;
     } finally {
+      if (runCancelledByUser) {
+        await streamIterator.return?.();
+      }
+      cancelWatcher?.dispose();
       restore();
     }
 

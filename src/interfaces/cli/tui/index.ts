@@ -13,6 +13,9 @@ import { CancelError } from './utils.js';
 
 type Action = (core: CoreApi) => Promise<void>;
 const TUI_TITLE = 'YouEval — Interactive Mode';
+const ACTION_CANCELLED_MESSAGE = 'Action cancelled.';
+// 取消后短暂等待，避免残留的 ESC 按键被下一个 clack prompt 误读为取消操作
+const CARRY_OVER_CANCEL_WINDOW_MS = 200;
 
 const ACTIONS: Record<string, Action> = {
   run: (core) => runExperiment(core),
@@ -176,20 +179,26 @@ export async function runTui(core: CoreApi): Promise<void> {
     }
 
     const handler = ACTIONS[selectedAction];
+    let actionCompletedMessage = 'Action completed.';
     if (handler) {
       try {
         await handler(core);
       } catch (error) {
         if (error instanceof CancelError) {
-          continue;
+          actionCompletedMessage = ACTION_CANCELLED_MESSAGE;
+        } else {
+          const message = error instanceof Error ? error.message : String(error);
+          p.log.error(message);
         }
-        const message = error instanceof Error ? error.message : String(error);
-        p.log.error(message);
       }
     }
 
+    if (actionCompletedMessage === ACTION_CANCELLED_MESSAGE) {
+      await new Promise((resolve) => setTimeout(resolve, CARRY_OVER_CANCEL_WINDOW_MS));
+    }
+
     const backSelection: 'back' | symbol = (await p.select<'back'>({
-      message: 'Action completed.',
+      message: actionCompletedMessage,
       options: [{ value: 'back', label: 'Back' }],
       initialValue: 'back',
     })) as 'back' | symbol;

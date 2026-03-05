@@ -38,7 +38,7 @@ export interface CoreDependencies {
 export interface LoadedExperiment {
   readonly definition: ExperimentDefinition;
   run(runName: string): Promise<RunSummary>;
-  stream(runName: string): AsyncIterable<RunEvent>;
+  stream(runName: string, options?: { signal?: AbortSignal }): AsyncIterable<RunEvent>;
 }
 
 export interface CompareBaselineOptions {
@@ -155,11 +155,14 @@ export function createCore(deps: CoreDependencies): CoreApi {
         return summary;
       },
 
-      stream(runName: string): AsyncIterable<RunEvent> {
+      stream(runName: string, options?: { signal?: AbortSignal }): AsyncIterable<RunEvent> {
         const normalizedRunName = ensureNonEmptyString(runName, 'runName');
         ensureRunExists(normalizedRunName, definition);
 
-        return orchestrateRun({ experiment: definition, runName: normalizedRunName }, orchDeps);
+        return orchestrateRun(
+          { experiment: definition, runName: normalizedRunName, signal: options?.signal },
+          orchDeps,
+        );
       },
     };
   }

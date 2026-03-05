@@ -14,6 +14,7 @@ import { SCHEMA_VERSIONS } from '../contracts/schema-versions.js';
 import type { TaskDefinition } from '../contracts/task.js';
 import type { TrialResult } from '../contracts/trial.js';
 import { RuntimeError, ValidationError } from '../errors/index.js';
+import { StreamClosedError, isStreamClosedError } from '../runtime/abort-reasons.js';
 import { resolveGraderOrThrow, resolveProviderOrThrow } from '../runtime/dependency-resolver.js';
 import { validateTaskDefinitions } from '../validation/task-validator.js';
 import { createBoundedAsyncChannel } from './bounded-async-channel.js';
@@ -32,6 +33,7 @@ export interface OrchestratorDeps {
 export interface OrchestratorInput {
   experiment: ExperimentDefinition;
   runName: string;
+  signal?: AbortSignal;
 }
 
 const OBSERVER_NOTIFY_TIMEOUT_MS = 300;
@@ -190,6 +192,25 @@ export async function* orchestrateRun(
   const eventChannel = createBoundedAsyncChannel<RunEvent>(eventQueueCapacity);
   let allDonePromise: Promise<void> | undefined;
   let fatalWorkerError: unknown;
+  let removeInputAbortListener: (() => void) | undefined;
+
+  const abortRunFromInputSignal = (): void => {
+    if (!runAbortController.signal.aborted) {
+      const reason = input.signal?.reason;
+      runAbortController.abort(isStreamClosedError(reason) ? reason : new StreamClosedError());
+    }
+    eventChannel.close();
+  };
+
+  if (input.signal) {
+    if (input.signal.aborted) {
+      abortRunFromInputSignal();
+    } else {
+      const onInputAbort = () => abortRunFromInputSignal();
+      input.signal.addEventListener('abort', onInputAbort, { once: true });
+      removeInputAbortListener = () => input.signal?.removeEventListener('abort', onInputAbort);
+    }
+  }
 
   async function pushEvent(event: RunEvent): Promise<void> {
     if (runAbortController.signal.aborted) {
@@ -315,6 +336,10 @@ export async function* orchestrateRun(
       yield queuedEvent;
     }
 
+    if (isStreamClosedError(runAbortController.signal.reason)) {
+      return;
+    }
+
     await allDonePromise;
     if (fatalWorkerError) {
       throw fatalWorkerError;
@@ -335,12 +360,17 @@ export async function* orchestrateRun(
     yield completedEvent;
     await notifyObservers(deps.observerAdapters, completedEvent);
   } finally {
+    removeInputAbortListener?.();
+
     // stream 提前关闭时也要主动收敛 worker，避免后台继续执行
     if (!runAbortController.signal.aborted) {
-      runAbortController.abort(new Error('stream closed'));
+      runAbortController.abort(new StreamClosedError());
     }
     eventChannel.close();
 
+    // workers 已通过 runAbortController.abort() 收到中止信号，
+    // trial-engine 的 abortPromise race 确保即使 provider 不协作也能快速短路，
+    // 因此这里安全等待 workers 结束，避免资源泄漏。
     if (allDonePromise) {
       await allDonePromise;
     }
