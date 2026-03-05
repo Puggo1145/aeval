@@ -8,9 +8,8 @@
 2. 最小可运行闭环所需的 reference adapters：
    - `TaskSourceAdapter`（local/reference）
    - `ResultStoreAdapter`（local/reference）
-   - `Provider`（reference，可用于本地完整跑通）
    - `Observer`（optional，但提供最小 console 实现）
-   - `InterfaceAdapter`: 可通过 interactive CLI 完成一次可复现评测 run，并可读取 run/trial/summary。
+   - `InterfaceAdapter`: 可通过 interactive TUI 完成一次可复现评测 run，并可读取 run/trial/summary。
 
 ## 2. Done Definition (v1)
 
@@ -19,11 +18,11 @@
 1. `Task` / `Experiment` / `ExecutionResult` / `TrialResult` / `RunSummary` / `RunManifest` 契约已落地并校验。
 2. 运行前通过已注册 `TaskSourceAdapter` 解析为不可变 `revision`，并记录 `datasetHash`。
 3. `ProviderRegistry`、grader 执行、trial orchestration、run 聚合全部可用。
-4. `ResultStoreAdapter` 完整支持 `save/get/list` 合约并可被 interface adapter 读取（v1 由 CLI 承担）。
+4. `ResultStoreAdapter` 完整支持 `save/get/list` 合约并可被 interface adapter 读取（v1 由 TUI 承担）。
 5. Core 判定不依赖 observer 成功写入。
 6. `passRate`、`pass@k`、`pass^k` 可计算并输出。
 7. 有至少一套本地 reference adapters 组合可端到端执行。
-8. `streamRun` 与 Interactive CLI（interface adapter 具体实现）可用，且交互模式语义与 batch 一致。
+8. `streamRun` 与 Interactive TUI（interface adapter 具体实现）可用，且交互模式语义与 batch 一致。
 9. `compareBaseline` 支持 `passRate`/`pass^k`/`latency`/`token budget breach` 回归判定，阈值由调用方传入。
 
 ## 3. Execution Rules
@@ -39,12 +38,12 @@
 
 ## 4. Milestones（执行时逐项勾选）
 
-- [x] **Milestone 0: Bootstrap & Repo Skeleton**
-  - [x] 创建 `src/` 基础目录结构（`core/`, `graders/`, `adapters/`, `interfaces/`）与应用层 `providers/` 目录。
-  - [x] 增加 `src/cli.ts`（interface adapter entry，转发到 `src/interfaces/cli`），替代当前仅有 `dist/cli.js` 的占位实现。
+- [x] **Milestone 0: Repo Skeleton**
+  - [x] 创建 `src/` 基础目录结构（`core/`, `graders/`, `adapters/`, `interfaces/`）。
+  - [x] 提供最小 interface adapter 入口（TUI）。
   - [x] 定义统一错误模型（contract/validation/runtime/store）。
   - [x] 补齐最小开发脚本与入口说明（保持轻量，不扩展平台细节）。
-  - [x] 验收：`pnpm -C apps/youeval build` 可成功输出 `dist/cli.js`。
+  - [x] 验收：`pnpm -C apps/youeval build` 可成功输出构建产物。
 
 - [x] **Milestone 1: Core Contracts & Validation**
   - [x] 实现 v1 核心类型与 schemaVersion 常量（task/experiment/execution/trial/run-manifest/run-summary）。
@@ -120,16 +119,11 @@
   - [x] 验收：无需外部平台即可完整保存并读取 run 全量信息。
 
 - [x] **Milestone 7: Minimal Runnable Adapters & Interface Adapters**
-  - [x] 实现 reference `Provider`（用于本地端到端跑通 execution/trace/outcome/metrics）。
+  - [x] Provider 由业务侧注入（Core 仅依赖 `ProviderRegistry`）。
   - [x] 实现 minimal `ObserverAdapter`（console）且失败不影响 pass/fail。
-  - [x] 实现 CLI interface adapter（作为 interactive interface adapter 的具体实现；调用 Core API，不承载 orchestration 逻辑）：
-    - [x] `run`
-    - [x] `report`
-    - [x] `runs`
-    - [x] `trials`
-    - [x] `baseline set <runId>` / `baseline compare <runId>` （基于 `core-contracts-v1.md` §4.8 定义）
-  - [x] 将 CLI 查询统一走 `ResultStoreAdapter` 读取，不依赖 observer。
-  - [x] 验收：执行一次 run 后，CLI 可查看实时进度与结果（summary/trials）。
+  - [x] 实现 TUI interface adapter（调用 Core API，不承载 orchestration 逻辑）。
+  - [x] 将 TUI 查询统一走 `ResultStoreAdapter` 读取，不依赖 observer。
+  - [x] 验收：执行一次 run 后，TUI 可查看实时进度与结果（summary/trials）。
 
 - [x] **Milestone 8: E2E Verification, Docs, and Handover**
   - [x] 提供最小可运行样例数据（task + experiment）。
@@ -155,15 +149,15 @@
 每完成一项任务，除了勾选 checkbox，建议追加一行日志（日期 + 变更摘要）：
 
 - `YYYY-MM-DD`: completed `Milestone X / Task Y`, notes...
-- `2026-02-28`: completed `Milestone 0`, added skeleton structure, placeholder CLI, unified error model, and quickstart.
+- `2026-02-28`: completed `Milestone 0`, added skeleton structure, minimal interface adapter shell, unified error model, and quickstart.
 - `2026-02-28`: completed `Milestone 1`, added v1 core contracts, task/experiment validators, schema version gates, and DSL validation tests.
 - `2026-02-28`: aligned `core-contracts-v1.md` and `DESIGN.md` with strict metadata type checks and unknown-field fail-fast rules for Task/Experiment DSL.
 - `2026-02-28`: completed `Milestone 2`, added provider/grader registries, adapter interfaces, runtime dependency resolver, and core API surface with query/baseline coverage tests.
 - `2026-02-28`: refined Milestone 2 API boundary with `createCore` composition root, runId-based result-store routing, and required baseline store contracts.
 - `2026-02-28`: completed `Milestone 3`, added local TaskSourceAdapter with YAML parsing, deterministic datasetHash (SHA-256), revision resolution, adapter-level fail-fast validation, sample dataset fixtures, and 16 unit tests.
-- `2026-03-03`: updated task source contract to direct `TaskSourceAdapter` instance wiring in `createCore`; moved local dataset settings to composition-root injection (`createAppCore`) and removed adapter options from Experiment DSL.
+- `2026-03-03`: updated task source contract to direct `TaskSourceAdapter` instance wiring in `createCore`; moved local dataset settings to interface composition root injection and removed adapter options from Experiment DSL.
 - `2026-02-28`: completed `Milestone 4`, added trial engine (timeout/AbortSignal, error semantics, retry), run orchestrator (concurrent execution, dataset resolve, manifest/summary persistence), grader aggregation (ALL/ANY/WEIGHTED), configHash computation, pass@k/pass^k metrics, and 23 orchestrator unit tests.
-- `2026-03-01`: completed `Milestone 5`, added 10 built-in graders (exact-match, contains, regex, json-schema, length-check, tool-calls, transcript, outcome-check, latency-threshold, token-budget), JudgeProvider protocol with llm-judge grader factory, registerBuiltinGraders composition-root pre-registration, bootstrap wiring, and 60 grader unit tests.
-- `2026-03-01`: completed `Milestone 6`, added local/reference `ResultStoreAdapter` (filesystem-based, JSON per run/trial), strict-only write failure handling, baseline persistence, bootstrap wiring with configurable `runsRoot`, and 17 unit tests.
-- `2026-03-01`: completed `Milestone 7`, added reference provider (deterministic echo for E2E testing), console observer adapter, full CLI command implementations (run/report/runs/trials/baseline), `listRunIds` on ResultStoreAdapter, `listRuns` on CoreApi, and 26 new tests.
+- `2026-03-01`: completed `Milestone 5`, added 10 built-in graders (exact-match, contains, regex, json-schema, length-check, tool-calls, transcript, outcome-check, latency-threshold, token-budget), JudgeProvider protocol with llm-judge grader factory, registerBuiltinGraders composition-root pre-registration, and 60 grader unit tests.
+- `2026-03-01`: completed `Milestone 6`, added local/reference `ResultStoreAdapter` (filesystem-based, JSON per run/trial), strict-only write failure handling, baseline persistence, interface composition wiring with configurable `runsRoot`, and 17 unit tests.
+- `2026-03-01`: completed `Milestone 7`, added console observer adapter, interactive TUI adapter, `listRunIds` on ResultStoreAdapter, `listRuns` on CoreApi, and interface-level tests.
 - `2026-03-01`: completed `Milestone 8`, fixed sample task data (added `params.output`), added experiment YAML, created E2E smoke test (full chain + llm-judge protocol), closed `core-contracts-v1.md` §8 checklist, updated README quickstart, documented post-v1 known limitations.

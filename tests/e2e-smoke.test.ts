@@ -14,7 +14,6 @@ import { InMemoryGraderRegistry } from '../src/core/runtime/grader-registry.js';
 import { InMemoryProviderRegistry } from '../src/core/runtime/provider-registry.js';
 import type { JudgeProvider, JudgeProviderInput } from '../src/graders/llm/judge-provider.js';
 import { registerBuiltinGraders } from '../src/graders/register-builtins.js';
-import { registerReferenceProvider } from '../src/providers/index.js';
 
 function buildSmokeExperiment(): ExperimentDefinition {
   return {
@@ -23,6 +22,13 @@ function buildSmokeExperiment(): ExperimentDefinition {
     runs: [{ name: 'smoke' }],
     maxConcurrency: 2,
   };
+}
+
+function registerBusinessReferenceProvider(registry: InMemoryProviderRegistry): void {
+  registry.register('reference', async (_ctx, params) => ({
+    schemaVersion: SCHEMA_VERSIONS.EXECUTION_RESULT,
+    output: typeof params.output === 'string' ? params.output : '',
+  }));
 }
 
 test('E2E smoke: full chain from taskSource.resolve to resultStore.read', async () => {
@@ -83,7 +89,7 @@ test('E2E smoke: full chain from taskSource.resolve to resultStore.read', async 
     registerBuiltinGraders(graderRegistry);
 
     const providerRegistry = new InMemoryProviderRegistry();
-    registerReferenceProvider(providerRegistry);
+    registerBusinessReferenceProvider(providerRegistry);
 
     const core = createCore({
       taskSourceAdapter: createLocalTaskSourceAdapter({
@@ -224,7 +230,7 @@ test('E2E smoke: llm-judge protocol chain with mock JudgeProvider', async () => 
     registerBuiltinGraders(graderRegistry, { judgeProvider: mockJudgeProvider });
 
     const providerRegistry = new InMemoryProviderRegistry();
-    registerReferenceProvider(providerRegistry);
+    registerBusinessReferenceProvider(providerRegistry);
 
     const core = createCore({
       taskSourceAdapter: createLocalTaskSourceAdapter({

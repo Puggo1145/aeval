@@ -6,4 +6,4 @@ export * from './core/experiment/index.js';
 export * from './core/runtime/index.js';
 export * from './core/validation/index.js';
 export * from './graders/index.js';
-export * from './interfaces/cli/index.js';
+export * from './interfaces/tui/index.js';

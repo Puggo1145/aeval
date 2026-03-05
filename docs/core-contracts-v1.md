@@ -250,7 +250,7 @@ Required behaviors:
 1. 事件必须按时间顺序发射。
 2. `run:completed` 必须是最后一个事件。
 3. `stream(runName)` 与 `run(runName)` 的判定语义完全一致。
-4. v1 必须至少提供一个可用的 interactive interface adapter 具体实现（CLI 可作为该实现），并通过该实现消费 `stream(runName)`。
+4. v1 必须至少提供一个可用的 interactive interface adapter 具体实现（TUI 可作为该实现），并通过该实现消费 `stream(runName)`。
 
 #### 4.7.3 Query API
 
@@ -405,5 +405,5 @@ Aggregation records:
 - [x] Query API `listRuns` implemented via `ResultStoreAdapter`.
 - [x] Baseline `setBaseline`/`compareBaseline` implemented per §4.8.
 - [x] Baseline regression evaluation covers `passRate`/`pass^k`/`latency`/`token budget breach` with caller-provided thresholds.
-- [x] `stream(runName)` implemented and consumed by at least one interactive interface adapter implementation (v1 can use CLI).
+- [x] `stream(runName)` implemented and consumed by at least one interactive interface adapter implementation (v1 uses TUI).
 - [x] `llm-judge` protocol verified with mock judge (quality verification is post-v1).

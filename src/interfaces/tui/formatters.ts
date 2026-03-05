@@ -1,8 +1,8 @@
 import * as p from '@clack/prompts';
 
-import type { RunSummary, RunSummaryRecord } from '../../../core/contracts/run-summary.js';
-import type { BaselineComparison } from '../../../core/contracts/runtime.js';
-import type { TrialResult, TrialResultRecord } from '../../../core/contracts/trial.js';
+import type { RunSummary, RunSummaryRecord } from '../../core/contracts/run-summary.js';
+import type { BaselineComparison } from '../../core/contracts/runtime.js';
+import type { TrialResult, TrialResultRecord } from '../../core/contracts/trial.js';
 
 function formatPassRate(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`;

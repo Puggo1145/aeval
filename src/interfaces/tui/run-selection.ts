@@ -1,4 +1,4 @@
-import type { RunSummaryRecord } from '../../../core/contracts/run-summary.js';
+import type { RunSummaryRecord } from '../../core/contracts/run-summary.js';
 
 import { formatExperimentText } from './formatters.js';
 

@@ -1,8 +1,8 @@
 import * as p from '@clack/prompts';
 
-import type { CoreApi } from '../../../../core/api/index.js';
-import type { BaselineThresholds } from '../../../../core/contracts/runtime.js';
-import { readRunExperiments } from '../../run-metadata.js';
+import type { CoreApi } from '../../../core/api/index.js';
+import type { BaselineThresholds } from '../../../core/contracts/runtime.js';
+import { readRunExperiments } from '../run-metadata.js';
 import { formatComparisonNote, formatRunOptionHint, formatRunOptionLabel } from '../formatters.js';
 import { handleCancel } from '../utils.js';
 

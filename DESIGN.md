@@ -98,7 +98,7 @@
 │  - TaskSource adapters (file / API / mirror)               │
 │  - ResultStore adapters (filesystem / remote store)        │
 │  - Observer adapters (console / tracing sink)              │
-│  - Interface adapters (CLI / interactive / HTTP / TUI)     │
+│  - Interface adapters (TUI; other interfaces post-v1)       │
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -109,7 +109,7 @@
 3. TaskSource Adapter 依赖 Core 输入契约。
 4. ResultStore Adapter 依赖 Core 输出契约。
 5. Core 不依赖任何 Adapter SDK。
-6. Interface adapters（CLI/interactive/HTTP/TUI）依赖 Core API，不反向依赖。
+6. Interface adapters（当前仅 TUI）依赖 Core API，不反向依赖。
 7. Core 不依赖 `argv/stdin/stdout` 等交互介质。
 8. Core 的运行依赖 adapter 接口与至少一组可用实现（input/output）。
 
@@ -138,17 +138,11 @@ apps/youeval/
       result-store/
       observer/
     interfaces/
-      cli/
-      interactive/
-      http/
+      tui/
   datasets/
     chat-agent/
     runner/
     tool/
-  providers/
-    chat-agent.ts
-    overview.ts
-    tool-cases.ts
 ```
 
 ### 3.4 Core 与多种交互模式的连接方式
@@ -166,9 +160,9 @@ Core 对外只暴露稳定的程序化 API，交互模式作为 interface adapte
 
 连接规则：
 
-1. CLI 是一种 interface adapter 具体实现：解析命令参数，调用 `CoreApi`，并可在交互会话中消费 `stream(runName)` 事件。
-2. v1 至少提供一个可用的 interactive interface adapter 具体实现（可由 CLI 承担）。
-3. 未来 HTTP/TUI 作为其他 interface adapter，复用同一组 Core API，不复制 orchestration 逻辑。
+1. TUI 是当前 interface adapter 具体实现：调用 `CoreApi`，并可在交互会话中消费 `stream(runName)` 事件。
+2. v1 提供一个可用的 interactive interface adapter 具体实现（TUI）。
+3. 未来如需 HTTP 等其他 interface adapter，复用同一组 Core API，不复制 orchestration 逻辑。
 4. Query/Baseline API 统一读取注入的 `ResultStoreAdapter`；未命中时 query 返回空值。
 
 ---
@@ -769,8 +763,8 @@ provider:
 2. 输出侧通过 `ResultStoreAdapter` 抽象结果存储。
 3. 执行侧通过 `Provider` 抽象被测系统调用。
 4. 可选观测通过 `ObserverAdapter` 抽象上报接口。
-5. 交互层通过 `Interface Adapter` 抽象（CLI/interactive/HTTP/TUI）。
-6. Core 闭环定义为：在一组参考适配器（如 reference task source + reference result store + reference provider）下完成输入、执行、判定、输出。
+5. 交互层通过 `Interface Adapter` 抽象（当前为 TUI，其他形态后置）。
+6. Core 闭环定义为：在一组参考适配器（如 reference task source + reference result store）并配合业务侧注入的 `Provider` 下完成输入、执行、判定、输出。
 7. 评测判定只能依赖 Core 与 `ResultStoreAdapter` 读取结果。
 8. 外部平台与协作流程属于后续阶段，不影响当前 core 里程碑。
 

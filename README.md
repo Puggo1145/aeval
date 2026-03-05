@@ -24,34 +24,10 @@ pnpm install
 pnpm build
 ```
 
-### Run the smoke experiment
+### Run the TUI example
 
 ```bash
-node --import tsx src/interfaces/cli/entry.ts run \
-  --experiment experiments/chat-agent-smoke.yaml --run smoke
-```
-
-### View results
-
-```bash
-# List all runs
-node --import tsx src/interfaces/cli/entry.ts runs
-
-# Show run summary
-node --import tsx src/interfaces/cli/entry.ts report <runId>
-
-# Show individual trials
-node --import tsx src/interfaces/cli/entry.ts trials <runId>
-```
-
-### Baseline management
-
-```bash
-# Set a run as baseline
-node --import tsx src/interfaces/cli/entry.ts baseline set <runId>
-
-# Compare a run against the baseline
-node --import tsx src/interfaces/cli/entry.ts baseline compare <runId>
+pnpm example:basic-llm
 ```
 
 ---
@@ -92,7 +68,7 @@ timeoutMs: 30000                      # 可选：全局超时覆盖
 关键字段说明：
 - **dataset**: 必填。告诉 `TaskSourceAdapter` 本次 run 要读取哪个数据集目录。
 - **revision/tag**: 可选且互斥。用于选择不可变数据集版本；都不传时由 adapter 使用默认解析规则。
-- **runs**: 数组，每个元素是一个 run 配置。run name 在实验内必须唯一。执行时通过 `--run` 指定跑哪个。
+- **runs**: 数组，每个元素是一个 run 配置。run name 在实验内必须唯一。执行时由 interface 选择要运行的 runName。
 - **maxConcurrency**: 控制 trial 级别的并发数。
 - **trialsPerTask**: 全局默认值，task 级可覆盖。当 > 1 时，summary 会产出 pass@k / pass^k 指标。
 - `taskSource` / `resultStore` / `observer` adapter 实例通过 `createCore(...)` 依赖注入；但数据集选择（`dataset/revision/tag`）由 Experiment DSL 声明。
@@ -321,9 +297,9 @@ verdict 逻辑：
 
 ```
 ┌─────────────────────────────────────────────┐
-│ CLI (interfaces/cli)                        │  用户入口
+│ TUI (interfaces/tui)                        │  用户入口
 ├─────────────────────────────────────────────┤
-│ Bootstrap (create-app-core)                 │  组装依赖
+│ Interface Composition (business wiring)     │  组装依赖
 ├─────────────────────────────────────────────┤
 │ Core API (core/api/core-api)                │  对外 API 层
 ├─────────────────────────────────────────────┤
@@ -376,31 +352,14 @@ verdict 逻辑：
 
 ---
 
-## 五、CLI 使用
+## 五、TUI 使用
 
-```bash
-# 执行实验
-youeval run --experiment experiments/chat-agent-smoke.yaml --run smoke
+```typescript
+import { readFromYAML } from 'youeval';
+import { runTui } from 'youeval';
 
-# 查看历史 run 列表
-youeval runs
-
-# 查看某次 run 的 summary
-youeval report <runId>
-
-# 查看某次 run 的所有 trial 详情
-youeval trials <runId>
-
-# 设置 baseline
-youeval baseline set <runId>
-
-# 与 baseline 对比
-youeval baseline compare <runId> \
-  --baseline <baselineRunId> \          # 可选，默认用已设置的 baseline
-  --pass-rate-drop 0.05 \              # passRate 允许下降阈值
-  --pass-hat-k-drop 0.1 \             # pass^k 允许下降阈值
-  --avg-latency-increase 500 \         # 平均延迟允许增加 ms
-  --token-budget-breached false
+await core.loadExperiment(readFromYAML('experiments/chat-agent-smoke.yaml'));
+await runTui(core);
 ```
 
 ---
@@ -419,9 +378,29 @@ youeval baseline compare <runId> \
 `local` task source 在组合根只配置 `datasetsRoot`；具体选择哪个 dataset/revision/tag 在 Experiment DSL 里声明：
 
 ```typescript
-import { createAppCore } from './src/bootstrap/create-app-core.js';
+import {
+  InMemoryGraderRegistry,
+  InMemoryProviderRegistry,
+  createCore,
+  createLocalResultStoreAdapter,
+  createLocalTaskSourceAdapter,
+  registerBuiltinGraders,
+} from 'youeval';
 
-const core = createAppCore();
+const graderRegistry = new InMemoryGraderRegistry();
+registerBuiltinGraders(graderRegistry);
+
+const providerRegistry = new InMemoryProviderRegistry();
+providerRegistry.register('my-agent', async (ctx, params) => {
+  return { schemaVersion: 'execution-result.v1', output: '...' };
+});
+
+const core = createCore({
+  taskSourceAdapter: createLocalTaskSourceAdapter({ datasetsRoot: '.datasets' }),
+  resultStoreAdapter: createLocalResultStoreAdapter({ rootDir: '.youeval/runs' }),
+  providerRegistry,
+  graderRegistry,
+});
 ```
 
 ```yaml
@@ -441,13 +420,29 @@ maxConcurrency: 2
 ### 注册自定义 Provider
 
 ```typescript
-import { createAppCore } from './bootstrap/create-app-core.js';
+import {
+  InMemoryGraderRegistry,
+  InMemoryProviderRegistry,
+  createCore,
+  createLocalResultStoreAdapter,
+  createLocalTaskSourceAdapter,
+  registerBuiltinGraders,
+} from 'youeval';
 
-const core = createAppCore();
-// 目前需要通过 createCore() 直接注入 registry
+const providerRegistry = new InMemoryProviderRegistry();
 providerRegistry.register('my-agent', async (ctx, params) => {
   // 调用你的 agent，返回 ExecutionResult
   return { schemaVersion: 'execution-result.v1', output: '...' };
+});
+
+const graderRegistry = new InMemoryGraderRegistry();
+registerBuiltinGraders(graderRegistry);
+
+const core = createCore({
+  taskSourceAdapter: createLocalTaskSourceAdapter({ datasetsRoot: '.datasets' }),
+  resultStoreAdapter: createLocalResultStoreAdapter({ rootDir: '.youeval/runs' }),
+  providerRegistry,
+  graderRegistry,
 });
 ```
 
@@ -462,12 +457,15 @@ graderRegistry.register('my-custom', async (result, config) => {
 ### 注入 LLM Judge
 
 ```typescript
-createAppCore({
+import { InMemoryGraderRegistry, registerBuiltinGraders } from 'youeval';
+
+const graderRegistry = new InMemoryGraderRegistry();
+registerBuiltinGraders(graderRegistry, {
   judgeProvider: {
     async evaluate(input) {
       // 调用 LLM API，返回 { pass, score, reason, label }
-    }
-  }
+    },
+  },
 });
 ```
 

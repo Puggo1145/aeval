@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { groupRunsByExperiment } from '../src/interfaces/cli/tui/run-selection.js';
+import { groupRunsByExperiment } from '../src/interfaces/tui/run-selection.js';
 
 test('groupRunsByExperiment groups by experiment name and falls back to unknown', () => {
   const records = [

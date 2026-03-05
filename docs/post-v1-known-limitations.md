@@ -2,7 +2,7 @@
 
 This document lists known limitations of the v1 release to prevent scope creep and set expectations for future work.
 
-1. **No Web UI** — All interaction is via CLI or programmatic API.
+1. **No Web UI** — All interaction is via TUI or programmatic API.
 2. **No remote/external adapters** — Only local reference adapters are provided (local TaskSourceAdapter, local ResultStoreAdapter).
 3. **No multi-store routing** — A single ResultStoreAdapter is used in practice per experiment.
 4. **No parallel experiment execution** — Only one experiment can be executed at a time.

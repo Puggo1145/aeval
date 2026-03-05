@@ -1,7 +1,7 @@
 import * as p from '@clack/prompts';
 
-import type { CoreApi } from '../../../../core/api/index.js';
-import { readRunExperiments } from '../../run-metadata.js';
+import type { CoreApi } from '../../../core/api/index.js';
+import { readRunExperiments } from '../run-metadata.js';
 import { formatRunsTable } from '../formatters.js';
 
 export async function listRuns(core: CoreApi): Promise<void> {

@@ -2,13 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  formatRunOptionHint,
   formatRunOptionLabel,
   formatRunOptionStatsHint,
   formatRunsTable,
-  formatRunOptionHint,
   formatTrialGraderDetails,
   formatTrialsTable,
-} from '../src/interfaces/cli/tui/formatters.js';
+} from '../src/interfaces/tui/formatters.js';
 
 test('formatTrialsTable includes header row and aligned trial values', () => {
   const output = formatTrialsTable([

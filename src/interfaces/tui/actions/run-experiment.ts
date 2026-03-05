@@ -1,8 +1,8 @@
 import * as p from '@clack/prompts';
 
-import type { CoreApi, LoadedExperiment } from '../../../../core/api/index.js';
-import type { RunSummary, RunSummaryRecord } from '../../../../core/contracts/run-summary.js';
-import { StreamClosedError } from '../../../../core/runtime/abort-reasons.js';
+import type { CoreApi, LoadedExperiment } from '../../../core/api/index.js';
+import type { RunSummary, RunSummaryRecord } from '../../../core/contracts/run-summary.js';
+import { StreamClosedError } from '../../../core/runtime/abort-reasons.js';
 import { formatRunsTable } from '../formatters.js';
 import { CancelError, handleCancel } from '../utils.js';
 
