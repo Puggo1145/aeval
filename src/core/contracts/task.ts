@@ -26,9 +26,36 @@ export type TaskGraderStrategy = z.infer<typeof TaskGraderStrategySchema>;
 export const TaskProviderConfigSchema = z
   .object({
     id: NonEmptyStringSchema,
-    params: UnknownRecordSchema.optional(),
+    runs: z
+      .array(
+        z
+          .object({
+            name: NonEmptyStringSchema,
+            params: UnknownRecordSchema,
+          })
+          .strict(),
+      )
+      .min(1, {
+        message: "Field 'task.provider.runs' must contain at least one run.",
+      }),
   })
-  .strict();
+  .strict()
+  .superRefine((provider, ctx) => {
+    const seenNames = new Set<string>();
+
+    provider.runs.forEach((run, index) => {
+      if (seenNames.has(run.name)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Run name '${run.name}' must be unique within 'task.provider.runs'.`,
+          path: ['runs', index, 'name'],
+        });
+        return;
+      }
+
+      seenNames.add(run.name);
+    });
+  });
 export type TaskProviderConfig = z.infer<typeof TaskProviderConfigSchema>;
 
 export const BaseGraderLayerSchema = z
@@ -77,8 +104,9 @@ export const TaskExecutionConfigSchema = z
     timeoutMs: z.number().int().gt(0),
     // 执行出错时的重试次数
     retryOnError: z.number().int().min(0).optional(),
-    // 每个 task 执行的 trial 次数，null 为显式的回退覆盖（回退 experiment 的全局配置）
-    trialsPerTask: z.union([z.number().int().gt(0), z.null()]).optional(),
+    // 每个 task 执行的 trial 次数
+    trialsPerTask: z.number().int().gt(0).optional(),
+    maxConcurrency: z.number().int().gt(0).optional(),
   })
   .strict();
 export type TaskExecutionConfig = z.infer<typeof TaskExecutionConfigSchema>;

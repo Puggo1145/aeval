@@ -1,8 +1,8 @@
 import * as p from '@clack/prompts';
 
 import type { CoreApi } from '../../../core/api/index.js';
-import { readRunExperiments } from '../run-metadata.js';
 import { formatRunOptionHint, formatRunOptionLabel } from '../formatters.js';
+import { readRunMetadataMap } from '../run-metadata.js';
 import { handleCancel } from '../utils.js';
 
 export async function setBaseline(core: CoreApi): Promise<void> {
@@ -16,7 +16,7 @@ export async function setBaseline(core: CoreApi): Promise<void> {
     return;
   }
 
-  const experiments = await readRunExperiments(
+  const metadataByRunId = await readRunMetadataMap(
     core,
     records.map((record) => record.runId),
   );
@@ -26,7 +26,7 @@ export async function setBaseline(core: CoreApi): Promise<void> {
       options: records.map((r) => ({
         value: r.runId,
         label: formatRunOptionLabel(r),
-        hint: formatRunOptionHint(experiments.get(r.runId)),
+        hint: formatRunOptionHint(metadataByRunId.get(r.runId)),
       })),
     }),
   );

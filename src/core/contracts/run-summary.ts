@@ -5,8 +5,8 @@ import type { RunSummarySchemaVersion } from './schema-versions.js';
 export interface RunSummary {
   schemaVersion: RunSummarySchemaVersion;
   runId: string;
+  taskId: string;
   runName: string;
-  totalTasks: number;
   totalTrials: number;
   passRate: number;
   passAtK?: number;

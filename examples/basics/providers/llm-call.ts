@@ -18,22 +18,6 @@ function getNumberParam(
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
-function getStringParamFromSources(
-  overrides: Readonly<Record<string, unknown>>,
-  params: Readonly<Record<string, unknown>>,
-  key: string,
-): string | undefined {
-  return getStringParam(overrides, key) ?? getStringParam(params, key);
-}
-
-function getNumberParamFromSources(
-  overrides: Readonly<Record<string, unknown>>,
-  params: Readonly<Record<string, unknown>>,
-  key: string,
-): number | undefined {
-  return getNumberParam(overrides, key) ?? getNumberParam(params, key);
-}
-
 function toSystemError(message: string): ExecutionResult {
   return {
     schemaVersion: SCHEMA_VERSIONS.EXECUTION_RESULT,
@@ -54,10 +38,10 @@ export async function basicLlmProvider(
     return toSystemError('Missing OPENAI_API_KEY environment variable.');
   }
 
-  const model = getStringParamFromSources(ctx.overrides, params, 'model') ?? 'gpt-4o-mini';
-  const systemPrompt = getStringParamFromSources(ctx.overrides, params, 'systemPrompt');
-  const userPrompt = getStringParamFromSources(ctx.overrides, params, 'prompt');
-  const temperature = getNumberParamFromSources(ctx.overrides, params, 'temperature') ?? 0;
+  const model = getStringParam(params, 'model') ?? 'gpt-4o-mini';
+  const systemPrompt = getStringParam(params, 'systemPrompt');
+  const userPrompt = getStringParam(params, 'prompt');
+  const temperature = getNumberParam(params, 'temperature') ?? 0;
 
   if (!userPrompt) {
     return toSystemError("Provider param 'prompt' must be a non-empty string.");

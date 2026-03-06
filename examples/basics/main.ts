@@ -8,11 +8,10 @@ import {
   createLocalTaskSourceAdapter,
   InMemoryGraderRegistry,
   InMemoryProviderRegistry,
-  readFromYAML,
   registerBuiltinGraders,
   runTui,
 } from 'youeval';
-import { fileEditAgentProvider } from './provider.ts';
+import { basicLlmProvider, fileEditAgentProvider } from './providers/index.ts';
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
 
@@ -36,10 +35,11 @@ async function main(): Promise<void> {
 
   const providerRegistry = new InMemoryProviderRegistry();
   providerRegistry.register('file-edit-agent', fileEditAgentProvider);
+  providerRegistry.register('basic-llm', basicLlmProvider);
 
   const core = createCore({
     taskSourceAdapter: createLocalTaskSourceAdapter({
-      datasetsRoot: currentDir,
+      rootDir: currentDir,
     }),
     resultStoreAdapter: createLocalResultStoreAdapter({
       rootDir: resolve(currentDir, 'results'),
@@ -48,11 +48,6 @@ async function main(): Promise<void> {
     graderRegistry,
     observerAdapters: [createConsoleObserverAdapter()],
   });
-
-  await core.loadExperiments(
-    readFromYAML(resolve(currentDir, 'experiments/mini-models.yaml')),
-    readFromYAML(resolve(currentDir, 'experiments/nano-models.yaml')),
-  );
 
   await runTui(core);
 }

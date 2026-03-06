@@ -3,6 +3,7 @@ import * as p from '@clack/prompts';
 import type { RunSummary, RunSummaryRecord } from '../../core/contracts/run-summary.js';
 import type { BaselineComparison } from '../../core/contracts/runtime.js';
 import type { TrialResult, TrialResultRecord } from '../../core/contracts/trial.js';
+import type { RunMetadata } from './run-metadata.js';
 
 function formatPassRate(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`;
@@ -12,7 +13,14 @@ function signedPassRate(delta: number): string {
   return `${delta >= 0 ? '+' : ''}${formatPassRate(delta)}`;
 }
 
-export function formatExperimentText(value: string | undefined): string {
+export function formatSuiteText(value: string | undefined): string {
+  if (!value || value.trim().length === 0) {
+    return 'unknown';
+  }
+  return value.trim();
+}
+
+export function formatTaskText(value: string | undefined): string {
   if (!value || value.trim().length === 0) {
     return 'unknown';
   }
@@ -23,21 +31,21 @@ export function formatRunOptionLabel(record: RunSummaryRecord): string {
   return record.summary.runName;
 }
 
-export function formatRunOptionHint(experiment: string | undefined): string {
-  return `experiment: ${formatExperimentText(experiment)}`;
+export function formatRunOptionHint(metadata: RunMetadata | undefined): string {
+  return `suite: ${formatSuiteText(metadata?.suiteName)} | task: ${formatTaskText(metadata?.taskId)}`;
 }
 
 export function formatRunOptionStatsHint(record: RunSummaryRecord): string {
-  return `pass=${formatPassRate(record.summary.passRate)} | tasks=${record.summary.totalTasks} | trials=${record.summary.totalTrials}`;
+  return `pass=${formatPassRate(record.summary.passRate)} | task=${record.summary.taskId} | trials=${record.summary.totalTrials}`;
 }
 
-export function formatSummaryNote(summary: RunSummary, experiment?: string): void {
+export function formatSummaryNote(summary: RunSummary, metadata?: RunMetadata): void {
   const lines: string[] = [
     `Run ID:       ${summary.runId}`,
+    `Suite:        ${formatSuiteText(metadata?.suiteName)}`,
+    `Task:         ${formatTaskText(metadata?.taskId ?? summary.taskId)}`,
     `Run Name:     ${summary.runName}`,
-    `Experiment:   ${formatExperimentText(experiment)}`,
     `Pass Rate:    ${formatPassRate(summary.passRate)}`,
-    `Total Tasks:  ${summary.totalTasks}`,
     `Total Trials: ${summary.totalTrials}`,
   ];
 
@@ -82,19 +90,19 @@ export function formatComparisonNote(comparison: BaselineComparison): void {
 
 export function formatRunsTable(
   records: RunSummaryRecord[],
-  experimentsByRunId: ReadonlyMap<string, string> = new Map(),
+  metadataByRunId: ReadonlyMap<string, RunMetadata> = new Map(),
 ): string {
   if (records.length === 0) {
     return 'No runs found.';
   }
 
-  const header = ['Run ID', 'Run Name', 'Experiment', 'Pass Rate', 'Tasks', 'Trials'];
+  const header = ['Run ID', 'Suite', 'Task', 'Run Name', 'Pass Rate', 'Trials'];
   const rows = records.map((r) => [
     r.summary.runId,
+    formatSuiteText(metadataByRunId.get(r.runId)?.suiteName),
+    formatTaskText(metadataByRunId.get(r.runId)?.taskId ?? r.summary.taskId),
     r.summary.runName,
-    formatExperimentText(experimentsByRunId.get(r.runId)),
     formatPassRate(r.summary.passRate),
-    String(r.summary.totalTasks),
     String(r.summary.totalTrials),
   ]);
 

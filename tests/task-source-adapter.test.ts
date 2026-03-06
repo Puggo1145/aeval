@@ -1,520 +1,240 @@
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
 
 import { createLocalTaskSourceAdapter } from '../src/adapters/task-source/local-task-source-adapter.js';
 
-async function createTempDatasetDir(): Promise<string> {
-  return mkdtemp(join(tmpdir(), 'youeval-test-'));
+async function createTempRootDir(): Promise<string> {
+  return mkdtemp(join(tmpdir(), 'youeval-task-source-'));
 }
 
-async function writeTaskFile(dir: string, name: string, content: string): Promise<void> {
-  await writeFile(join(dir, name), content, 'utf-8');
+async function writeYaml(rootDir: string, relativePath: string, content: string): Promise<void> {
+  const filePath = join(rootDir, relativePath);
+  await mkdir(dirname(filePath), { recursive: true });
+  await writeFile(filePath, content, 'utf-8');
 }
 
-const MINIMAL_TASK_YAML = `task:
-  schemaVersion: "task.v1"
-  id: "test/basic-001"
-  provider:
-    id: "reference"
-    params:
-      userMessage: "Hello"
-  graders:
-    strategy: "ALL"
-    layers:
-      - name: "check"
-        type: "contains"
-        weight: 1.0
-        config:
-          mustInclude:
-            - pattern: "Hello"
-              caseSensitive: false
-  execution:
-    timeoutMs: 10000
+const SUITE_YAML = `schemaVersion: "suite.v1"
+id: "basic-llm"
+name: "Basic LLM"
+discover:
+  - "datasets/**/*.yaml"
 `;
 
-const SECOND_TASK_YAML = `task:
-  schemaVersion: "task.v1"
-  id: "test/basic-002"
-  provider:
-    id: "reference"
-  graders:
-    strategy: "ALL"
-    layers:
-      - name: "check"
-        type: "contains"
-        weight: 1.0
-  execution:
-    timeoutMs: 5000
+const TASK_ONE_YAML = `schemaVersion: "task.v1"
+id: "basic-llm/task-001"
+desc: "first task"
+capability: "qa"
+provider:
+  id: "reference"
+  runs:
+    - name: "mini"
+      params:
+        prompt: "hello"
+    - name: "nano"
+      params:
+        prompt: "hello"
+graders:
+  strategy: "ALL"
+  layers:
+    - name: "contains hello"
+      type: "contains"
+      config:
+        mustInclude:
+          - pattern: "hello"
+            caseSensitive: false
+execution:
+  timeoutMs: 1000
 `;
 
-const URL_TAG_TASK_YAML = `task:
-  schemaVersion: "task.v1"
-  id: "test/url-tag-001"
-  tags:
-    - "http://example.com/resource"
-  provider:
-    id: "reference"
-  graders:
-    strategy: "ALL"
-    layers:
-      - name: "check"
-        type: "contains"
-        weight: 1.0
-  execution:
-    timeoutMs: 1000
+const TASK_TWO_YAML = `schemaVersion: "task.v1"
+id: "basic-llm/task-002"
+category: "chat"
+provider:
+  id: "reference"
+  runs:
+    - name: "mini"
+      params:
+        prompt: "world"
+graders:
+  strategy: "ALL"
+  layers:
+    - name: "contains world"
+      type: "contains"
+      config:
+        mustInclude:
+          - pattern: "world"
+            caseSensitive: false
+execution:
+  timeoutMs: 1000
 `;
 
-test('resolveDataset returns tasks from local YAML files', async () => {
-  const tempDir = await createTempDatasetDir();
+const TASK_ONE_REFORMATTED_YAML = `execution:
+  timeoutMs: 1000
+provider:
+  runs:
+    - params:
+        prompt: "hello"
+      name: "mini"
+    - params:
+        prompt: "hello"
+      name: "nano"
+  id: "reference"
+graders:
+  layers:
+    - config:
+        mustInclude:
+          - caseSensitive: false
+            pattern: "hello"
+      name: "contains hello"
+      type: "contains"
+  strategy: "ALL"
+capability: "qa"
+desc: "first task"
+id: "basic-llm/task-001"
+schemaVersion: "task.v1"
+`;
+
+test('listSuites returns suite descriptors discovered under rootDir', async () => {
+  const rootDir = await createTempRootDir();
   try {
-    const suiteDir = join(tempDir, 'chat-agent', 'smoke');
-    await mkdir(suiteDir, { recursive: true });
-    await writeTaskFile(suiteDir, 'task-001.yaml', MINIMAL_TASK_YAML);
+    await writeYaml(rootDir, 'suites/basic.yaml', SUITE_YAML);
+    await writeYaml(rootDir, 'datasets/a-task.yaml', TASK_ONE_YAML);
 
-    const adapter = createLocalTaskSourceAdapter({
-      datasetsRoot: tempDir,
-    });
-    const result = await adapter.resolveDataset({ dataset: 'chat-agent/smoke' });
+    const adapter = createLocalTaskSourceAdapter({ rootDir });
+    const suites = await adapter.listSuites();
 
-    assert.equal(result.source.adapter, 'local');
-    assert.equal(result.source.ref, 'chat-agent/smoke');
-    assert.ok(result.source.revision.startsWith('sha256-'));
-    assert.ok(result.source.fetchedAt.length > 0);
-    assert.equal(result.tasks.length, 1);
-    assert.ok(result.datasetHash.length > 0);
-
-    const task = result.tasks[0] as Record<string, unknown>;
-    assert.equal(task.id, 'test/basic-001');
-    assert.equal(task.schemaVersion, 'task.v1');
-  } finally {
-    await rm(tempDir, { recursive: true });
-  }
-});
-
-test('resolveDataset reads multiple YAML files in deterministic sorted order', async () => {
-  const tempDir = await createTempDatasetDir();
-  try {
-    const suiteDir = join(tempDir, 'suite');
-    await mkdir(suiteDir, { recursive: true });
-    await writeTaskFile(suiteDir, 'z-task.yaml', SECOND_TASK_YAML);
-    await writeTaskFile(suiteDir, 'a-task.yaml', MINIMAL_TASK_YAML);
-
-    const adapter = createLocalTaskSourceAdapter({
-      datasetsRoot: tempDir,
-    });
-    const result = await adapter.resolveDataset({ dataset: 'suite' });
-
-    assert.equal(result.tasks.length, 2);
-    // Files sorted alphabetically: a-task.yaml before z-task.yaml
-    const first = result.tasks[0] as Record<string, unknown>;
-    const second = result.tasks[1] as Record<string, unknown>;
-    assert.equal(first.id, 'test/basic-001');
-    assert.equal(second.id, 'test/basic-002');
-  } finally {
-    await rm(tempDir, { recursive: true });
-  }
-});
-
-test('resolveDataset produces deterministic datasetHash for same content', async () => {
-  const tempDir1 = await createTempDatasetDir();
-  const tempDir2 = await createTempDatasetDir();
-  try {
-    for (const dir of [tempDir1, tempDir2]) {
-      const suiteDir = join(dir, 'suite');
-      await mkdir(suiteDir, { recursive: true });
-      await writeTaskFile(suiteDir, 'task.yaml', MINIMAL_TASK_YAML);
-    }
-
-    const adapter1 = createLocalTaskSourceAdapter({
-      datasetsRoot: tempDir1,
-    });
-    const adapter2 = createLocalTaskSourceAdapter({
-      datasetsRoot: tempDir2,
-    });
-
-    const result1 = await adapter1.resolveDataset({ dataset: 'suite' });
-    const result2 = await adapter2.resolveDataset({ dataset: 'suite' });
-
-    assert.equal(result1.datasetHash, result2.datasetHash);
-  } finally {
-    await rm(tempDir1, { recursive: true });
-    await rm(tempDir2, { recursive: true });
-  }
-});
-
-test('resolveDataset uses options.revision when provided', async () => {
-  const tempDir = await createTempDatasetDir();
-  try {
-    const suiteDir = join(tempDir, 'suite');
-    const revisionDir = join(suiteDir, 'revisions', 'rev-2026-02-28-001');
-    await mkdir(revisionDir, { recursive: true });
-    await writeTaskFile(revisionDir, 'task.yaml', MINIMAL_TASK_YAML);
-
-    const adapter = createLocalTaskSourceAdapter({
-      datasetsRoot: tempDir,
-    });
-    const result = await adapter.resolveDataset({ dataset: 'suite', revision: 'rev-2026-02-28-001' });
-
-    assert.equal(result.source.revision, 'rev-2026-02-28-001');
-    assert.equal(result.tasks.length, 1);
-  } finally {
-    await rm(tempDir, { recursive: true });
-  }
-});
-
-test('resolveDataset fails fast when options.revision cannot be resolved', async () => {
-  const tempDir = await createTempDatasetDir();
-  try {
-    const suiteDir = join(tempDir, 'suite');
-    await mkdir(suiteDir, { recursive: true });
-    await writeTaskFile(suiteDir, 'task.yaml', MINIMAL_TASK_YAML);
-
-    const adapter = createLocalTaskSourceAdapter({
-      datasetsRoot: tempDir,
-    });
-
-    await assert.rejects(
-      () => adapter.resolveDataset({ dataset: 'suite', revision: 'rev-missing-001' }),
-      (error: unknown) => {
-        assert.ok(error instanceof Error);
-        assert.ok(error.message.includes('not found'));
-        return true;
+    assert.deepEqual(suites, [
+      {
+        id: 'basic-llm',
+        name: 'Basic LLM',
+        ref: 'suites/basic.yaml',
       },
+    ]);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('resolveSuite expands discover globs with deterministic task ordering', async () => {
+  const rootDir = await createTempRootDir();
+  try {
+    await writeYaml(rootDir, 'suites/basic.yaml', SUITE_YAML);
+    await writeYaml(rootDir, 'datasets/z-task.yaml', TASK_TWO_YAML);
+    await writeYaml(rootDir, 'datasets/a-task.yaml', TASK_ONE_YAML);
+
+    const adapter = createLocalTaskSourceAdapter({ rootDir });
+    const resolvedSuite = await adapter.resolveSuite('basic-llm');
+
+    assert.equal(resolvedSuite.suite.id, 'basic-llm');
+    assert.equal(resolvedSuite.tasks.length, 2);
+    assert.deepEqual(
+      resolvedSuite.tasks.map((task) => ({
+        id: task.id,
+        runCount: task.runCount,
+        ref: task.taskRef.ref,
+      })),
+      [
+        { id: 'basic-llm/task-001', runCount: 2, ref: 'datasets/a-task.yaml' },
+        { id: 'basic-llm/task-002', runCount: 1, ref: 'datasets/z-task.yaml' },
+      ],
     );
   } finally {
-    await rm(tempDir, { recursive: true });
+    await rm(rootDir, { recursive: true, force: true });
   }
 });
 
-test('resolveDataset resolves options.tag to revision via .tags.json', async () => {
-  const tempDir = await createTempDatasetDir();
+test('resolveSuite ignores colocated suite documents matched by discover globs', async () => {
+  const rootDir = await createTempRootDir();
   try {
-    const suiteDir = join(tempDir, 'suite');
-    const revisionDir = join(suiteDir, 'revisions', 'rev-stable-001');
-    await mkdir(revisionDir, { recursive: true });
-    await writeTaskFile(revisionDir, 'task.yaml', MINIMAL_TASK_YAML);
-    await writeTaskFile(
-      suiteDir,
-      '.tags.json',
-      JSON.stringify({
-        stable: 'rev-stable-001',
-      }),
+    await writeYaml(
+      rootDir,
+      'datasets/group-a/suite.yaml',
+      `schemaVersion: "suite.v1"
+id: "basic-llm"
+name: "Basic LLM"
+discover:
+  - "datasets/group-a/**/*.yaml"
+`,
     );
+    await writeYaml(rootDir, 'datasets/group-a/task-a.yaml', TASK_ONE_YAML);
+    await writeYaml(rootDir, 'datasets/group-a/task-b.yaml', TASK_TWO_YAML);
 
-    const adapter = createLocalTaskSourceAdapter({
-      datasetsRoot: tempDir,
-    });
-    const result = await adapter.resolveDataset({ dataset: 'suite', tag: 'stable' });
+    const adapter = createLocalTaskSourceAdapter({ rootDir });
+    const resolvedSuite = await adapter.resolveSuite('basic-llm');
 
-    assert.equal(result.source.revision, 'rev-stable-001');
-    assert.equal(result.tasks.length, 1);
-  } finally {
-    await rm(tempDir, { recursive: true });
-  }
-});
-
-test('resolveDataset fails fast when options.tag cannot be resolved', async () => {
-  const tempDir = await createTempDatasetDir();
-  try {
-    const suiteDir = join(tempDir, 'suite');
-    await mkdir(suiteDir, { recursive: true });
-    await writeTaskFile(suiteDir, 'task.yaml', MINIMAL_TASK_YAML);
-
-    const adapter = createLocalTaskSourceAdapter({
-      datasetsRoot: tempDir,
-    });
-
-    await assert.rejects(
-      () => adapter.resolveDataset({ dataset: 'suite', tag: 'release' }),
-      (error: unknown) => {
-        assert.ok(error instanceof Error);
-        assert.ok(error.message.includes('not found'));
-        return true;
-      },
+    assert.deepEqual(
+      resolvedSuite.tasks.map((task) => task.taskRef.ref),
+      ['datasets/group-a/task-a.yaml', 'datasets/group-a/task-b.yaml'],
     );
   } finally {
-    await rm(tempDir, { recursive: true });
+    await rm(rootDir, { recursive: true, force: true });
   }
 });
 
-test('resolveDataset fails fast when options.revision and options.tag are both provided', async () => {
-  const tempDir = await createTempDatasetDir();
+test('resolveTask returns validated task and stable source revision', async () => {
+  const rootDir = await createTempRootDir();
   try {
-    const suiteDir = join(tempDir, 'suite');
-    await mkdir(suiteDir, { recursive: true });
-    await writeTaskFile(suiteDir, 'task.yaml', MINIMAL_TASK_YAML);
+    await writeYaml(rootDir, 'task-a.yaml', TASK_ONE_YAML);
+    await writeYaml(rootDir, 'task-b.yaml', TASK_ONE_REFORMATTED_YAML);
 
-    const adapter = createLocalTaskSourceAdapter({
-      datasetsRoot: tempDir,
-    });
+    const adapter = createLocalTaskSourceAdapter({ rootDir });
+    const taskA = await adapter.resolveTask({ suiteId: 'basic-llm', ref: 'task-a.yaml' });
+    const taskB = await adapter.resolveTask({ suiteId: 'basic-llm', ref: 'task-b.yaml' });
 
-    await assert.rejects(
-      () => adapter.resolveDataset({ dataset: 'suite', revision: 'rev-001', tag: 'stable' }),
-      (error: unknown) => {
-        assert.ok(error instanceof Error);
-        assert.ok(error.message.includes('cannot be used together'));
-        return true;
-      },
-    );
+    assert.equal(taskA.task.id, 'basic-llm/task-001');
+    assert.equal(taskA.source.revision, taskB.source.revision);
+    assert.ok(taskA.source.revision.startsWith('sha256-'));
   } finally {
-    await rm(tempDir, { recursive: true });
+    await rm(rootDir, { recursive: true, force: true });
   }
 });
 
-test('resolveDataset fails fast on empty dataset path', async () => {
-  const adapter = createLocalTaskSourceAdapter({ datasetsRoot: '/tmp' });
-  await assert.rejects(
-    () => adapter.resolveDataset({ dataset: '' }),
-    (error: unknown) => {
-      assert.ok(error instanceof Error);
-      return true;
-    },
-  );
-});
-
-test('resolveDataset fails fast on relative traversal path', async () => {
-  const adapter = createLocalTaskSourceAdapter({ datasetsRoot: '/tmp' });
-  await assert.rejects(
-    () => adapter.resolveDataset({ dataset: '../secret' }),
-    (error: unknown) => {
-      assert.ok(error instanceof Error);
-      assert.ok(error.message.includes('traversal'));
-      return true;
-    },
-  );
-});
-
-test('resolveDataset fails fast on absolute path', async () => {
-  const adapter = createLocalTaskSourceAdapter({ datasetsRoot: '/tmp' });
-  await assert.rejects(
-    () => adapter.resolveDataset({ dataset: '/tmp/secret' }),
-    (error: unknown) => {
-      assert.ok(error instanceof Error);
-      assert.ok(error.message.includes('Absolute path'));
-      return true;
-    },
-  );
-});
-
-test('resolveDataset fails fast when directory does not exist', async () => {
-  const adapter = createLocalTaskSourceAdapter({
-    datasetsRoot: '/tmp/nonexistent-youeval-dir',
-  });
-
-  await assert.rejects(
-    () => adapter.resolveDataset({ dataset: 'missing/suite' }),
-    (error: unknown) => {
-      assert.ok(error instanceof Error);
-      return true;
-    },
-  );
-});
-
-test('resolveDataset fails fast when directory has no YAML files', async () => {
-  const tempDir = await createTempDatasetDir();
+test('resolveSuite fails fast on duplicate task ids within one suite', async () => {
+  const rootDir = await createTempRootDir();
   try {
-    const suiteDir = join(tempDir, 'empty-suite');
-    await mkdir(suiteDir, { recursive: true });
-    await writeFile(join(suiteDir, 'readme.txt'), 'not a yaml file', 'utf-8');
+    await writeYaml(rootDir, 'suites/basic.yaml', SUITE_YAML);
+    await writeYaml(rootDir, 'datasets/task-a.yaml', TASK_ONE_YAML);
+    await writeYaml(rootDir, 'datasets/task-b.yaml', TASK_ONE_REFORMATTED_YAML);
 
-    const adapter = createLocalTaskSourceAdapter({
-      datasetsRoot: tempDir,
-    });
+    const adapter = createLocalTaskSourceAdapter({ rootDir });
 
-    await assert.rejects(
-      () => adapter.resolveDataset({ dataset: 'empty-suite' }),
-      (error: unknown) => {
-        assert.ok(error instanceof Error);
-        assert.ok(error.message.includes('no YAML'));
-        return true;
-      },
-    );
+    await assert.rejects(() => adapter.resolveSuite('basic-llm'), /must be unique within suite/);
   } finally {
-    await rm(tempDir, { recursive: true });
+    await rm(rootDir, { recursive: true, force: true });
   }
 });
 
-test('resolveDataset fails fast when YAML file is missing task key', async () => {
-  const tempDir = await createTempDatasetDir();
+test('listSuites fails fast when rootDir contains symlinked YAML paths', async () => {
+  const rootDir = await createTempRootDir();
+  const externalRoot = await createTempRootDir();
   try {
-    const suiteDir = join(tempDir, 'bad');
-    await mkdir(suiteDir, { recursive: true });
-    await writeTaskFile(suiteDir, 'bad.yaml', 'notTask:\n  id: "test"');
+    await writeYaml(rootDir, 'suites/basic.yaml', SUITE_YAML);
+    await writeYaml(externalRoot, 'outside.yaml', TASK_ONE_YAML);
+    await mkdir(join(rootDir, 'datasets'), { recursive: true });
+    await symlink(join(externalRoot, 'outside.yaml'), join(rootDir, 'datasets', 'linked.yaml'));
 
-    const adapter = createLocalTaskSourceAdapter({
-      datasetsRoot: tempDir,
-    });
+    const adapter = createLocalTaskSourceAdapter({ rootDir });
 
-    await assert.rejects(
-      () => adapter.resolveDataset({ dataset: 'bad' }),
-      (error: unknown) => {
-        assert.ok(error instanceof Error);
-        assert.ok(error.message.includes("'task'"));
-        return true;
-      },
-    );
+    await assert.rejects(() => adapter.listSuites(), /Symbolic links are not allowed/);
   } finally {
-    await rm(tempDir, { recursive: true });
+    await rm(rootDir, { recursive: true, force: true });
+    await rm(externalRoot, { recursive: true, force: true });
   }
 });
 
-test('resolveDataset fails fast when task file is a symbolic link', async () => {
-  const tempDir = await createTempDatasetDir();
-  const externalDir = await createTempDatasetDir();
+test('resolveSuite fails when matched files are not task YAML documents', async () => {
+  const rootDir = await createTempRootDir();
   try {
-    const suiteDir = join(tempDir, 'suite');
-    await mkdir(suiteDir, { recursive: true });
+    await writeYaml(rootDir, 'suites/basic.yaml', SUITE_YAML);
+    await writeYaml(rootDir, 'datasets/not-a-task.yaml', 'notTask:\n  id: "wrong"\n');
 
-    const externalTaskFile = join(externalDir, 'external.yaml');
-    await writeTaskFile(externalDir, 'external.yaml', MINIMAL_TASK_YAML);
-    await symlink(externalTaskFile, join(suiteDir, 'task.yaml'));
+    const adapter = createLocalTaskSourceAdapter({ rootDir });
 
-    const adapter = createLocalTaskSourceAdapter({
-      datasetsRoot: tempDir,
-    });
-
-    await assert.rejects(
-      () => adapter.resolveDataset({ dataset: 'suite' }),
-      (error: unknown) => {
-        assert.ok(error instanceof Error);
-        assert.ok(error.message.includes('symbolic link'));
-        return true;
-      },
-    );
+    await assert.rejects(() => adapter.resolveSuite('basic-llm'), /schemaVersion/);
   } finally {
-    await rm(tempDir, { recursive: true, force: true });
-    await rm(externalDir, { recursive: true, force: true });
-  }
-});
-
-test('resolveDataset parses nested YAML structures correctly', async () => {
-  const tempDir = await createTempDatasetDir();
-  try {
-    const suiteDir = join(tempDir, 'nested');
-    await mkdir(suiteDir, { recursive: true });
-    await writeTaskFile(suiteDir, 'task.yaml', MINIMAL_TASK_YAML);
-
-    const adapter = createLocalTaskSourceAdapter({
-      datasetsRoot: tempDir,
-    });
-    const result = await adapter.resolveDataset({ dataset: 'nested' });
-
-    const task = result.tasks[0] as Record<string, unknown>;
-    assert.equal(task.schemaVersion, 'task.v1');
-    assert.equal(task.id, 'test/basic-001');
-
-    const provider = task.provider as Record<string, unknown>;
-    assert.equal(provider.id, 'reference');
-
-    const params = provider.params as Record<string, unknown>;
-    assert.equal(params.userMessage, 'Hello');
-
-    const graders = task.graders as Record<string, unknown>;
-    assert.equal(graders.strategy, 'ALL');
-
-    const layers = graders.layers as Record<string, unknown>[];
-    assert.equal(layers.length, 1);
-    assert.equal(layers[0]!.name, 'check');
-    assert.equal(layers[0]!.type, 'contains');
-
-    const execution = task.execution as Record<string, unknown>;
-    assert.equal(execution.timeoutMs, 10000);
-  } finally {
-    await rm(tempDir, { recursive: true });
-  }
-});
-
-test('resolveDataset produces different hashes for different content', async () => {
-  const tempDir = await createTempDatasetDir();
-  try {
-    const suite1 = join(tempDir, 'suite1');
-    const suite2 = join(tempDir, 'suite2');
-    await mkdir(suite1, { recursive: true });
-    await mkdir(suite2, { recursive: true });
-    await writeTaskFile(suite1, 'task.yaml', MINIMAL_TASK_YAML);
-    await writeTaskFile(suite2, 'task.yaml', SECOND_TASK_YAML);
-
-    const adapter = createLocalTaskSourceAdapter({
-      datasetsRoot: tempDir,
-    });
-    const result1 = await adapter.resolveDataset({ dataset: 'suite1' });
-    const result2 = await adapter.resolveDataset({ dataset: 'suite2' });
-
-    assert.notEqual(result1.datasetHash, result2.datasetHash);
-  } finally {
-    await rm(tempDir, { recursive: true });
-  }
-});
-
-test('resolveDataset supports .yml extension', async () => {
-  const tempDir = await createTempDatasetDir();
-  try {
-    const suiteDir = join(tempDir, 'yml-suite');
-    await mkdir(suiteDir, { recursive: true });
-    await writeTaskFile(suiteDir, 'task.yml', MINIMAL_TASK_YAML);
-
-    const adapter = createLocalTaskSourceAdapter({
-      datasetsRoot: tempDir,
-    });
-    const result = await adapter.resolveDataset({ dataset: 'yml-suite' });
-
-    assert.equal(result.tasks.length, 1);
-  } finally {
-    await rm(tempDir, { recursive: true });
-  }
-});
-
-test('resolveDataset keeps array scalar values that contain colon', async () => {
-  const tempDir = await createTempDatasetDir();
-  try {
-    const suiteDir = join(tempDir, 'url-suite');
-    await mkdir(suiteDir, { recursive: true });
-    await writeTaskFile(suiteDir, 'task.yaml', URL_TAG_TASK_YAML);
-
-    const adapter = createLocalTaskSourceAdapter({
-      datasetsRoot: tempDir,
-    });
-    const result = await adapter.resolveDataset({ dataset: 'url-suite' });
-
-    const task = result.tasks[0] as Record<string, unknown>;
-    const tags = task.tags as unknown[];
-    assert.deepEqual(tags, ['http://example.com/resource']);
-  } finally {
-    await rm(tempDir, { recursive: true });
-  }
-});
-
-test('resolveDataset uses stable tag by default when .tags.json exists', async () => {
-  const tempDir = await createTempDatasetDir();
-  try {
-    const suiteDir = join(tempDir, 'suite');
-    const stableDir = join(suiteDir, 'revisions', 'rev-stable-001');
-    const nextDir = join(suiteDir, 'revisions', 'rev-next-001');
-    await mkdir(stableDir, { recursive: true });
-    await mkdir(nextDir, { recursive: true });
-    await writeTaskFile(stableDir, 'task.yaml', MINIMAL_TASK_YAML);
-    await writeTaskFile(nextDir, 'task.yaml', SECOND_TASK_YAML);
-    await writeTaskFile(
-      suiteDir,
-      '.tags.json',
-      JSON.stringify({
-        stable: 'rev-stable-001',
-        next: 'rev-next-001',
-      }),
-    );
-
-    const adapter = createLocalTaskSourceAdapter({
-      datasetsRoot: tempDir,
-    });
-    const result = await adapter.resolveDataset({ dataset: 'suite' });
-
-    assert.equal(result.source.revision, 'rev-stable-001');
-    const task = result.tasks[0] as Record<string, unknown>;
-    assert.equal(task.id, 'test/basic-001');
-  } finally {
-    await rm(tempDir, { recursive: true });
+    await rm(rootDir, { recursive: true, force: true });
   }
 });

@@ -1,60 +1,64 @@
-import { createHash } from 'node:crypto';
-import type { Stats } from 'node:fs';
-import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { lstat, readdir, readFile, realpath } from 'node:fs/promises';
+import { isAbsolute, matchesGlob, relative, resolve, sep } from 'node:path';
 
 import { parse } from 'yaml';
 
 import type {
-  DatasetSelector,
-  ResolvedDataset,
+  ResolvedSuite,
+  ResolvedTask,
+  SuiteDescriptor,
+  TaskIndex,
+  TaskRef,
   TaskSourceAdapter,
 } from '../../core/adapters/task-source-adapter.js';
+import { SCHEMA_VERSIONS } from '../../core/contracts/schema-versions.js';
+import type { SuiteDefinition } from '../../core/contracts/suite.js';
+import type { TaskDefinition } from '../../core/contracts/task.js';
+import { computeSha256 } from '../../core/utils/hash.js';
 import { ensureNonEmptyString } from '../../core/validation/helpers.js';
+import { validateSuiteDefinition } from '../../core/validation/suite-validator.js';
+import { validateTaskDefinition } from '../../core/validation/task-validator.js';
 
 const ADAPTER_ID = 'local';
 const YAML_EXTENSIONS = new Set(['.yaml', '.yml']);
-const TAGS_FILE_NAME = '.tags.json';
-const DEFAULT_TAG = 'stable';
+const GLOB_MAGIC_PATTERN = /[*?[{\]}]/;
 
-function normalizeDatasetPath(pathValue: string): string {
-  const normalized = pathValue.replaceAll('\\', '/').trim();
+interface SuiteEntry {
+  ref: string;
+  suite: SuiteDefinition;
+}
+
+export interface LocalTaskSourceAdapterOptions {
+  rootDir: string;
+}
+
+/**
+ * 将用户提供的相对路径规范化为稳定的斜杠格式，并提前拒绝空值、
+ * 绝对路径和包含路径穿越的输入。
+ */
+function normalizeRelativeValue(value: string, field: string): string {
+  const normalized = value.replaceAll('\\', '/').trim();
   if (normalized.length === 0) {
-    throw new Error("Field 'dataset' must not be empty.");
+    throw new Error(`Field '${field}' must be a non-empty string.`);
   }
 
   if (normalized.startsWith('/')) {
-    throw new Error(`Invalid dataset path '${normalized}'. Absolute path is not allowed.`);
+    throw new Error(`Field '${field}' must not be an absolute path.`);
   }
 
   const segments = normalized.split('/').filter((segment) => segment.length > 0);
-  if (segments.length === 0) {
-    throw new Error("Field 'dataset' must not be empty.");
-  }
-
-  const hasTraversalSegment = segments.some((segment) => segment === '.' || segment === '..');
-  if (hasTraversalSegment) {
-    throw new Error(`Invalid dataset path '${normalized}'. Relative traversal segments are not allowed.`);
+  if (segments.some((segment) => segment === '.' || segment === '..')) {
+    throw new Error(`Field '${field}' must not contain relative traversal segments.`);
   }
 
   return segments.join('/');
 }
 
-function ensureNonEmptyStringOption(value: unknown, field: string): string {
-  if (typeof value !== 'string') {
-    throw new Error(`Field '${field}' must be a non-empty string.`);
-  }
-  return ensureNonEmptyString(value, field);
-}
-
-function normalizeOptionalSelector(value: unknown, field: string): string | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  return ensureNonEmptyStringOption(value, field);
-}
-
-function assertPathInsideRoot(rootPath: string, targetPath: string, dataset: string): void {
+/**
+ * 约束所有解析后的文件系统路径，确保 suite 发现和 task 加载
+ * 都不会逃出配置的 adapter 根目录。
+ */
+function assertPathInsideRoot(rootPath: string, targetPath: string, field: string): void {
   const relativePath = relative(rootPath, targetPath);
   const isOutsideRoot =
     relativePath === '..' || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath);
@@ -63,323 +67,356 @@ function assertPathInsideRoot(rootPath: string, targetPath: string, dataset: str
     return;
   }
 
-  throw new Error(`Dataset '${dataset}' points outside configured datasetsRoot.`);
+  throw new Error(`Field '${field}' points outside configured rootDir.`);
 }
 
-async function readYamlFiles(
-  dirPath: string,
-  datasetsRootPath: string,
-  dataset: string,
-): Promise<{ name: string; content: string }[]> {
-  let entries: string[];
-  try {
-    entries = await readdir(dirPath);
-  } catch {
-    throw new Error(`Failed to read dataset directory '${dirPath}'.`);
-  }
-
-  const yamlFiles = entries
-    .filter((entry) => {
-      const dotIndex = entry.lastIndexOf('.');
-      if (dotIndex < 0) return false;
-      return YAML_EXTENSIONS.has(entry.slice(dotIndex).toLowerCase());
-    })
-    .sort();
-
-  const results: { name: string; content: string }[] = [];
-  for (const fileName of yamlFiles) {
-    const filePath = join(dirPath, fileName);
-    const fileStat = await lstat(filePath);
-
-    if (fileStat.isSymbolicLink()) {
-      throw new Error(`Task file '${fileName}' must not be a symbolic link.`);
-    }
-    if (!fileStat.isFile()) {
-      continue;
-    }
-
-    const fileRealPath = await realpath(filePath);
-    assertPathInsideRoot(datasetsRootPath, fileRealPath, dataset);
-
-    const content = await readFile(fileRealPath, 'utf-8');
-    results.push({ name: fileName, content });
-  }
-
-  return results;
+/**
+ * 将平台相关的路径分隔符转换成稳定的显示用 ref。
+ */
+function toDisplayPath(path: string): string {
+  return path.split(sep).join('/');
 }
 
-function parseTaskYaml(content: string, fileName: string): unknown {
-  try {
-    return parse(content);
-  } catch {
-    throw new Error(`Task file '${fileName}' is not valid YAML.`);
-  }
-}
-
-function extractTaskFromParsed(parsed: unknown, fileName: string): unknown {
-  if (typeof parsed !== 'object' || parsed === null) {
-    throw new Error(`Task file '${fileName}' does not contain a valid YAML object.`);
-  }
-
-  const record = parsed as Record<string, unknown>;
-  if (!('task' in record)) {
-    throw new Error(`Task file '${fileName}' is missing the top-level 'task' key.`);
-  }
-
-  return record.task;
-}
-
-function computeDatasetHash(files: { name: string; content: string }[]): string {
-  const hash = createHash('sha256');
-  for (const file of files) {
-    hash.update(file.name);
-    hash.update('\0');
-    hash.update(file.content);
-    hash.update('\0');
-  }
-  return hash.digest('hex');
-}
-
-function computeRevision(datasetHash: string, selectorRevision?: string): string {
-  if (selectorRevision) {
-    return selectorRevision;
-  }
-  return `sha256-${datasetHash.slice(0, 12)}`;
-}
-
-function normalizeRevision(value: string, field: 'revision' | 'tag'): string {
-  const normalized = value.trim();
-  if (normalized.length === 0) {
-    throw new Error(`Field '${field}' must be a non-empty string.`);
-  }
-
-  if (normalized.includes('/') || normalized.includes('\\')) {
-    throw new Error(`Field '${field}' must not contain path separators.`);
-  }
-
-  if (normalized === '.' || normalized === '..') {
-    throw new Error(`Field '${field}' must not be '${normalized}'.`);
-  }
-
-  return normalized;
-}
-
-interface ResolvedSelectorRevision {
-  revision?: string;
-  tasksDirPath: string;
-}
-
-function parseTagMap(value: unknown, filePath: string): Record<string, string> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error(`Tag mapping file '${filePath}' must be a JSON object.`);
-  }
-
-  const map: Record<string, string> = {};
-  for (const [key, rawValue] of Object.entries(value)) {
-    const tag = normalizeRevision(key, 'tag');
-    if (typeof rawValue !== 'string') {
-      throw new Error(`Tag '${tag}' in '${filePath}' must map to a string revision.`);
-    }
-
-    map[tag] = normalizeRevision(rawValue, 'revision');
-  }
-
-  return map;
-}
-
-async function readTagMap(datasetDirPath: string): Promise<Record<string, string> | null> {
-  const tagsFilePath = join(datasetDirPath, TAGS_FILE_NAME);
-
+/**
+ * 读取 YAML 文件，并要求文档根节点必须是对象，便于后续
+ * suite/task 校验在一致的数据形状上运行。
+ */
+async function readYamlObject(filePath: string, label: string): Promise<Record<string, unknown>> {
   let content: string;
   try {
-    content = await readFile(tagsFilePath, 'utf-8');
-  } catch (cause) {
-    const errorCode =
-      typeof cause === 'object' &&
-      cause !== null &&
-      'code' in cause &&
-      typeof (cause as { code?: unknown }).code === 'string'
-        ? (cause as { code: string }).code
-        : null;
-
-    if (errorCode === 'ENOENT') {
-      return null;
-    }
-
-    throw new Error(`Failed to read tag mapping file '${tagsFilePath}'.`);
+    content = await readFile(filePath, 'utf-8');
+  } catch {
+    throw new Error(`Failed to read ${label} '${filePath}'.`);
   }
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(content) as unknown;
+    parsed = parse(content);
   } catch {
-    throw new Error(`Tag mapping file '${tagsFilePath}' is not valid JSON.`);
+    throw new Error(`${label} '${filePath}' is not valid YAML.`);
   }
 
-  return parseTagMap(parsed, tagsFilePath);
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`${label} '${filePath}' must contain a YAML object.`);
+  }
+
+  return parsed as Record<string, unknown>;
 }
 
-async function resolveTasksDirectoryByRevision(
-  datasetDirPath: string,
-  revision: string,
-  dataset: string,
-): Promise<string> {
-  const revisionDirPath = resolve(datasetDirPath, 'revisions', revision);
-  assertPathInsideRoot(datasetDirPath, revisionDirPath, dataset);
+/**
+ * 从给定起点目录开始，以确定性顺序递归收集 YAML 文件，同时拒绝符号链接
+ * 以及任何 realpath 后逃出 adapter 根目录的路径。
+ */
+async function collectYamlFiles(
+  startDirRealPath: string,
+  rootDirRealPath: string,
+): Promise<string[]> {
+  async function walk(dirPath: string): Promise<string[]> {
+    const dirents = await readdir(dirPath, { withFileTypes: true });
+    const entries = dirents.sort((a, b) => a.name.localeCompare(b.name));
+    const files: string[] = [];
 
-  let dirStat: Stats;
-  try {
-    dirStat = await stat(revisionDirPath);
-  } catch {
-    throw new Error(`Revision '${revision}' is not found for dataset '${dataset}'.`);
+    for (const dirent of entries) {
+      const entryPath = resolve(dirPath, dirent.name);
+      const entryStat = await lstat(entryPath);
+      if (entryStat.isSymbolicLink()) {
+        throw new Error(`Symbolic links are not allowed under rootDir: '${entryPath}'.`);
+      }
+
+      if (dirent.isDirectory()) {
+        files.push(...(await walk(entryPath)));
+        continue;
+      }
+
+      const extension = dirent.name.slice(dirent.name.lastIndexOf('.')).toLowerCase();
+      if (!YAML_EXTENSIONS.has(extension)) {
+        continue;
+      }
+
+      const realEntryPath = await realpath(entryPath);
+      assertPathInsideRoot(rootDirRealPath, realEntryPath, 'rootDir');
+      files.push(realEntryPath);
+    }
+
+    return files;
   }
 
-  if (!dirStat.isDirectory()) {
-    throw new Error(`Revision path '${revisionDirPath}' must be a directory.`);
-  }
-
-  return revisionDirPath;
+  return walk(startDirRealPath);
 }
 
-async function resolveSelectorRevision(
-  datasetDirPath: string,
-  input: { dataset: string; revision?: string; tag?: string },
-): Promise<ResolvedSelectorRevision> {
-  const selectorRevision = input.revision;
-  const selectorTag = input.tag;
+/**
+ * 发现 rootDir 下的全部 suite 文档，完成校验，并在 suite id 重复时快速失败。
+ */
+async function scanSuites(rootDirRealPath: string): Promise<SuiteEntry[]> {
+  const yamlFiles = await collectYamlFiles(rootDirRealPath, rootDirRealPath);
+  const entries: SuiteEntry[] = [];
 
-  if (selectorRevision && selectorTag) {
-    throw new Error(
-      "Fields 'revision' and 'tag' cannot be used together.",
-    );
+  for (const filePath of yamlFiles) {
+    const document = await readYamlObject(filePath, 'suite file');
+    if (document.schemaVersion !== SCHEMA_VERSIONS.SUITE) {
+      continue;
+    }
+
+    const suite = validateSuiteDefinition(document);
+    entries.push({
+      ref: toDisplayPath(relative(rootDirRealPath, filePath)),
+      suite,
+    });
   }
 
-  if (selectorRevision) {
-    const normalizedRevision = normalizeRevision(selectorRevision, 'revision');
-    const revisionTasksDirPath = await resolveTasksDirectoryByRevision(
-      datasetDirPath,
-      normalizedRevision,
-      input.dataset,
-    );
-    return {
-      revision: normalizedRevision,
-      tasksDirPath: revisionTasksDirPath,
-    };
+  entries.sort((a, b) => a.suite.id.localeCompare(b.suite.id) || a.ref.localeCompare(b.ref));
+
+  const seenIds = new Set<string>();
+  for (const entry of entries) {
+    if (seenIds.has(entry.suite.id)) {
+      throw new Error(`Suite id '${entry.suite.id}' must be unique under rootDir.`);
+    }
+    seenIds.add(entry.suite.id);
   }
 
-  const tagMap = await readTagMap(datasetDirPath);
-  const normalizedTag = selectorTag
-    ? normalizeRevision(selectorTag, 'tag')
-    : null;
-  const effectiveTag = normalizedTag ?? DEFAULT_TAG;
-  const mappedRevision = tagMap?.[effectiveTag];
+  return entries;
+}
 
-  if (normalizedTag && !mappedRevision) {
-    throw new Error(`Tag '${normalizedTag}' is not found for dataset '${input.dataset}'.`);
+/**
+ * 使用与 task ref 相同的路径安全规则来规范化 suite discover glob。
+ */
+function normalizeDiscoverPattern(pattern: string): string {
+  return normalizeRelativeValue(pattern, 'suite.discover');
+}
+
+/**
+ * 判断 discover 路径片段是否包含 glob 元字符，用于截断出可直接定位的静态前缀。
+ */
+function hasGlobMagic(segment: string): boolean {
+  return GLOB_MAGIC_PATTERN.test(segment);
+}
+
+/**
+ * 基于 discover 模式提取静态前缀，便于只扫描该模式覆盖的目录范围。
+ */
+function getDiscoverStaticPrefix(pattern: string): string {
+  const segments = pattern.split('/');
+  const firstGlobIndex = segments.findIndex((segment) => hasGlobMagic(segment));
+  if (firstGlobIndex < 0) {
+    return pattern;
   }
 
-  if (!mappedRevision) {
-    return {
-      tasksDirPath: datasetDirPath,
-    };
+  return segments.slice(0, firstGlobIndex).join('/');
+}
+
+/**
+ * 解析单条 discover 规则，只在它对应的路径范围内收集匹配到的 task 文件 ref。
+ */
+async function collectTaskRefsForDiscoverPattern(
+  rootDirRealPath: string,
+  pattern: string,
+): Promise<string[]> {
+  const staticPrefix = getDiscoverStaticPrefix(pattern);
+  const scanStartPath =
+    staticPrefix.length === 0 ? rootDirRealPath : resolve(rootDirRealPath, staticPrefix);
+  assertPathInsideRoot(rootDirRealPath, scanStartPath, 'suite.discover');
+
+  const startStat = await lstat(scanStartPath).catch(() => null);
+  if (startStat === null) {
+    return [];
   }
 
+  if (startStat.isSymbolicLink()) {
+    throw new Error(`Symbolic links are not allowed under rootDir: '${scanStartPath}'.`);
+  }
+
+  if (startStat.isDirectory()) {
+    const startDirRealPath = await realpath(scanStartPath);
+    assertPathInsideRoot(rootDirRealPath, startDirRealPath, 'suite.discover');
+
+    return (await collectYamlFiles(startDirRealPath, rootDirRealPath))
+      .map((filePath) => toDisplayPath(relative(rootDirRealPath, filePath)))
+      .filter((fileRef) => matchesGlob(fileRef, pattern))
+      .sort();
+  }
+
+  if (!startStat.isFile()) {
+    return [];
+  }
+
+  const realFilePath = await realpath(scanStartPath);
+  assertPathInsideRoot(rootDirRealPath, realFilePath, 'suite.discover');
+  const fileRef = toDisplayPath(relative(rootDirRealPath, realFilePath));
+  const extension = fileRef.slice(fileRef.lastIndexOf('.')).toLowerCase();
+  if (!YAML_EXTENSIONS.has(extension) || !matchesGlob(fileRef, pattern)) {
+    return [];
+  }
+
+  return [fileRef];
+}
+
+/**
+ * 将完整的 task 定义投影为更轻量的 suite task index 结构。
+ */
+function taskIndexFromTask(task: TaskDefinition, suiteId: string, ref: string): TaskIndex {
   return {
-    revision: mappedRevision,
-    tasksDirPath: await resolveTasksDirectoryByRevision(
-      datasetDirPath,
-      mappedRevision,
-      input.dataset,
-    ),
+    id: task.id,
+    ...(task.desc !== undefined ? { desc: task.desc } : {}),
+    ...(task.category !== undefined ? { category: task.category } : {}),
+    ...(task.capability !== undefined ? { capability: task.capability } : {}),
+    ...(task.tier !== undefined ? { tier: task.tier } : {}),
+    ...(task.difficulty !== undefined ? { difficulty: task.difficulty } : {}),
+    ...(task.tags !== undefined ? { tags: task.tags } : {}),
+    runCount: task.provider.runs.length,
+    taskRef: {
+      suiteId,
+      ref,
+    },
   };
 }
 
-export interface LocalTaskSourceAdapterOptions {
-  datasetsRoot: unknown;
+/**
+ * 将单个 task ref 解析为已校验的 task 定义，并补上基于文档内容生成的
+ * source revision 元数据。
+ */
+async function resolveTaskFile(
+  rootDirRealPath: string,
+  taskRef: TaskRef,
+  options?: { skipSuiteDocument?: boolean },
+): Promise<{ ref: string; task: TaskDefinition; revision: string } | null> {
+  ensureNonEmptyString(taskRef.suiteId, 'taskRef.suiteId');
+  const normalizedRef = normalizeRelativeValue(taskRef.ref, 'taskRef.ref');
+  const taskPath = resolve(rootDirRealPath, normalizedRef);
+  assertPathInsideRoot(rootDirRealPath, taskPath, 'taskRef.ref');
+
+  const taskRealPath = await realpath(taskPath).catch(() => {
+    throw new Error(`Task '${normalizedRef}' was not found under rootDir.`);
+  });
+  assertPathInsideRoot(rootDirRealPath, taskRealPath, 'taskRef.ref');
+
+  const document = await readYamlObject(taskRealPath, 'task file');
+  if (options?.skipSuiteDocument && document.schemaVersion === SCHEMA_VERSIONS.SUITE) {
+    return null;
+  }
+
+  const task = validateTaskDefinition(document);
+  const revision = `sha256-${computeSha256(document).slice(0, 12)}`;
+
+  return {
+    ref: normalizedRef,
+    task,
+    revision,
+  };
 }
 
 export function createLocalTaskSourceAdapter(
   options: LocalTaskSourceAdapterOptions,
 ): TaskSourceAdapter {
-  const datasetsRoot = ensureNonEmptyStringOption(
-    options.datasetsRoot,
-    'datasetsRoot',
-  );
-  const absoluteDatasetsRoot = resolve(datasetsRoot);
+  const rootDir = ensureNonEmptyString(options.rootDir, 'rootDir');
+  const absoluteRootDir = resolve(rootDir);
+
+  /**
+   * 尝试解析配置的根目录为真实路径（realpath），
+   * 若 realpath 失败则返回绝对路径以便后续处理和一致的错误信息。
+   */
+  async function resolveRootDirRealPath(): Promise<string> {
+    return realpath(absoluteRootDir).catch(() => absoluteRootDir);
+  }
+
+  /**
+   * 按需重新扫描 suites，并返回对应 id 的唯一 suite 条目。
+   */
+  async function findSuiteEntry(suiteId: string): Promise<SuiteEntry> {
+    const normalizedSuiteId = ensureNonEmptyString(suiteId, 'suiteId');
+    const rootDirRealPath = await resolveRootDirRealPath();
+    const suites = await scanSuites(rootDirRealPath);
+    const entry = suites.find((candidate) => candidate.suite.id === normalizedSuiteId);
+    if (entry) {
+      return entry;
+    }
+
+    throw new Error(`Suite '${normalizedSuiteId}' was not found under rootDir.`);
+  }
 
   return {
-    async resolveDataset(selector: DatasetSelector) {
-      const dataset = normalizeDatasetPath(selector.dataset);
-      const requestedRevision = normalizeOptionalSelector(
-        selector.revision,
-        'revision',
-      );
-      const requestedTag = normalizeOptionalSelector(selector.tag, 'tag');
+    async listSuites(): Promise<SuiteDescriptor[]> {
+      const rootDirRealPath = await resolveRootDirRealPath();
+      const suites = await scanSuites(rootDirRealPath);
+      return suites.map((entry) => ({
+        id: entry.suite.id,
+        name: entry.suite.name,
+        ref: entry.ref,
+      }));
+    },
 
-      const datasetDir = resolve(absoluteDatasetsRoot, dataset);
-      assertPathInsideRoot(absoluteDatasetsRoot, datasetDir, dataset);
+    async resolveSuite(suiteId: string): Promise<ResolvedSuite> {
+      const rootDirRealPath = await resolveRootDirRealPath();
+      const entry = await findSuiteEntry(suiteId);
+      const patterns = entry.suite.discover.map((pattern) => normalizeDiscoverPattern(pattern));
+      const matchedTaskRefs = Array.from(
+        new Set(
+          (
+            await Promise.all(
+              patterns.map((pattern) =>
+                collectTaskRefsForDiscoverPattern(rootDirRealPath, pattern),
+              ),
+            )
+          ).flat(),
+        ),
+      ).sort();
 
-      let datasetsRootRealPath = absoluteDatasetsRoot;
-      try {
-        datasetsRootRealPath = await realpath(absoluteDatasetsRoot);
-      } catch {
-        // keep absolute path fallback
+      if (matchedTaskRefs.length === 0) {
+        throw new Error(`Suite '${entry.suite.id}' did not match any task files.`);
       }
 
-      let dirStat: Stats;
-      try {
-        dirStat = await stat(datasetDir);
-      } catch {
-        throw new Error(`Dataset directory '${datasetDir}' not found for dataset '${dataset}'.`);
-      }
-      if (!dirStat.isDirectory()) {
-        throw new Error(`Dataset path '${datasetDir}' exists but is not a directory.`);
-      }
-
-      let datasetDirRealPath: string;
-      try {
-        datasetDirRealPath = await realpath(datasetDir);
-      } catch {
-        throw new Error(`Dataset directory '${datasetDir}' not found for dataset '${dataset}'.`);
-      }
-
-      assertPathInsideRoot(datasetsRootRealPath, datasetDirRealPath, dataset);
-
-      const resolvedSelector = await resolveSelectorRevision(datasetDirRealPath, {
-        dataset,
-        revision: requestedRevision,
-        tag: requestedTag,
-      });
-      const selectedTasksDirPath = await realpath(resolvedSelector.tasksDirPath);
-      assertPathInsideRoot(datasetsRootRealPath, selectedTasksDirPath, dataset);
-
-      const yamlFiles = await readYamlFiles(selectedTasksDirPath, datasetsRootRealPath, dataset);
-      if (yamlFiles.length === 0) {
-        throw new Error(
-          `Dataset '${dataset}' contains no YAML task files in '${selectedTasksDirPath}'.`,
+      const seenTaskIds = new Set<string>();
+      const taskIndexes: TaskIndex[] = [];
+      for (const fileRef of matchedTaskRefs) {
+        const resolvedTask = await resolveTaskFile(
+          rootDirRealPath,
+          {
+            suiteId: entry.suite.id,
+            ref: fileRef,
+          },
+          { skipSuiteDocument: true },
         );
-      }
+        if (resolvedTask === null) {
+          continue;
+        }
 
-      const datasetHash = computeDatasetHash(yamlFiles);
-      const revision = computeRevision(datasetHash, resolvedSelector.revision);
+        const { task } = resolvedTask;
 
-      const tasks: unknown[] = [];
-      for (const file of yamlFiles) {
-        const parsedTaskFile = parseTaskYaml(file.content, file.name);
-        const task = extractTaskFromParsed(parsedTaskFile, file.name);
-        tasks.push(task);
+        if (seenTaskIds.has(task.id)) {
+          throw new Error(`Task id '${task.id}' must be unique within suite '${entry.suite.id}'.`);
+        }
+        seenTaskIds.add(task.id);
+        taskIndexes.push(taskIndexFromTask(task, entry.suite.id, fileRef));
       }
 
       return {
         source: {
           adapter: ADAPTER_ID,
-          ref: dataset,
+          ref: entry.ref,
+          fetchedAt: new Date().toISOString(),
+        },
+        suite: entry.suite,
+        tasks: taskIndexes,
+      };
+    },
+
+    async resolveTask(taskRef: TaskRef): Promise<ResolvedTask> {
+      const rootDirRealPath = await resolveRootDirRealPath();
+      const resolvedTask = await resolveTaskFile(rootDirRealPath, taskRef);
+      if (resolvedTask === null) {
+        throw new Error(`Task '${taskRef.ref}' resolves to a suite document, not a task document.`);
+      }
+
+      const { ref, task, revision } = resolvedTask;
+
+      return {
+        source: {
+          adapter: ADAPTER_ID,
+          ref,
           revision,
           fetchedAt: new Date().toISOString(),
         },
-        tasks,
-        datasetHash,
-      } satisfies ResolvedDataset;
+        task,
+      };
     },
   };
 }

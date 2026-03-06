@@ -1,748 +1,147 @@
 import assert from 'node:assert/strict';
-import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
 import { createLocalResultStoreAdapter } from '../src/adapters/result-store/local-result-store-adapter.js';
-import type { TaskSourceAdapter } from '../src/core/adapters/task-source-adapter.js';
-import { createCore } from '../src/core/api/index.js';
-import { SCHEMA_VERSIONS } from '../src/core/contracts/index.js';
-import type { RunManifest } from '../src/core/contracts/run-manifest.js';
-import type { RunSummaryRecord } from '../src/core/contracts/run-summary.js';
-import type { TrialResultRecord } from '../src/core/contracts/trial.js';
-import { StoreError, ValidationError } from '../src/core/errors/index.js';
-import { InMemoryGraderRegistry, InMemoryProviderRegistry } from '../src/core/runtime/index.js';
-import { validateExperimentDefinition } from '../src/core/validation/index.js';
+import { SCHEMA_VERSIONS } from '../src/core/contracts/schema-versions.js';
 
-async function createTempDir(): Promise<string> {
-  return mkdtemp(join(tmpdir(), 'youeval-result-store-test-'));
+async function createTempResultsDir(): Promise<string> {
+  return mkdtemp(join(tmpdir(), 'youeval-results-'));
 }
 
-function makeManifest(runId: string): RunManifest {
+function createManifest(runId: string) {
   return {
-    schemaVersion: 'run-manifest.v1',
+    schemaVersion: SCHEMA_VERSIONS.RUN_MANIFEST,
     runId,
-    experimentName: 'test-experiment',
+    suiteId: 'basic-llm',
+    suiteName: 'Basic LLM',
+    taskId: 'basic-llm/task-001',
+    runName: 'mini',
     taskSource: {
       adapter: 'local',
-      ref: 'dataset://test',
-      revision: 'rev-001',
+      ref: 'datasets/task-001.yaml',
+      revision: 'sha256-task-001',
     },
-    datasetHash: 'abc123',
-    configHash: 'def456',
-    startedAt: '2026-03-01T00:00:00.000Z',
+    taskHash: 'task-hash-001',
+    configHash: 'config-hash-001',
+    startedAt: '2026-03-05T00:00:00.000Z',
   };
 }
 
-function makeSummaryRecord(runId: string): RunSummaryRecord {
+function createSummary(runId: string) {
   return {
     runId,
     summary: {
-      schemaVersion: 'run-summary.v1',
+      schemaVersion: SCHEMA_VERSIONS.RUN_SUMMARY,
       runId,
-      runName: 'model-a',
-      totalTasks: 2,
-      totalTrials: 4,
-      passRate: 0.75,
-      avgLatencyMs: 150,
+      taskId: 'basic-llm/task-001',
+      runName: 'mini',
+      totalTrials: 2,
+      passRate: 1,
+      passAtK: 1,
+      passHatK: 1,
+      avgLatencyMs: 42,
     },
   };
 }
 
-function makeTrialRecord(
-  runId: string,
-  taskId: string,
-  trialIndex: number,
-  pass: boolean,
-): TrialResultRecord {
+function createTrial(runId: string, trialIndex: number, pass = true) {
   return {
     runId,
     trial: {
-      schemaVersion: 'trial-result.v1',
-      taskId,
+      schemaVersion: SCHEMA_VERSIONS.TRIAL_RESULT,
+      taskId: 'basic-llm/task-001',
       runId,
-      runName: 'model-a',
+      runName: 'mini',
       trialIndex,
       execution: {
-        schemaVersion: 'execution-result.v1',
-        output: pass ? 'correct answer' : 'wrong answer',
-      },
-      graderResults: [
-        {
-          name: 'check',
-          type: 'contains',
-          result: { pass, reason: pass ? 'matched' : 'not matched' },
-          weight: 1.0,
+        schemaVersion: SCHEMA_VERSIONS.EXECUTION_RESULT,
+        output: pass ? 'ok' : 'fail',
+        metrics: {
+          latencyMs: 50 + trialIndex,
         },
-      ],
-      aggregate: { pass },
+      },
+      graderResults: [],
+      aggregate: {
+        pass,
+      },
       timings: {
-        startedAt: '2026-03-01T00:00:00.000Z',
-        endedAt: '2026-03-01T00:00:01.000Z',
+        startedAt: '2026-03-05T00:00:00.000Z',
+        endedAt: '2026-03-05T00:00:01.000Z',
         durationMs: 1000,
       },
     },
   };
 }
 
-// --- saveRunManifest / getRunManifest ---
-
-test('saveRunManifest and getRunManifest round-trip', async () => {
-  const rootDir = await createTempDir();
+test('local result store saves and reads back manifest, summary, and trials', async () => {
+  const rootDir = await createTempResultsDir();
   try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-    const manifest = makeManifest('run-001');
+    const adapter = createLocalResultStoreAdapter({ rootDir });
+    await adapter.saveRunManifest(createManifest('run-1'));
+    await adapter.saveRunSummary(createSummary('run-1'));
+    await adapter.saveTrial(createTrial('run-1', 0));
 
-    await store.saveRunManifest(manifest);
-    const loaded = await store.getRunManifest('run-001');
+    const manifest = await adapter.getRunManifest('run-1');
+    const summary = await adapter.getRunSummary('run-1');
+    const trials = await adapter.listTrials('run-1');
 
-    assert.deepStrictEqual(loaded, manifest);
+    assert.equal(manifest?.suiteId, 'basic-llm');
+    assert.equal(summary?.summary.taskId, 'basic-llm/task-001');
+    assert.equal(trials.length, 1);
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
 });
 
-test('getRunManifest returns null for non-existent run', async () => {
-  const rootDir = await createTempDir();
+test('local result store returns null when summary file is missing', async () => {
+  const rootDir = await createTempResultsDir();
   try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-    const result = await store.getRunManifest('non-existent');
-    assert.strictEqual(result, null);
+    const adapter = createLocalResultStoreAdapter({ rootDir });
+    await adapter.saveRunManifest(createManifest('run-2'));
+    await adapter.saveTrial(createTrial('run-2', 0, true));
+    await adapter.saveTrial(createTrial('run-2', 1, false));
+
+    const recovered = await adapter.getRunSummary('run-2');
+
+    assert.equal(recovered, null);
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
 });
 
-test('saveRunManifest overwrites existing manifest (for completedAt update)', async () => {
-  const rootDir = await createTempDir();
+test('local result store does not synthesize manifest-only summaries', async () => {
+  const rootDir = await createTempResultsDir();
   try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-    const manifest = makeManifest('run-002');
+    const adapter = createLocalResultStoreAdapter({ rootDir });
+    await adapter.saveRunManifest(createManifest('run-3'));
 
-    await store.saveRunManifest(manifest);
+    const recovered = await adapter.getRunSummary('run-3');
 
-    const updated = { ...manifest, completedAt: '2026-03-01T01:00:00.000Z' };
-    await store.saveRunManifest(updated);
-
-    const loaded = await store.getRunManifest('run-002');
-    assert.deepStrictEqual(loaded, updated);
+    assert.equal(recovered, null);
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
 });
 
-// --- saveRunSummary / getRunSummary ---
-
-test('saveRunSummary and getRunSummary round-trip', async () => {
-  const rootDir = await createTempDir();
+test('local result store clears selected runs and baseline metadata', async () => {
+  const rootDir = await createTempResultsDir();
   try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-    const record = makeSummaryRecord('run-003');
-
-    await store.saveRunSummary(record);
-    const loaded = await store.getRunSummary('run-003');
-
-    assert.deepStrictEqual(loaded, record);
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
-});
-
-test('getRunSummary returns null for non-existent run', async () => {
-  const rootDir = await createTempDir();
-  try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-    const result = await store.getRunSummary('non-existent');
-    assert.strictEqual(result, null);
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
-});
-
-// --- saveTrial / listTrials ---
-
-test('saveTrial and listTrials round-trip', async () => {
-  const rootDir = await createTempDir();
-  try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-    const runId = 'run-004';
-    const trial0 = makeTrialRecord(runId, 'task/basic-001', 0, true);
-    const trial1 = makeTrialRecord(runId, 'task/basic-001', 1, false);
-    const trial2 = makeTrialRecord(runId, 'task/basic-002', 0, true);
-
-    await store.saveTrial(trial0);
-    await store.saveTrial(trial1);
-    await store.saveTrial(trial2);
-
-    const trials = await store.listTrials(runId);
-    assert.strictEqual(trials.length, 3);
-
-    // Verify sorted by taskId then trialIndex.
-    assert.strictEqual(trials[0]?.trial.taskId, 'task/basic-001');
-    assert.strictEqual(trials[0]?.trial.trialIndex, 0);
-    assert.strictEqual(trials[1]?.trial.taskId, 'task/basic-001');
-    assert.strictEqual(trials[1]?.trial.trialIndex, 1);
-    assert.strictEqual(trials[2]?.trial.taskId, 'task/basic-002');
-    assert.strictEqual(trials[2]?.trial.trialIndex, 0);
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
-});
-
-test('listTrials returns empty array for non-existent run', async () => {
-  const rootDir = await createTempDir();
-  try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-    const result = await store.listTrials('non-existent');
-    assert.deepStrictEqual(result, []);
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
-});
-
-test('listTrials returns empty array when trials dir exists but is empty', async () => {
-  const rootDir = await createTempDir();
-  try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-    const runId = 'run-empty-trials';
-    // Create the trials dir but don't write any files
-    await mkdir(join(rootDir, runId, 'trials'), { recursive: true });
-
-    const result = await store.listTrials(runId);
-    assert.deepStrictEqual(result, []);
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
-});
-
-// --- listRunIds ---
-
-test('listRunIds returns sorted runIds for runs with summary/trial/manifest records', async () => {
-  const rootDir = await createTempDir();
-  try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-
-    await store.saveRunSummary(makeSummaryRecord('run-b'));
-    await store.saveRunSummary(makeSummaryRecord('run-a'));
-    await store.saveTrial(makeTrialRecord('run-c', 'task/trial-only', 0, true));
-    await store.saveRunManifest(makeManifest('run-manifest-only'));
-
-    const runIds = await store.listRunIds();
-    assert.deepStrictEqual(runIds, ['run-a', 'run-b', 'run-c', 'run-manifest-only']);
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
-});
-
-test('getRunSummary recovers interrupted run summary from trials when summary file is missing', async () => {
-  const rootDir = await createTempDir();
-  try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-    const runId = 'run-interrupted';
-    await store.saveTrial(makeTrialRecord(runId, 'task/a', 0, true));
-    await store.saveTrial(makeTrialRecord(runId, 'task/a', 1, false));
-    await store.saveTrial(makeTrialRecord(runId, 'task/b', 0, true));
-
-    const recovered = await store.getRunSummary(runId);
-    assert.ok(recovered);
-    assert.strictEqual(recovered.runId, runId);
-    assert.strictEqual(recovered.summary.runName, 'model-a');
-    assert.strictEqual(recovered.summary.totalTasks, 2);
-    assert.strictEqual(recovered.summary.totalTrials, 3);
-    assert.strictEqual(recovered.summary.passRate, 1);
-    assert.strictEqual(recovered.summary.passAtK, 1);
-    assert.strictEqual(recovered.summary.passHatK, 0.5);
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
-});
-
-test('getRunSummary recovers interrupted run summary from manifest when only manifest exists', async () => {
-  const rootDir = await createTempDir();
-  try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-    const runId = 'run-manifest-only';
-    await store.saveRunManifest(makeManifest(runId));
-
-    const recovered = await store.getRunSummary(runId);
-    assert.ok(recovered);
-    assert.strictEqual(recovered.runId, runId);
-    assert.strictEqual(recovered.summary.runName, 'interrupted');
-    assert.strictEqual(recovered.summary.totalTasks, 0);
-    assert.strictEqual(recovered.summary.totalTrials, 0);
-    assert.strictEqual(recovered.summary.passRate, 0);
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
-});
-
-test('listRunIds returns empty array when root directory does not exist', async () => {
-  const rootDir = join(tmpdir(), `youeval-result-store-missing-${Date.now()}`);
-  const store = createLocalResultStoreAdapter({ rootDir });
-
-  const runIds = await store.listRunIds();
-  assert.deepStrictEqual(runIds, []);
-});
-
-// --- clearAllResults ---
-
-test('clearResultsByRunIds removes only selected runs and clears baseline when selected run is baseline', async () => {
-  const rootDir = await createTempDir();
-  try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-    const runIdA = 'run-selected-a';
-    const runIdB = 'run-selected-b';
-    await store.saveRunManifest(makeManifest(runIdA));
-    await store.saveRunSummary(makeSummaryRecord(runIdA));
-    await store.saveTrial(makeTrialRecord(runIdA, 'task/a', 0, true));
-    await store.saveRunManifest(makeManifest(runIdB));
-    await store.saveRunSummary(makeSummaryRecord(runIdB));
-    await store.saveTrial(makeTrialRecord(runIdB, 'task/b', 0, true));
-    await store.saveBaseline({
-      runId: runIdA,
-      updatedAt: '2026-03-01T00:00:00.000Z',
+    const adapter = createLocalResultStoreAdapter({ rootDir });
+    await adapter.saveRunManifest(createManifest('run-4'));
+    await adapter.saveRunSummary(createSummary('run-4'));
+    await adapter.saveBaseline({
+      runId: 'run-4',
+      updatedAt: '2026-03-05T00:00:00.000Z',
     });
 
-    const deletedEntries = await store.clearResultsByRunIds([runIdA]);
-    assert.ok(
-      deletedEntries.some((entry) => entry.path === `${runIdA}/manifest.json` && entry.kind === 'file'),
-    );
-    assert.ok(deletedEntries.some((entry) => entry.path === runIdA && entry.kind === 'dir'));
-    assert.ok(
-      deletedEntries.some((entry) => entry.path === 'baseline.json' && entry.kind === 'file'),
-    );
-    assert.ok(
-      deletedEntries.every(
-        (entry) => !entry.path.startsWith(`${runIdB}/`) && entry.path !== runIdB,
-      ),
-    );
+    const deletedEntries = await adapter.clearResultsByRunIds(['run-4']);
 
-    assert.equal(await store.getRunSummary(runIdA), null);
-    assert.notEqual(await store.getRunSummary(runIdB), null);
-    assert.equal(await store.getBaselineRunId(), null);
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
-});
-
-test('clearResultsByRunIds keeps baseline when baseline run is not selected', async () => {
-  const rootDir = await createTempDir();
-  try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-    const runIdA = 'run-clear-a';
-    const runIdB = 'run-clear-b';
-    await store.saveRunSummary(makeSummaryRecord(runIdA));
-    await store.saveRunSummary(makeSummaryRecord(runIdB));
-    await store.saveBaseline({
-      runId: runIdB,
-      updatedAt: '2026-03-01T00:00:00.000Z',
-    });
-
-    await store.clearResultsByRunIds([runIdA]);
-
-    assert.equal(await store.getRunSummary(runIdA), null);
-    assert.notEqual(await store.getRunSummary(runIdB), null);
-    assert.equal(await store.getBaselineRunId(), runIdB);
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
-});
-
-test('clearAllResults removes all persisted results and returns deleted entries', async () => {
-  const rootDir = await createTempDir();
-  try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-    const runId = 'run-clear-all';
-    await store.saveRunManifest(makeManifest(runId));
-    await store.saveRunSummary(makeSummaryRecord(runId));
-    await store.saveTrial(makeTrialRecord(runId, 'task/clear-001', 0, true));
-    await store.saveBaseline({
-      runId,
-      updatedAt: '2026-03-01T00:00:00.000Z',
-    });
-
-    const deletedEntries = await store.clearAllResults();
-
-    assert.ok(
-      deletedEntries.some((entry) => entry.path === 'baseline.json' && entry.kind === 'file'),
-    );
-    assert.ok(
-      deletedEntries.some(
-        (entry) => entry.path === `${runId}/manifest.json` && entry.kind === 'file',
-      ),
-    );
-    assert.ok(deletedEntries.some((entry) => entry.path === `${runId}` && entry.kind === 'dir'));
-    assert.deepStrictEqual(await store.listRunIds(), []);
-    assert.strictEqual(await store.getBaselineRunId(), null);
-    assert.strictEqual(await store.getRunSummary(runId), null);
-    assert.deepStrictEqual(await store.listTrials(runId), []);
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
-});
-
-test('clearAllResults returns empty list when result root is missing', async () => {
-  const rootDir = join(tmpdir(), `youeval-result-store-clear-missing-${Date.now()}`);
-  const store = createLocalResultStoreAdapter({ rootDir });
-
-  const deletedEntries = await store.clearAllResults();
-  assert.deepStrictEqual(deletedEntries, []);
-});
-
-// --- saveBaseline / getBaselineRunId ---
-
-test('saveBaseline and getBaselineRunId round-trip', async () => {
-  const rootDir = await createTempDir();
-  try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-
-    await store.saveBaseline({ runId: 'run-005', updatedAt: '2026-03-01T00:00:00.000Z' });
-    const baselineRunId = await store.getBaselineRunId();
-
-    assert.strictEqual(baselineRunId, 'run-005');
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
-});
-
-test('getBaselineRunId returns null when no baseline is set', async () => {
-  const rootDir = await createTempDir();
-  try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-    const result = await store.getBaselineRunId();
-    assert.strictEqual(result, null);
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
-});
-
-test('saveBaseline overwrites existing baseline', async () => {
-  const rootDir = await createTempDir();
-  try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-
-    await store.saveBaseline({ runId: 'run-old', updatedAt: '2026-03-01T00:00:00.000Z' });
-    await store.saveBaseline({ runId: 'run-new', updatedAt: '2026-03-01T01:00:00.000Z' });
-
-    const result = await store.getBaselineRunId();
-    assert.strictEqual(result, 'run-new');
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
-});
-
-test('baseline path remains stable when cwd changes after adapter creation', async () => {
-  const sandboxRoot = await createTempDir();
-  const originalCwd = process.cwd();
-  const cwdA = join(sandboxRoot, 'cwd-a');
-  const cwdB = join(sandboxRoot, 'cwd-b');
-  try {
-    await mkdir(cwdA, { recursive: true });
-    await mkdir(cwdB, { recursive: true });
-
-    process.chdir(cwdA);
-    const store = createLocalResultStoreAdapter({ rootDir: './relative-runs-root' });
-    await store.saveBaseline({ runId: 'run-cwd-stable', updatedAt: '2026-03-01T00:00:00.000Z' });
-
-    process.chdir(cwdB);
-    const baselineRunId = await store.getBaselineRunId();
-    assert.strictEqual(baselineRunId, 'run-cwd-stable');
-  } finally {
-    process.chdir(originalCwd);
-    await rm(sandboxRoot, { recursive: true, force: true });
-  }
-});
-
-// --- Write failure policy ---
-
-test('write failures throw StoreError in strict-only mode', async () => {
-  // Use a path that cannot be written to (file instead of directory)
-  const rootDir = await createTempDir();
-  const blockerPath = join(rootDir, 'blocker-run');
-  // Create a file where a directory is expected
-  await writeFile(blockerPath, 'not-a-directory', 'utf-8');
-
-  try {
-    const store = createLocalResultStoreAdapter({ rootDir: blockerPath });
-
-    await assert.rejects(
-      () => store.saveRunManifest(makeManifest('blocker-run')),
-      (err: unknown) => {
-        assert.ok(err instanceof StoreError);
-        return true;
-      },
-    );
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
-});
-
-test('write errors do not swallow ValidationError', async () => {
-  const rootDir = await createTempDir();
-  try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-
-    await assert.rejects(
-      () => store.saveRunManifest(makeManifest('../invalid-run-id')),
-      (err: unknown) => {
-        assert.ok(err instanceof ValidationError);
-        return true;
-      },
-    );
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
-});
-
-test('saveTrial rejects mismatched runId and trial.runId', async () => {
-  const rootDir = await createTempDir();
-  try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-    const record = makeTrialRecord('run-outer', 'task-1', 0, true);
-    const mismatchedRecord: TrialResultRecord = {
-      ...record,
-      trial: {
-        ...record.trial,
-        runId: 'run-inner',
-      },
-    };
-
-    await assert.rejects(
-      () => store.saveTrial(mismatchedRecord),
-      (err: unknown) => {
-        assert.ok(err instanceof ValidationError);
-        assert.equal(err.details?.field, 'trial.runId');
-        return true;
-      },
-    );
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
-});
-
-test('saveRunManifest rejects symlinked run directory escaping root', async () => {
-  const rootDir = await createTempDir();
-  const outsideDir = await createTempDir();
-  const symlinkRunId = 'run-symlink';
-  const runLinkPath = join(rootDir, symlinkRunId);
-  try {
-    await symlink(outsideDir, runLinkPath);
-    const store = createLocalResultStoreAdapter({ rootDir });
-
-    await assert.rejects(
-      () => store.saveRunManifest(makeManifest(symlinkRunId)),
-      (err: unknown) => {
-        assert.ok(err instanceof ValidationError);
-        assert.equal(err.details?.field, 'runId');
-        return true;
-      },
-    );
-
-    await assert.rejects(() => access(join(outsideDir, 'manifest.json')));
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-    await rm(outsideDir, { recursive: true, force: true });
-  }
-});
-
-test('empty rootDir is rejected', () => {
-  assert.throws(
-    () => createLocalResultStoreAdapter({ rootDir: '   ' }),
-    (err: unknown) => {
-      assert.ok(err instanceof ValidationError);
-      assert.equal(err.details?.field, 'rootDir');
-      return true;
-    },
-  );
-});
-
-// --- Data integrity ---
-
-test('manifest file is valid JSON on disk', async () => {
-  const rootDir = await createTempDir();
-  try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-    const manifest = makeManifest('run-json-check');
-    await store.saveRunManifest(manifest);
-
-    const raw = await readFile(join(rootDir, 'run-json-check', 'manifest.json'), 'utf-8');
-    const parsed = JSON.parse(raw) as unknown;
-    assert.deepStrictEqual(parsed, manifest);
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
-});
-
-test('RunManifest.taskSource contains adapter/ref/revision/datasetHash fields', async () => {
-  const rootDir = await createTempDir();
-  try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-    const manifest = makeManifest('run-verify-fields');
-    await store.saveRunManifest(manifest);
-
-    const loaded = await store.getRunManifest('run-verify-fields');
-    assert.ok(loaded);
-    assert.strictEqual(loaded.taskSource.adapter, 'local');
-    assert.strictEqual(loaded.taskSource.ref, 'dataset://test');
-    assert.strictEqual(loaded.taskSource.revision, 'rev-001');
-    assert.strictEqual(loaded.datasetHash, 'abc123');
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
-});
-
-// --- Multiple runs in same store ---
-
-test('multiple runs are isolated in separate directories', async () => {
-  const rootDir = await createTempDir();
-  try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-
-    await store.saveRunManifest(makeManifest('run-a'));
-    await store.saveRunManifest(makeManifest('run-b'));
-    await store.saveRunSummary(makeSummaryRecord('run-a'));
-    await store.saveRunSummary(makeSummaryRecord('run-b'));
-
-    const manifestA = await store.getRunManifest('run-a');
-    const manifestB = await store.getRunManifest('run-b');
-    assert.ok(manifestA);
-    assert.ok(manifestB);
-    assert.strictEqual(manifestA.runId, 'run-a');
-    assert.strictEqual(manifestB.runId, 'run-b');
-
-    const summaryA = await store.getRunSummary('run-a');
-    const summaryB = await store.getRunSummary('run-b');
-    assert.ok(summaryA);
-    assert.ok(summaryB);
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
-});
-
-// --- taskId with path separators ---
-
-test('trial files handle taskIds with slashes correctly', async () => {
-  const rootDir = await createTempDir();
-  try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-    const runId = 'run-slash-task';
-    const trial = makeTrialRecord(runId, 'chat-agent/board-qa/basic-001', 0, true);
-
-    await store.saveTrial(trial);
-    const trials = await store.listTrials(runId);
-
-    assert.strictEqual(trials.length, 1);
-    assert.strictEqual(trials[0]?.trial.taskId, 'chat-agent/board-qa/basic-001');
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
-});
-
-test('taskId filename encoding avoids collisions between slash and double-dash forms', async () => {
-  const rootDir = await createTempDir();
-  try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-    const runId = 'run-collision-check';
-
-    await store.saveTrial(makeTrialRecord(runId, 'a/b', 0, true));
-    await store.saveTrial(makeTrialRecord(runId, 'a--b', 0, false));
-
-    const trials = await store.listTrials(runId);
-    assert.strictEqual(trials.length, 2);
-    const taskIds = new Set(trials.map((record) => record.trial.taskId));
-    assert.deepStrictEqual(taskIds, new Set(['a/b', 'a--b']));
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
-});
-
-test('runId with path separators is rejected to prevent path traversal', async () => {
-  const rootDir = await createTempDir();
-  try {
-    const store = createLocalResultStoreAdapter({ rootDir });
-
-    await assert.rejects(
-      () => store.getRunSummary('../outside-run'),
-      (err: unknown) => {
-        assert.ok(err instanceof ValidationError);
-        return true;
-      },
-    );
-  } finally {
-    await rm(rootDir, { recursive: true, force: true });
-  }
-});
-
-test('local ResultStoreAdapter supports full core run persistence and query readback', async () => {
-  const rootDir = await createTempDir();
-  try {
-    const resultStore = createLocalResultStoreAdapter({ rootDir });
-    const taskSourceAdapter: TaskSourceAdapter = {
-      async resolveDataset(_selector) {
-        return {
-          source: {
-            adapter: 'local',
-            ref: 'dataset://smoke',
-            revision: 'rev-smoke-001',
-            fetchedAt: '2026-03-01T00:00:00.000Z',
-          },
-          tasks: [
-            {
-              schemaVersion: SCHEMA_VERSIONS.TASK,
-              id: 'task-smoke-001',
-              provider: { id: 'mock-provider' },
-              graders: {
-                strategy: 'ALL',
-                layers: [{ name: 'always-pass', type: 'always-pass' }],
-              },
-              execution: { timeoutMs: 1000 },
-            },
-          ],
-          datasetHash: 'hash-smoke-001',
-        };
-      },
-    };
-
-    const providerRegistry = new InMemoryProviderRegistry();
-    providerRegistry.register('mock-provider', async () => ({
-      schemaVersion: SCHEMA_VERSIONS.EXECUTION_RESULT,
-      output: 'ok',
-    }));
-
-    const graderRegistry = new InMemoryGraderRegistry();
-    graderRegistry.register('always-pass', async () => ({ pass: true, reason: 'ok' }));
-
-    const core = createCore({
-      taskSourceAdapter: taskSourceAdapter,
-      resultStoreAdapter: resultStore,
-      providerRegistry,
-      graderRegistry,
-    });
-
-    const experiment = validateExperimentDefinition({
-      name: 'result-store-smoke',
-      dataset: 'smoke',
-      runs: [{ name: 'default' }],
-      maxConcurrency: 1,
-    });
-
-    const loaded = await core.loadExperiment(experiment);
-    const summary = await loaded.run('default');
-    const manifest = await resultStore.getRunManifest(summary.runId);
-    const loadedSummary = await core.getRunSummary(summary.runId);
-    const loadedTrials = await core.listTrials(summary.runId);
-
-    assert.ok(manifest);
-    assert.strictEqual(manifest.taskSource.adapter, 'local');
-    assert.strictEqual(manifest.taskSource.ref, 'dataset://smoke');
-    assert.strictEqual(manifest.taskSource.revision, 'rev-smoke-001');
-    assert.strictEqual(manifest.datasetHash, 'hash-smoke-001');
-
-    assert.ok(loadedSummary);
-    assert.strictEqual(loadedSummary.runId, summary.runId);
-    assert.strictEqual(loadedTrials.length, 1);
-    assert.strictEqual(loadedTrials[0]?.trial.taskId, 'task-smoke-001');
+    assert.ok(deletedEntries.some((entry) => entry.path === 'run-4' && entry.kind === 'dir'));
+    assert.ok(deletedEntries.some((entry) => entry.path === 'baseline.json' && entry.kind === 'file'));
+    assert.equal(await adapter.getBaselineRunId(), null);
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }

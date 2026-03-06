@@ -14,14 +14,6 @@ function getStringParam(
   return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
 }
 
-function getStringParamFromSources(
-  overrides: Readonly<Record<string, unknown>>,
-  params: Readonly<Record<string, unknown>>,
-  key: string,
-): string | undefined {
-  return getStringParam(overrides, key) ?? getStringParam(params, key);
-}
-
 function toSystemError(message: string): ExecutionResult {
   return {
     schemaVersion: SCHEMA_VERSIONS.EXECUTION_RESULT,
@@ -48,8 +40,8 @@ export async function fileEditAgentProvider(
     return toSystemError('Missing OPENAI_API_KEY environment variable.');
   }
 
-  const model = getStringParamFromSources(ctx.overrides, params, 'model') ?? 'gpt-4o-mini';
-  const task = getStringParamFromSources(ctx.overrides, params, 'task');
+  const model = getStringParam(params, 'model') ?? 'gpt-4o-mini';
+  const task = getStringParam(params, 'task');
   if (!task) {
     return toSystemError("Provider param 'task' must be a non-empty string.");
   }

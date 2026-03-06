@@ -17,13 +17,13 @@
     "@clack/prompts": "^1.1.0",
     "ai": "^6.0.111",
     "ajv": "^8.18.0",
+    "canonicalize": "^2.1.0",
     "yaml": "^2.8.2",
     "zod": "^4.3.6"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "example:basic-llm": "pnpm build && node --env-file=examples/basic-llm-test/.env --import tsx examples/basic-llm-test/main.ts",
-    "example:file-edit-agent": "pnpm build && node --env-file=examples/file-edit-agent/.env --import tsx examples/file-edit-agent/main.ts",
+    "example:basics": "pnpm build && node --env-file=examples/basics/.env --import tsx examples/basics/main.ts",
     "lint": "biome check . --diagnostic-level=error",
     "lint:fix": "biome check . --write --diagnostic-level=error",
     "format": "biome format . --write",

@@ -11,9 +11,12 @@ export interface RunManifestTaskSourceRecord {
 export interface RunManifest {
   schemaVersion: RunManifestSchemaVersion;
   runId: string;
-  experimentName: string;
+  suiteId: string;
+  suiteName: string;
+  taskId: string;
+  runName: string;
   taskSource: RunManifestTaskSourceRecord;
-  datasetHash: string;
+  taskHash: string;
   configHash: string;
   startedAt: string;
   gitSha?: string;

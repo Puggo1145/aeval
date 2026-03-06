@@ -1,13 +1,13 @@
 import * as p from '@clack/prompts';
 
 import type { CoreApi } from '../../../core/api/index.js';
-import { readRunExperiments } from '../run-metadata.js';
 import {
   formatRunOptionLabel,
   formatRunOptionStatsHint,
   formatSummaryNote,
 } from '../formatters.js';
-import { groupRunsByExperiment } from '../run-selection.js';
+import { readRunMetadataMap } from '../run-metadata.js';
+import { groupRunsBySuiteAndTask } from '../run-selection.js';
 import { handleCancel } from '../utils.js';
 
 export async function viewReport(core: CoreApi): Promise<void> {
@@ -21,32 +21,48 @@ export async function viewReport(core: CoreApi): Promise<void> {
     return;
   }
 
-  const experiments = await readRunExperiments(
+  const metadataByRunId = await readRunMetadataMap(
     core,
     records.map((record) => record.runId),
   );
-  const experimentGroups = groupRunsByExperiment(records, experiments);
-  const selectedExperiment = handleCancel(
+  const suiteGroups = groupRunsBySuiteAndTask(records, metadataByRunId);
+  const selectedSuite = handleCancel(
     await p.select({
-      message: 'Select an experiment:',
-      options: experimentGroups.map((group) => ({
-        value: group.experiment,
-        label: group.experiment,
+      message: 'Select a suite:',
+      options: suiteGroups.map((group) => ({
+        value: group.suite,
+        label: group.suite,
+        hint: `${group.tasks.length} task${group.tasks.length === 1 ? '' : 's'}`,
+      })),
+    }),
+  );
+  const selectedTaskGroup = suiteGroups.find((group) => group.suite === selectedSuite);
+  if (!selectedTaskGroup) {
+    p.log.warn(`No runs found under suite '${selectedSuite}'.`);
+    return;
+  }
+
+  const selectedTask = handleCancel(
+    await p.select({
+      message: 'Select a task:',
+      options: selectedTaskGroup.tasks.map((group) => ({
+        value: group.task,
+        label: group.task,
         hint: `${group.runs.length} run${group.runs.length === 1 ? '' : 's'}`,
       })),
     }),
   );
-  const runsInExperiment =
-    experimentGroups.find((group) => group.experiment === selectedExperiment)?.runs ?? [];
-  if (runsInExperiment.length === 0) {
-    p.log.warn(`No runs found under experiment '${selectedExperiment}'.`);
+  const runsForTask =
+    selectedTaskGroup.tasks.find((group) => group.task === selectedTask)?.runs ?? [];
+  if (runsForTask.length === 0) {
+    p.log.warn(`No runs found under task '${selectedTask}'.`);
     return;
   }
 
   const runId = handleCancel(
     await p.select({
       message: 'Select a run to view:',
-      options: runsInExperiment.map((r) => ({
+      options: runsForTask.map((r) => ({
         value: r.runId,
         label: formatRunOptionLabel(r),
         hint: formatRunOptionStatsHint(r),
@@ -60,5 +76,5 @@ export async function viewReport(core: CoreApi): Promise<void> {
     return;
   }
 
-  formatSummaryNote(summary, experiments.get(runId));
+  formatSummaryNote(summary, metadataByRunId.get(runId));
 }

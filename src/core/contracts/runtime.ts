@@ -10,8 +10,6 @@ export interface TaskContext {
   trialIndex: number;
   runName: string;
   runId: string;
-  // run 级的参数覆盖
-  overrides: Readonly<Record<string, unknown>>;
   signal: AbortSignal;
 }
 
@@ -28,6 +26,10 @@ export interface ProviderRegistry {
   list(): string[];
 }
 
+export interface RuntimeDefaults {
+  maxConcurrency?: number;
+}
+
 // Grader 评分函数
 export type Grader = (
   result: ExecutionResult,
@@ -42,11 +44,13 @@ export interface GraderRegistry {
 }
 
 export type RunEvent =
-  | { type: 'run:started'; runId: string; runName: string; totalTasks: number }
-  | { type: 'trial:started'; taskId: string; trialIndex: number }
+  | { type: 'run:started'; runId: string; taskId: string; runName: string; totalTrials: number }
+  | { type: 'trial:started'; taskId: string; runId: string; runName: string; trialIndex: number }
   | {
       type: 'trial:completed';
       taskId: string;
+      runId: string;
+      runName: string;
       trialIndex: number;
       pass: boolean;
       durationMs: number;
@@ -54,6 +58,8 @@ export type RunEvent =
   | {
       type: 'trial:error';
       taskId: string;
+      runId: string;
+      runName: string;
       trialIndex: number;
       errorType: 'agent' | 'system';
       message: string;

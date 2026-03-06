@@ -1,8 +1,8 @@
 import * as p from '@clack/prompts';
 
 import type { CoreApi } from '../../../core/api/index.js';
-import { readRunExperiments } from '../run-metadata.js';
 import { formatRunOptionHint, formatRunOptionLabel } from '../formatters.js';
+import { readRunMetadataMap } from '../run-metadata.js';
 import { handleCancel } from '../utils.js';
 
 const SECOND_CONFIRM_TOKEN = 'DELETE';
@@ -30,14 +30,14 @@ export async function clearResults(core: CoreApi, mode: ClearMode): Promise<void
     return;
   }
 
-  const experiments = await readRunExperiments(
+  const metadataByRunId = await readRunMetadataMap(
     core,
     records.map((record) => record.runId),
   );
   const runLabels = records.map((record) => ({
     runId: record.runId,
     label: formatRunOptionLabel(record),
-    hint: formatRunOptionHint(experiments.get(record.runId)),
+    hint: formatRunOptionHint(metadataByRunId.get(record.runId)),
   }));
 
   if (mode === 'all') {

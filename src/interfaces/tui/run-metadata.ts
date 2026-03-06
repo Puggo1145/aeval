@@ -1,6 +1,11 @@
 import type { CoreApi } from '../../core/api/index.js';
 
-function normalizeExperiment(raw: unknown): string | undefined {
+export interface RunMetadata {
+  suiteName?: string;
+  taskId?: string;
+}
+
+function normalizeString(raw: unknown): string | undefined {
   if (typeof raw !== 'string') {
     return undefined;
   }
@@ -9,29 +14,22 @@ function normalizeExperiment(raw: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-export async function readRunExperiment(core: CoreApi, runId: string): Promise<string | undefined> {
+export async function readRunMetadata(core: CoreApi, runId: string): Promise<RunMetadata> {
   const manifest = await core.getRunManifest(runId);
-  return (
-    normalizeExperiment((manifest as { exp?: unknown } | null)?.exp) ??
-    normalizeExperiment((manifest as { experiment?: unknown } | null)?.experiment) ??
-    normalizeExperiment(manifest?.experimentName)
-  );
+  return {
+    suiteName: normalizeString(manifest?.suiteName),
+    taskId: normalizeString(manifest?.taskId),
+  };
 }
 
-export async function readRunExperiments(
+export async function readRunMetadataMap(
   core: CoreApi,
   runIds: string[],
-): Promise<Map<string, string>> {
+): Promise<Map<string, RunMetadata>> {
   const uniqueRunIds = [...new Set(runIds)];
   const entries = await Promise.all(
-    uniqueRunIds.map(async (runId) => [runId, await readRunExperiment(core, runId)] as const),
+    uniqueRunIds.map(async (runId) => [runId, await readRunMetadata(core, runId)] as const),
   );
 
-  const map = new Map<string, string>();
-  for (const [runId, experiment] of entries) {
-    if (experiment) {
-      map.set(runId, experiment);
-    }
-  }
-  return map;
+  return new Map(entries);
 }

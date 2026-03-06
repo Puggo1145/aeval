@@ -1,19 +1,11 @@
 import { z } from 'zod';
 import { SCHEMA_VERSIONS } from '../contracts/schema-versions.js';
 import { type TaskDefinition, TaskSchema } from '../contracts/task.js';
-import { throwFirstZodValidationError, throwValidationError } from './helpers.js';
-
-export interface TaskValidationOptions {
-  isProviderRegistered: (providerId: string) => boolean;
-  listProviderIds?: () => string[];
-}
+import { throwFirstZodValidationError } from './helpers.js';
 
 const DefinitionInputSchema = z.object({}).catchall(z.unknown());
 
-export function validateTaskDefinition(
-  input: unknown,
-  options: TaskValidationOptions,
-): TaskDefinition {
+export function validateTaskDefinition(input: unknown): TaskDefinition {
   // 先瞅瞅是不是对象，不然没法 parse
   const rawTaskResult = DefinitionInputSchema.safeParse(input);
   if (!rawTaskResult.success) {
@@ -26,23 +18,15 @@ export function validateTaskDefinition(
   }
 
   const task = taskResult.data;
-  if (!options.isProviderRegistered(task.provider.id)) {
-    throwValidationError(
-      `Field 'task.provider.id' references unknown provider '${task.provider.id}'.`,
-      'task.provider.id',
-      {
-        providerId: task.provider.id,
-        knownProviders: options.listProviderIds?.() ?? [],
-      },
-    );
-  }
-
   const validatedTask: TaskDefinition = {
     schemaVersion: SCHEMA_VERSIONS.TASK,
     id: task.id,
     provider: {
       id: task.provider.id,
-      params: task.provider.params,
+      runs: task.provider.runs.map((run) => ({
+        name: run.name,
+        params: run.params,
+      })),
     },
     graders: task.graders,
     trackedMetrics: task.trackedMetrics,
@@ -50,6 +34,7 @@ export function validateTaskDefinition(
       timeoutMs: task.execution.timeoutMs,
       retryOnError: task.execution.retryOnError,
       trialsPerTask: task.execution.trialsPerTask,
+      maxConcurrency: task.execution.maxConcurrency,
     },
   };
 
@@ -76,35 +61,4 @@ export function validateTaskDefinition(
   }
 
   return validatedTask;
-}
-
-export interface TaskDatasetValidationOptions extends TaskValidationOptions {
-  datasetRevision?: string;
-}
-
-export function validateTaskDefinitions(
-  inputs: unknown[],
-  options: TaskDatasetValidationOptions,
-): TaskDefinition[] {
-  const validatedTasks = inputs.map((input) => validateTaskDefinition(input, options));
-  const firstSeenByTaskId = new Map<string, number>();
-
-  for (const [index, task] of validatedTasks.entries()) {
-    const firstSeenIndex = firstSeenByTaskId.get(task.id);
-    if (firstSeenIndex !== undefined) {
-      throwValidationError(
-        `Field 'task.id' must be unique inside one dataset revision, duplicate id '${task.id}' found.`,
-        `tasks[${index}].id`,
-        {
-          taskId: task.id,
-          firstSeenIndex,
-          duplicateIndex: index,
-          datasetRevision: options.datasetRevision,
-        },
-      );
-    }
-    firstSeenByTaskId.set(task.id, index);
-  }
-
-  return validatedTasks;
 }

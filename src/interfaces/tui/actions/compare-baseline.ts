@@ -2,8 +2,8 @@ import * as p from '@clack/prompts';
 
 import type { CoreApi } from '../../../core/api/index.js';
 import type { BaselineThresholds } from '../../../core/contracts/runtime.js';
-import { readRunExperiments } from '../run-metadata.js';
 import { formatComparisonNote, formatRunOptionHint, formatRunOptionLabel } from '../formatters.js';
+import { readRunMetadataMap } from '../run-metadata.js';
 import { handleCancel } from '../utils.js';
 
 function parseOptionalNumber(raw: string): number | undefined {
@@ -26,7 +26,7 @@ export async function compareBaseline(core: CoreApi): Promise<void> {
     return;
   }
 
-  const experiments = await readRunExperiments(
+  const metadataByRunId = await readRunMetadataMap(
     core,
     records.map((record) => record.runId),
   );
@@ -36,7 +36,7 @@ export async function compareBaseline(core: CoreApi): Promise<void> {
       options: records.map((r) => ({
         value: r.runId,
         label: formatRunOptionLabel(r),
-        hint: formatRunOptionHint(experiments.get(r.runId)),
+        hint: formatRunOptionHint(metadataByRunId.get(r.runId)),
       })),
     }),
   );
@@ -62,7 +62,7 @@ export async function compareBaseline(core: CoreApi): Promise<void> {
         options: baselineOptions.map((r) => ({
           value: r.runId,
           label: formatRunOptionLabel(r),
-          hint: formatRunOptionHint(experiments.get(r.runId)),
+          hint: formatRunOptionHint(metadataByRunId.get(r.runId)),
         })),
       }),
     );

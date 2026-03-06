@@ -2,7 +2,6 @@ export * from './adapters/index.js';
 export * from './core/api/index.js';
 export * from './core/contracts/index.js';
 export * from './core/errors/index.js';
-export * from './core/experiment/index.js';
 export * from './core/runtime/index.js';
 export * from './core/validation/index.js';
 export * from './graders/index.js';

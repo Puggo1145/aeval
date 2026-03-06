@@ -1,0 +1,5 @@
+schemaVersion: "suite.v1"
+id: "basic-llm"
+name: "Basic LLM Example"
+discover:
+  - "datasets/basic-llm-test/**/*.yaml"

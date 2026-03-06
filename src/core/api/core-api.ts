@@ -1,7 +1,11 @@
 import type { ObserverAdapter } from '../adapters/observer-adapter.js';
 import type { ClearedResultEntry, ResultStoreAdapter } from '../adapters/result-store-adapter.js';
-import type { TaskSourceAdapter } from '../adapters/task-source-adapter.js';
-import type { ExperimentDefinition } from '../contracts/experiment.js';
+import type {
+  ResolvedSuite,
+  SuiteDescriptor,
+  TaskIndex,
+  TaskSourceAdapter,
+} from '../adapters/task-source-adapter.js';
 import type { RunManifest } from '../contracts/run-manifest.js';
 import type { RunSummary, RunSummaryRecord } from '../contracts/run-summary.js';
 import type {
@@ -10,12 +14,17 @@ import type {
   GraderRegistry,
   ProviderRegistry,
   RunEvent,
+  RuntimeDefaults,
 } from '../contracts/runtime.js';
+import type { SuiteDefinition } from '../contracts/suite.js';
 import type { TrialResultRecord } from '../contracts/trial.js';
 import { ERROR_CODES, RuntimeError, ValidationError } from '../errors/index.js';
-import { orchestrateRun } from '../orchestrator/run-orchestrator.js';
-import { validateExperimentDefinition } from '../validation/experiment-validator.js';
+import { orchestrateTaskRun } from '../orchestrator/run-orchestrator.js';
+import { getEffectiveExecution } from '../runtime/effective-execution.js';
+import { assertTaskExecutionReady } from '../runtime/task-execution.js';
 import { ensureNonEmptyString } from '../validation/helpers.js';
+import { normalizeRuntimeDefaults } from '../validation/runtime-defaults.js';
+import { validateSuiteDefinition } from '../validation/suite-validator.js';
 import {
   computeRegressionDiff,
   computeVerdict,
@@ -23,9 +32,7 @@ import {
   validateComparableDelta,
 } from './baseline-utils.js';
 
-// ---------------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------------
+export type LoadSuiteInput = string | SuiteDefinition | Promise<SuiteDefinition>;
 
 export interface CoreDependencies {
   taskSourceAdapter: TaskSourceAdapter;
@@ -33,12 +40,14 @@ export interface CoreDependencies {
   observerAdapters?: ObserverAdapter[];
   providerRegistry: ProviderRegistry;
   graderRegistry: GraderRegistry;
+  runtimeDefaults?: RuntimeDefaults;
 }
 
-export interface LoadedExperiment {
-  readonly definition: ExperimentDefinition;
-  run(runName: string): Promise<RunSummary>;
-  stream(runName: string, options?: { signal?: AbortSignal }): AsyncIterable<RunEvent>;
+export interface LoadedSuite {
+  readonly definition: SuiteDefinition;
+  listTasks(): Promise<TaskIndex[]>;
+  runTask(taskId: string): Promise<RunSummary[]>;
+  streamTask(taskId: string, options?: { signal?: AbortSignal }): AsyncIterable<RunEvent>;
 }
 
 export interface CompareBaselineOptions {
@@ -48,9 +57,11 @@ export interface CompareBaselineOptions {
 }
 
 export interface CoreApi {
-  readonly experiments: readonly LoadedExperiment[];
-  loadExperiment(input: unknown | Promise<unknown>): Promise<LoadedExperiment>;
-  loadExperiments(...inputs: Array<unknown | Promise<unknown>>): Promise<LoadedExperiment[]>;
+  listSuites(): Promise<SuiteDescriptor[]>;
+  loadSuite(input: string): Promise<LoadedSuite>;
+  loadSuite(input: SuiteDefinition): Promise<LoadedSuite>;
+  loadSuite(input: Promise<SuiteDefinition>): Promise<LoadedSuite>;
+  loadSuites(...inputs: LoadSuiteInput[]): Promise<LoadedSuite[]>;
   getRunManifest(runId: string): Promise<RunManifest | null>;
   getRunSummary(runId: string): Promise<RunSummary | null>;
   listTrials(runId: string): Promise<TrialResultRecord[]>;
@@ -62,25 +73,6 @@ export interface CoreApi {
   listRuns(): Promise<RunSummaryRecord[]>;
   clearResultsByRunIds(runIds: string[]): Promise<ClearedResultEntry[]>;
   clearResults(): Promise<ClearedResultEntry[]>;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function ensureRunExists(runName: string, experiment: ExperimentDefinition): void {
-  const hasMatchingRun = experiment.runs.some((run) => run.name === runName);
-  if (hasMatchingRun) {
-    return;
-  }
-
-  throw new ValidationError(`Run '${runName}' is not defined in 'experiment.runs'.`, {
-    details: {
-      field: 'runName',
-      runName,
-      knownRuns: experiment.runs.map((run) => run.name),
-    },
-  });
 }
 
 async function resolveBaselineRunIdInput(
@@ -106,99 +98,169 @@ async function resolveBaselineRunIdInput(
   });
 }
 
-// ---------------------------------------------------------------------------
-// Factory
-// ---------------------------------------------------------------------------
-
-export function createCore(deps: CoreDependencies): CoreApi {
-  const {
-    taskSourceAdapter,
+export function createCore({
+  taskSourceAdapter,
+  resultStoreAdapter,
+  observerAdapters = [],
+  providerRegistry,
+  graderRegistry,
+  runtimeDefaults,
+}: CoreDependencies): CoreApi {
+  const orchDeps = {
     resultStoreAdapter,
-    observerAdapters = [],
+    observerAdapters,
     providerRegistry,
     graderRegistry,
-  } = deps;
+    runtimeDefaults: normalizeRuntimeDefaults(runtimeDefaults),
+  };
 
-  function buildLoadedExperiment(definition: ExperimentDefinition): LoadedExperiment {
-    const orchDeps = {
-      taskSourceAdapter,
-      resultStoreAdapter,
-      observerAdapters,
-      providerRegistry,
-      graderRegistry,
-    };
+  function buildLoadedSuite(
+    definition: SuiteDefinition,
+    preloadedResolvedSuite?: ResolvedSuite,
+  ): LoadedSuite {
+    let resolvedSuitePromise: Promise<ResolvedSuite> | undefined;
+
+    async function resolveSuiteData(): Promise<ResolvedSuite> {
+      if (preloadedResolvedSuite) {
+        return preloadedResolvedSuite;
+      }
+
+      if (!resolvedSuitePromise) {
+        resolvedSuitePromise = taskSourceAdapter.resolveSuite(definition.id);
+      }
+
+      return resolvedSuitePromise;
+    }
+
+    async function resolveTaskById(taskId: string) {
+      const normalizedTaskId = ensureNonEmptyString(taskId, 'taskId');
+      const resolvedSuite = await resolveSuiteData();
+      const taskIndex = resolvedSuite.tasks.find((task) => task.id === normalizedTaskId);
+      if (!taskIndex) {
+        throw new ValidationError(
+          `Task '${normalizedTaskId}' is not defined in suite '${definition.id}'.`,
+          {
+            details: {
+              field: 'taskId',
+              suiteId: definition.id,
+              taskId: normalizedTaskId,
+              knownTaskIds: resolvedSuite.tasks.map((task) => task.id),
+            },
+          },
+        );
+      }
+
+      const resolvedTask = await taskSourceAdapter.resolveTask(taskIndex.taskRef);
+      if (resolvedTask.task.id !== normalizedTaskId) {
+        throw new RuntimeError(
+          `Task source adapter resolved '${resolvedTask.task.id}' for requested task '${normalizedTaskId}'.`,
+          {
+            code: ERROR_CODES.RUNTIME_UNEXPECTED,
+            details: {
+              requestedTaskId: normalizedTaskId,
+              resolvedTaskId: resolvedTask.task.id,
+              suiteId: definition.id,
+            },
+          },
+        );
+      }
+
+      return {
+        resolvedTask,
+        taskIndex,
+      };
+    }
 
     return {
       definition,
 
-      async run(runName: string): Promise<RunSummary> {
-        const normalizedRunName = ensureNonEmptyString(runName, 'runName');
-        ensureRunExists(normalizedRunName, definition);
-
-        let summary: RunSummary | undefined;
-        for await (const event of orchestrateRun(
-          { experiment: definition, runName: normalizedRunName },
-          orchDeps,
-        )) {
-          if (event.type === 'run:completed') {
-            summary = event.summary;
-          }
-        }
-
-        if (!summary) {
-          throw new RuntimeError('Run completed without producing a summary.', {
-            code: ERROR_CODES.RUNTIME_UNEXPECTED,
-            details: { runName: normalizedRunName },
-          });
-        }
-
-        return summary;
+      async listTasks(): Promise<TaskIndex[]> {
+        const resolvedSuite = await resolveSuiteData();
+        return resolvedSuite.tasks;
       },
 
-      stream(runName: string, options?: { signal?: AbortSignal }): AsyncIterable<RunEvent> {
-        const normalizedRunName = ensureNonEmptyString(runName, 'runName');
-        ensureRunExists(normalizedRunName, definition);
+      async runTask(taskId: string): Promise<RunSummary[]> {
+        const summaries: RunSummary[] = [];
+        for await (const event of this.streamTask(taskId)) {
+          if (event.type === 'run:completed') {
+            summaries.push(event.summary);
+          }
+        }
+        return summaries;
+      },
 
-        return orchestrateRun(
-          { experiment: definition, runName: normalizedRunName, signal: options?.signal },
-          orchDeps,
-        );
+      async *streamTask(
+        taskId: string,
+        options?: { signal?: AbortSignal },
+      ): AsyncIterable<RunEvent> {
+        const { resolvedTask } = await resolveTaskById(taskId);
+        assertTaskExecutionReady(resolvedTask.task, orchDeps);
+        const execution = getEffectiveExecution(resolvedTask.task, orchDeps.runtimeDefaults);
+
+        for (const run of resolvedTask.task.provider.runs) {
+          if (options?.signal?.aborted) {
+            return;
+          }
+
+          yield* orchestrateTaskRun(
+            {
+              suite: definition,
+              resolvedTask,
+              run,
+              execution,
+              signal: options?.signal,
+            },
+            orchDeps,
+          );
+        }
       },
     };
   }
 
-  const loadedExperiments: LoadedExperiment[] = [];
+  async function loadSuiteInternal(input: string): Promise<LoadedSuite>;
+  async function loadSuiteInternal(input: SuiteDefinition): Promise<LoadedSuite>;
+  async function loadSuiteInternal(input: Promise<SuiteDefinition>): Promise<LoadedSuite>;
+  async function loadSuiteInternal(input: LoadSuiteInput): Promise<LoadedSuite>;
+  async function loadSuiteInternal(input: LoadSuiteInput): Promise<LoadedSuite> {
+    if (typeof input === 'string') {
+      const suiteId = ensureNonEmptyString(input, 'suiteId');
+      const resolvedSuite = await taskSourceAdapter.resolveSuite(suiteId);
+      return buildLoadedSuite(resolvedSuite.suite, resolvedSuite);
+    }
 
-  async function loadExperimentInternal(input: unknown | Promise<unknown>): Promise<LoadedExperiment> {
     const raw = await input;
-    const definition = validateExperimentDefinition(raw);
-    const loaded = buildLoadedExperiment(definition);
-    loadedExperiments.push(loaded);
+    const definition = validateSuiteDefinition(raw);
+    return buildLoadedSuite(definition);
+  }
+
+  async function loadSuite(input: string): Promise<LoadedSuite>;
+  async function loadSuite(input: SuiteDefinition): Promise<LoadedSuite>;
+  async function loadSuite(input: Promise<SuiteDefinition>): Promise<LoadedSuite>;
+  async function loadSuite(input: LoadSuiteInput): Promise<LoadedSuite>;
+  async function loadSuite(input: LoadSuiteInput): Promise<LoadedSuite> {
+    return loadSuiteInternal(input);
+  }
+
+  async function loadSuites(...inputs: LoadSuiteInput[]): Promise<LoadedSuite[]> {
+    if (inputs.length === 0) {
+      throw new ValidationError('At least one suite input is required.', {
+        details: { field: 'inputs' },
+      });
+    }
+
+    const loaded: LoadedSuite[] = [];
+    for (const input of inputs) {
+      loaded.push(await loadSuiteInternal(input));
+    }
     return loaded;
   }
 
   return {
-    get experiments(): readonly LoadedExperiment[] {
-      return loadedExperiments;
+    async listSuites(): Promise<SuiteDescriptor[]> {
+      return taskSourceAdapter.listSuites();
     },
-
-    async loadExperiment(input): Promise<LoadedExperiment> {
-      return loadExperimentInternal(input);
-    },
-
-    async loadExperiments(...inputs): Promise<LoadedExperiment[]> {
-      if (inputs.length === 0) {
-        throw new ValidationError('At least one experiment input is required.', {
-          details: { field: 'inputs' },
-        });
-      }
-
-      const loaded: LoadedExperiment[] = [];
-      for (const input of inputs) {
-        loaded.push(await loadExperimentInternal(input));
-      }
-      return loaded;
-    },
+    loadSuite,
+    loadSuites,
 
     async getRunSummary(runId): Promise<RunSummary | null> {
       const normalizedRunId = ensureNonEmptyString(runId, 'runId');

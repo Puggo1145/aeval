@@ -1,4 +1,4 @@
-import type { Dirent } from 'node:fs';
+import type { Dirent, Stats } from 'node:fs';
 import { lstat, mkdir, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
@@ -9,7 +9,6 @@ import type {
 } from '../../core/adapters/result-store-adapter.js';
 import type { RunManifest } from '../../core/contracts/run-manifest.js';
 import type { RunSummaryRecord } from '../../core/contracts/run-summary.js';
-import { SCHEMA_VERSIONS } from '../../core/contracts/schema-versions.js';
 import type { TrialResultRecord } from '../../core/contracts/trial.js';
 import { StoreError, ValidationError } from '../../core/errors/index.js';
 import { ensureNonEmptyString } from '../../core/validation/helpers.js';
@@ -18,7 +17,6 @@ const MANIFEST_FILE = 'manifest.json';
 const SUMMARY_FILE = 'summary.json';
 const TRIALS_DIR = 'trials';
 const BASELINE_FILE = 'baseline.json';
-const INTERRUPTED_RUN_NAME = 'interrupted';
 
 export interface LocalResultStoreAdapterOptions {
   rootDir: string;
@@ -206,93 +204,6 @@ function withPrefix(entries: ClearedResultEntry[], prefix: string): ClearedResul
   }));
 }
 
-function summarizeTrialsAsRunSummary(
-  runId: string,
-  trials: TrialResultRecord[],
-): RunSummaryRecord | null {
-  if (trials.length === 0) {
-    return null;
-  }
-
-  const normalizedRunId = normalizeRunId(runId);
-  const trialsByTask = new Map<string, TrialResultRecord[]>();
-
-  for (const record of trials) {
-    const taskId = record.trial.taskId;
-    const existing = trialsByTask.get(taskId) ?? [];
-    existing.push(record);
-    trialsByTask.set(taskId, existing);
-  }
-
-  const totalTasks = trialsByTask.size;
-  const totalTrials = trials.length;
-  let passAtKCount = 0;
-  let passHatKCount = 0;
-  let hasMultipleTrials = false;
-
-  for (const taskTrials of trialsByTask.values()) {
-    if (taskTrials.length > 1) {
-      hasMultipleTrials = true;
-    }
-
-    const anyPass = taskTrials.some((trial) => trial.trial.aggregate.pass);
-    const allPass = taskTrials.every((trial) => trial.trial.aggregate.pass);
-    if (anyPass) {
-      passAtKCount++;
-    }
-    if (allPass) {
-      passHatKCount++;
-    }
-  }
-
-  const latencyValues = trials
-    .map((trial) => trial.trial.execution.metrics?.latencyMs)
-    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
-  const avgLatencyMs =
-    latencyValues.length > 0
-      ? latencyValues.reduce((sum, value) => sum + value, 0) / latencyValues.length
-      : undefined;
-
-  const runName =
-    trials[0]?.trial.runName && trials[0].trial.runName.trim().length > 0
-      ? trials[0].trial.runName.trim()
-      : normalizedRunId;
-
-  return {
-    runId: normalizedRunId,
-    summary: {
-      schemaVersion: SCHEMA_VERSIONS.RUN_SUMMARY,
-      runId: normalizedRunId,
-      runName,
-      totalTasks,
-      totalTrials,
-      passRate: totalTasks > 0 ? passAtKCount / totalTasks : 0,
-      ...(hasMultipleTrials
-        ? {
-            passAtK: totalTasks > 0 ? passAtKCount / totalTasks : 0,
-            passHatK: totalTasks > 0 ? passHatKCount / totalTasks : 0,
-          }
-        : {}),
-      ...(avgLatencyMs !== undefined ? { avgLatencyMs } : {}),
-    },
-  };
-}
-
-function summarizeManifestAsRunSummary(runId: string): RunSummaryRecord {
-  const normalizedRunId = normalizeRunId(runId);
-  return {
-    runId: normalizedRunId,
-    summary: {
-      schemaVersion: SCHEMA_VERSIONS.RUN_SUMMARY,
-      runId: normalizedRunId,
-      runName: INTERRUPTED_RUN_NAME,
-      totalTasks: 0,
-      totalTrials: 0,
-      passRate: 0,
-    },
-  };
-}
-
 function assertTrialRunIdsMatch(input: TrialResultRecord): void {
   const normalizedRecordRunId = normalizeRunId(input.runId);
   const normalizedTrialRunId = normalizeRunId(input.trial.runId);
@@ -418,25 +329,7 @@ export function createLocalResultStoreAdapter(
     async getRunSummary(runId: string): Promise<RunSummaryRecord | null> {
       const normalizedRunId = normalizeRunId(runId);
       const summaryPath = join(runDir(normalizedRunId), SUMMARY_FILE);
-      const persisted = await readJsonFileOrNull<RunSummaryRecord>(summaryPath);
-      if (persisted) {
-        return persisted;
-      }
-
-      // Recover interrupted runs that have trial records but no summary.json yet.
-      const trials = await listTrialsByRunId(normalizedRunId);
-      const trialSummary = summarizeTrialsAsRunSummary(normalizedRunId, trials);
-      if (trialSummary) {
-        return trialSummary;
-      }
-
-      // Recover runs interrupted before first trial completion (manifest-only).
-      const manifest = await getRunManifestByRunId(normalizedRunId);
-      if (manifest) {
-        return summarizeManifestAsRunSummary(normalizedRunId);
-      }
-
-      return null;
+      return readJsonFileOrNull<RunSummaryRecord>(summaryPath);
     },
 
     async listTrials(runId: string): Promise<TrialResultRecord[]> {
@@ -532,7 +425,7 @@ export function createLocalResultStoreAdapter(
           const dir = runDir(runId);
           await rejectSymlinkPath(dir, 'runId');
 
-          let dirStat;
+          let dirStat: Stats;
           try {
             dirStat = await lstat(dir);
           } catch (cause) {

@@ -1,17 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { groupRunsByExperiment } from '../src/interfaces/tui/run-selection.js';
+import { groupRunsBySuiteAndTask } from '../src/interfaces/tui/run-selection.js';
 
-test('groupRunsByExperiment groups by experiment name and falls back to unknown', () => {
+test('groupRunsBySuiteAndTask groups runs by suite then task and falls back to unknown', () => {
   const records = [
     {
       runId: 'run-1',
       summary: {
         schemaVersion: 'run-summary.v1' as const,
         runId: 'run-1',
-        runName: 'smoke',
-        totalTasks: 1,
+        taskId: 'task-001',
+        runName: 'mini',
         totalTrials: 1,
         passRate: 1,
       },
@@ -21,8 +21,8 @@ test('groupRunsByExperiment groups by experiment name and falls back to unknown'
       summary: {
         schemaVersion: 'run-summary.v1' as const,
         runId: 'run-2',
-        runName: 'smoke',
-        totalTasks: 1,
+        taskId: 'task-001',
+        runName: 'nano',
         totalTrials: 1,
         passRate: 1,
       },
@@ -32,29 +32,25 @@ test('groupRunsByExperiment groups by experiment name and falls back to unknown'
       summary: {
         schemaVersion: 'run-summary.v1' as const,
         runId: 'run-3',
-        runName: 'smoke',
-        totalTasks: 1,
+        taskId: 'task-002',
+        runName: 'mini',
         totalTrials: 1,
         passRate: 1,
       },
     },
   ];
 
-  const groups = groupRunsByExperiment(
+  const groups = groupRunsBySuiteAndTask(
     records,
-    new Map<string, string>([
-      ['run-1', 'exp-a'],
-      ['run-2', 'exp-a'],
-      ['run-3', ''],
+    new Map([
+      ['run-1', { suiteName: 'suite-a', taskId: 'task-001' }],
+      ['run-2', { suiteName: 'suite-a', taskId: 'task-001' }],
+      ['run-3', { suiteName: '', taskId: '' }],
     ]),
   );
 
-  assert.deepEqual(groups.map((group) => group.experiment), ['exp-a', 'unknown']);
-  assert.deepEqual(
-    groups.map((group) => group.runs.map((record) => record.runId)),
-    [
-      ['run-1', 'run-2'],
-      ['run-3'],
-    ],
-  );
+  assert.deepEqual(groups.map((group) => group.suite), ['suite-a', 'unknown']);
+  assert.deepEqual(groups[0]?.tasks.map((task) => task.task), ['task-001']);
+  assert.deepEqual(groups[0]?.tasks[0]?.runs.map((run) => run.runId), ['run-1', 'run-2']);
+  assert.deepEqual(groups[1]?.tasks.map((task) => task.task), ['task-002']);
 });

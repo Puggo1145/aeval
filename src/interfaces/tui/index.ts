@@ -5,7 +5,7 @@ import type { CoreApi } from '../../core/api/index.js';
 import { clearResults } from './actions/clear-results.js';
 import { compareBaseline } from './actions/compare-baseline.js';
 import { listRuns } from './actions/list-runs.js';
-import { runExperiment } from './actions/run-experiment.js';
+import { runTask } from './actions/run-task.js';
 import { setBaseline } from './actions/set-baseline.js';
 import { viewReport } from './actions/view-report.js';
 import { viewTrials } from './actions/view-trials.js';
@@ -18,7 +18,7 @@ const ACTION_CANCELLED_MESSAGE = 'Action cancelled.';
 const CARRY_OVER_CANCEL_WINDOW_MS = 200;
 
 const ACTIONS: Record<string, Action> = {
-  run: (core) => runExperiment(core),
+  run: (core) => runTask(core),
   report: (core) => viewReport(core),
   runs: (core) => listRuns(core),
   trials: (core) => viewTrials(core),
@@ -28,7 +28,7 @@ const ACTIONS: Record<string, Action> = {
   'clear-all-results': (core) => clearResults(core, 'all'),
 };
 
-type GroupId = 'experiment' | 'results' | 'baseline' | 'manage';
+type GroupId = 'suite' | 'results' | 'baseline' | 'manage';
 type ActionId = keyof typeof ACTIONS;
 
 interface ActionOption {
@@ -45,9 +45,9 @@ interface ActionGroup {
 
 const ACTION_GROUPS: ActionGroup[] = [
   {
-    id: 'experiment',
-    label: 'Experiment',
-    actions: [{ value: 'run', label: 'Run an experiment' }],
+    id: 'suite',
+    label: 'Suite',
+    actions: [{ value: 'run', label: 'Run a task' }],
   },
   {
     id: 'results',
@@ -79,7 +79,7 @@ const ACTION_GROUPS: ActionGroup[] = [
 const GROUP_PROMPTS = [
   'What do you want to evaluate today?',
   'Pick your next move, Judge.',
-  "Time to run some experiments. What's first?",
+  "Time to run some suites. What's first?",
   'What shall we test-drive now?',
 ];
 
@@ -103,8 +103,6 @@ export async function runTui(core: CoreApi): Promise<void> {
     if (shouldRedrawGroupScreen) {
       redrawScreen();
     }
-
-    const hasLoadedExperiments = core.experiments.length > 0;
 
     const groupSelection: GroupId | 'exit' | symbol = (await p.select<GroupId | 'exit'>({
       message: groupPrompt,
@@ -151,10 +149,7 @@ export async function runTui(core: CoreApi): Promise<void> {
       options: [
         ...group.actions.map((action) => ({
           value: action.value,
-          label:
-            action.value === 'run' && !hasLoadedExperiments
-              ? `${action.label} (no experiment loaded)`
-              : action.label,
+          label: action.label,
           hint: action.hint,
         })),
         { value: 'back', label: 'Back' },
@@ -169,14 +164,6 @@ export async function runTui(core: CoreApi): Promise<void> {
 
     const selectedAction: ActionId = actionSelection;
     selectedActionByGroup.set(groupId, selectedAction);
-
-    if (selectedAction === 'run' && !hasLoadedExperiments) {
-      p.log.warn(
-        'No experiment loaded. Load one with `core.loadExperiment(...)` or many with `core.loadExperiments(...)` before entering TUI run flow.',
-      );
-      shouldRedrawGroupScreen = false;
-      continue;
-    }
 
     const handler = ACTIONS[selectedAction];
     let actionCompletedMessage = 'Action completed.';

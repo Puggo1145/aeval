@@ -1,4 +1,3 @@
-export { computeConfigHash } from './config-hash.js';
 export {
   aggregateGraders,
   type GraderAggregateInput,
@@ -6,7 +5,7 @@ export {
 } from './grader-aggregate.js';
 export {
   type OrchestratorDeps,
-  type OrchestratorInput,
-  orchestrateRun,
+  orchestrateTaskRun,
+  type TaskRunOrchestratorInput,
 } from './run-orchestrator.js';
 export { executeTrial, type TrialExecutionDeps, type TrialExecutionInput } from './trial-engine.js';

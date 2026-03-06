@@ -90,10 +90,10 @@ export interface TrialExecutionDeps {
 
 export interface TrialExecutionInput {
   task: TaskDefinition;
+  params: Readonly<Record<string, unknown>>;
   trialIndex: number;
   runId: string;
   runName: string;
-  overrides: Readonly<Record<string, unknown>>;
   timeoutMs: number;
   parentSignal?: AbortSignal;
 }
@@ -137,7 +137,6 @@ export async function executeTrial(
     trialIndex: input.trialIndex,
     runName: input.runName,
     runId: input.runId,
-    overrides: input.overrides,
     signal: abortController.signal,
   };
 
@@ -146,8 +145,7 @@ export async function executeTrial(
   try {
     const providerPromise = (async (): Promise<ExecutionResult> => {
       const provider = deps.resolveProvider(input.task.provider.id);
-      const params = input.task.provider.params ?? {};
-      return provider(ctx, params);
+      return provider(ctx, input.params);
     })();
 
     const timeoutPromise = new Promise<never>((_resolve, reject) => {

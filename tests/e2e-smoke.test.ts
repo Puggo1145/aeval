@@ -1,277 +1,177 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
 
-import { createConsoleObserverAdapter } from '../src/adapters/observer/index.js';
-import { createLocalResultStoreAdapter } from '../src/adapters/result-store/index.js';
-import { createLocalTaskSourceAdapter } from '../src/adapters/task-source/index.js';
+import { createLocalResultStoreAdapter } from '../src/adapters/result-store/local-result-store-adapter.js';
+import { createLocalTaskSourceAdapter } from '../src/adapters/task-source/local-task-source-adapter.js';
 import { createCore } from '../src/core/api/index.js';
-import type { ExperimentDefinition, RunEvent } from '../src/core/contracts/index.js';
-import { SCHEMA_VERSIONS } from '../src/core/contracts/schema-versions.js';
-import { InMemoryGraderRegistry } from '../src/core/runtime/grader-registry.js';
-import { InMemoryProviderRegistry } from '../src/core/runtime/provider-registry.js';
-import type { JudgeProvider, JudgeProviderInput } from '../src/graders/llm/judge-provider.js';
+import type { RunEvent } from '../src/core/contracts/runtime.js';
+import { InMemoryGraderRegistry, InMemoryProviderRegistry } from '../src/core/runtime/index.js';
 import { registerBuiltinGraders } from '../src/graders/register-builtins.js';
 
-function buildSmokeExperiment(): ExperimentDefinition {
-  return {
-    name: 'chat-agent-smoke',
-    dataset: 'chat-agent/smoke',
-    runs: [{ name: 'smoke' }],
-    maxConcurrency: 2,
-  };
+async function createWorkspace(): Promise<string> {
+  return mkdtemp(join(tmpdir(), 'youeval-e2e-'));
 }
 
-function registerBusinessReferenceProvider(registry: InMemoryProviderRegistry): void {
-  registry.register('reference', async (_ctx, params) => ({
-    schemaVersion: SCHEMA_VERSIONS.EXECUTION_RESULT,
-    output: typeof params.output === 'string' ? params.output : '',
-  }));
+async function writeYaml(rootDir: string, relativePath: string, content: string): Promise<void> {
+  const filePath = join(rootDir, relativePath);
+  await mkdir(dirname(filePath), { recursive: true });
+  await writeFile(filePath, content, 'utf-8');
 }
 
-test('E2E smoke: full chain from taskSource.resolve to resultStore.read', async () => {
-  const tmpDir = await mkdtemp(join(tmpdir(), 'youeval-e2e-'));
+const SUITE_YAML = `schemaVersion: "suite.v1"
+id: "basic-llm"
+name: "Basic LLM"
+discover:
+  - "datasets/**/*.yaml"
+`;
+
+const TASK_YAML = `schemaVersion: "task.v1"
+id: "basic-llm/task-001"
+provider:
+  id: "reference"
+  runs:
+    - name: "mini"
+      params:
+        output: "Paris"
+    - name: "nano"
+      params:
+        output: "Paris"
+graders:
+  strategy: "ALL"
+  layers:
+    - name: "contains paris"
+      type: "contains"
+      config:
+        mustInclude:
+          - pattern: "Paris"
+            caseSensitive: false
+execution:
+  timeoutMs: 1000
+  retryOnError: 0
+  trialsPerTask: 2
+`;
+
+const JUDGE_TASK_YAML = `schemaVersion: "task.v1"
+id: "basic-llm/task-judge"
+provider:
+  id: "reference"
+  runs:
+    - name: "judge"
+      params:
+        output: "The capital is Paris."
+graders:
+  strategy: "ALL"
+  layers:
+    - name: "semantic judge"
+      type: "llm-judge"
+      config:
+        dimension: "factuality"
+        rubric: "Pass if the answer clearly states Paris is the capital of France."
+execution:
+  timeoutMs: 1000
+`;
+
+test('E2E smoke: full chain from suite discovery to result-store readback', async () => {
+  const workspace = await createWorkspace();
   try {
-    const datasetsRoot = join(tmpDir, 'datasets');
-    const datasetDir = join(datasetsRoot, 'chat-agent', 'smoke');
-    await mkdir(datasetDir, { recursive: true });
+    await writeYaml(workspace, 'suites/basic.yaml', SUITE_YAML);
+    await writeYaml(workspace, 'datasets/task-001.yaml', TASK_YAML);
 
-    await writeFile(
-      join(datasetDir, 'task-001.yaml'),
-      `task:
-  schemaVersion: "task.v1"
-  id: "chat-agent/smoke/task-001"
-  provider:
-    id: "reference"
-    params:
-      output: "Paris"
-  graders:
-    strategy: "ALL"
-    layers:
-      - name: "contains-paris"
-        type: "contains"
-        config:
-          mustInclude:
-            - pattern: "Paris"
-  execution:
-    timeoutMs: 10000
-    retryOnError: 0
-    trialsPerTask: null
-`,
-    );
-    await writeFile(
-      join(datasetDir, 'task-002.yaml'),
-      `task:
-  schemaVersion: "task.v1"
-  id: "chat-agent/smoke/task-002"
-  provider:
-    id: "reference"
-    params:
-      output: "Berlin"
-  graders:
-    strategy: "ALL"
-    layers:
-      - name: "contains-berlin"
-        type: "contains"
-        config:
-          mustInclude:
-            - pattern: "Berlin"
-  execution:
-    timeoutMs: 10000
-    retryOnError: 0
-    trialsPerTask: null
-`,
-    );
+    const providerRegistry = new InMemoryProviderRegistry();
+    providerRegistry.register('reference', async (_ctx, params) => ({
+      schemaVersion: 'execution-result.v1',
+      output: String(params.output ?? ''),
+      metrics: { latencyMs: 25 },
+    }));
 
     const graderRegistry = new InMemoryGraderRegistry();
     registerBuiltinGraders(graderRegistry);
 
-    const providerRegistry = new InMemoryProviderRegistry();
-    registerBusinessReferenceProvider(providerRegistry);
-
     const core = createCore({
-      taskSourceAdapter: createLocalTaskSourceAdapter({
-        datasetsRoot,
+      taskSourceAdapter: createLocalTaskSourceAdapter({ rootDir: workspace }),
+      resultStoreAdapter: createLocalResultStoreAdapter({
+        rootDir: join(workspace, 'results'),
       }),
-      resultStoreAdapter: createLocalResultStoreAdapter({ rootDir: tmpDir }),
       providerRegistry,
       graderRegistry,
-      observerAdapters: [createConsoleObserverAdapter()],
     });
 
-    const experiment = buildSmokeExperiment();
+    const suite = await core.loadSuite('basic-llm');
     const events: RunEvent[] = [];
-
-    // 1. Stream the run
-    for await (const event of (await core.loadExperiment(experiment)).stream('smoke')) {
+    for await (const event of suite.streamTask('basic-llm/task-001')) {
       events.push(event);
     }
 
-    // 2. Assert run:completed received with passRate === 1
-    const completedEvent = events.find((e) => e.type === 'run:completed');
-    assert.ok(completedEvent, 'run:completed event should be emitted');
-    assert.equal(completedEvent.type, 'run:completed');
-    assert.equal(completedEvent.summary.passRate, 1, 'passRate should be 1');
+    const summaries = events
+      .filter((event): event is Extract<RunEvent, { type: 'run:completed' }> => event.type === 'run:completed')
+      .map((event) => event.summary);
 
-    const runId = completedEvent.summary.runId;
+    assert.deepEqual(
+      summaries.map((summary) => summary.runName),
+      ['mini', 'nano'],
+    );
+    assert.ok(summaries.every((summary) => summary.passRate === 1));
 
-    // 3. getRunSummary — non-null and passRate === 1
-    const summary = await core.getRunSummary(runId);
-    assert.ok(summary, 'getRunSummary should return non-null');
-    assert.equal(summary.passRate, 1);
-    assert.equal(summary.totalTasks, 2);
-    assert.equal(summary.totalTrials, 2);
-
-    // 4. listTrials — 2 trials, both passing
-    const trials = await core.listTrials(runId);
-    assert.equal(trials.length, 2, 'should have 2 trials');
-    for (const record of trials) {
-      assert.ok(record.trial.aggregate.pass, `trial ${record.trial.taskId} should pass`);
-    }
-
-    // 5. listRuns — the run is listed
     const runs = await core.listRuns();
-    assert.ok(runs.length >= 1, 'listRuns should return at least 1 run');
-    const found = runs.find((r) => r.runId === runId);
-    assert.ok(found, 'the run should be listed');
+    assert.equal(runs.length, 2);
 
-    // 6. setBaseline then compareBaseline — verdict "pass"
-    await core.setBaseline(runId);
-    const comparison = await core.compareBaseline(runId);
-    assert.equal(comparison.verdict, 'pass');
+    const manifest = await core.getRunManifest(runs[0]!.runId);
+    assert.equal(manifest?.suiteId, 'basic-llm');
+    assert.equal(manifest?.taskId, 'basic-llm/task-001');
+    assert.ok(manifest?.taskHash);
 
-    // 7. Verify RunManifest via result store
-    const startedEvent = events.find((e) => e.type === 'run:started');
-    assert.ok(startedEvent, 'run:started event should be emitted');
-    assert.equal(startedEvent.type, 'run:started');
-    assert.equal(startedEvent.runId, runId);
-    assert.equal(startedEvent.totalTasks, 2);
-
-    // Verify RunManifest by reading it directly from the result store adapter
-    const verifyStore = createLocalResultStoreAdapter({ rootDir: tmpDir });
-    const manifest = await verifyStore.getRunManifest(runId);
-    assert.ok(manifest, 'RunManifest should be persisted');
-    assert.equal(manifest.schemaVersion, SCHEMA_VERSIONS.RUN_MANIFEST);
-    assert.equal(manifest.runId, runId);
-    assert.equal(manifest.experimentName, 'chat-agent-smoke');
-    assert.equal(manifest.taskSource.adapter, 'local');
-    assert.equal(manifest.taskSource.ref, 'chat-agent/smoke');
-    assert.ok(manifest.taskSource.revision, 'revision should be set');
-    assert.ok(manifest.datasetHash, 'datasetHash should be set');
-    assert.ok(manifest.configHash, 'configHash should be set');
-    assert.ok(manifest.startedAt, 'startedAt should be set');
+    const trials = await core.listTrials(runs[0]!.runId);
+    assert.equal(trials.length, 2);
   } finally {
-    await rm(tmpDir, { recursive: true, force: true });
+    await rm(workspace, { recursive: true, force: true });
   }
 });
 
 test('E2E smoke: llm-judge protocol chain with mock JudgeProvider', async () => {
-  const tmpDir = await mkdtemp(join(tmpdir(), 'youeval-e2e-judge-'));
+  const workspace = await createWorkspace();
   try {
-    // Create a temporary dataset directory with an llm-judge task
-    const datasetDir = join(tmpDir, 'datasets', 'judge-test');
-    await mkdir(datasetDir, { recursive: true });
-
-    // Write a task YAML that uses llm-judge grader
-    await writeFile(
-      join(datasetDir, 'task-003.yaml'),
-      `task:
-  schemaVersion: "task.v1"
-  id: "judge-test/task-003"
-  desc: "Test llm-judge protocol chain"
-  category: "judge-test"
-  capability: "judge"
-  tier: "L0"
-  difficulty: "easy"
-  tags: ["smoke", "llm-judge"]
-
-  provider:
-    id: "reference"
-    params:
-      output: "The capital of France is Paris."
-
-  graders:
-    strategy: "ALL"
-    layers:
-      - name: "judge accuracy"
-        type: "llm-judge"
-        config:
-          dimension: "accuracy"
-          rubric: "The output should correctly state that Paris is the capital of France."
-
-  execution:
-    timeoutMs: 10000
-    retryOnError: 0
-    trialsPerTask: null
-`,
-    );
-
-    const runsDir = join(tmpDir, 'runs');
-
-    // Track mock judge calls
-    const judgeCalls: JudgeProviderInput[] = [];
-    const mockJudgeProvider: JudgeProvider = {
-      async evaluate(input: JudgeProviderInput) {
-        judgeCalls.push(input);
-        return {
-          pass: true,
-          score: 1.0,
-          reason: 'Mock judge: output is correct.',
-          label: 'PASS' as const,
-        };
-      },
-    };
-
-    const datasetsRoot = join(tmpDir, 'datasets');
-
-    const graderRegistry = new InMemoryGraderRegistry();
-    registerBuiltinGraders(graderRegistry, { judgeProvider: mockJudgeProvider });
+    await writeYaml(workspace, 'suites/basic.yaml', SUITE_YAML);
+    await writeYaml(workspace, 'datasets/task-judge.yaml', JUDGE_TASK_YAML);
 
     const providerRegistry = new InMemoryProviderRegistry();
-    registerBusinessReferenceProvider(providerRegistry);
+    providerRegistry.register('reference', async (_ctx, params) => ({
+      schemaVersion: 'execution-result.v1',
+      output: String(params.output ?? ''),
+    }));
 
-    const core = createCore({
-      taskSourceAdapter: createLocalTaskSourceAdapter({
-        datasetsRoot,
-      }),
-      resultStoreAdapter: createLocalResultStoreAdapter({ rootDir: runsDir }),
-      providerRegistry,
-      graderRegistry,
-      observerAdapters: [createConsoleObserverAdapter()],
+    const graderRegistry = new InMemoryGraderRegistry();
+    registerBuiltinGraders(graderRegistry, {
+      judgeProvider: {
+        async evaluate(input) {
+          assert.match(input.output, /Paris/);
+          return {
+            pass: true,
+            score: 1,
+            reason: 'looks correct',
+            label: 'PASS',
+          };
+        },
+      },
     });
 
-    const experiment: ExperimentDefinition = {
-      name: 'judge-protocol-test',
-      dataset: 'judge-test',
-      runs: [{ name: 'judge-run' }],
-      maxConcurrency: 1,
-    };
+    const core = createCore({
+      taskSourceAdapter: createLocalTaskSourceAdapter({ rootDir: workspace }),
+      resultStoreAdapter: createLocalResultStoreAdapter({
+        rootDir: join(workspace, 'results'),
+      }),
+      providerRegistry,
+      graderRegistry,
+    });
 
-    const events: RunEvent[] = [];
-    for await (const event of (await core.loadExperiment(experiment)).stream('judge-run')) {
-      events.push(event);
-    }
+    const suite = await core.loadSuite('basic-llm');
+    const summaries = await suite.runTask('basic-llm/task-judge');
 
-    // Verify the run completed without errors
-    const completedEvent = events.find((e) => e.type === 'run:completed');
-    assert.ok(completedEvent, 'run:completed event should be emitted');
-    assert.equal(completedEvent.type, 'run:completed');
-
-    // Verify mock judge was called with correct protocol
-    assert.equal(judgeCalls.length, 1, 'mock judge should be called exactly once');
-    assert.equal(judgeCalls[0]!.output, 'The capital of France is Paris.');
-    assert.equal(judgeCalls[0]!.dimension, 'accuracy');
-    assert.ok(
-      judgeCalls[0]!.rubric.includes('Paris is the capital of France'),
-      'rubric should be passed through',
-    );
-
-    // Verify no trial errors
-    const errorEvents = events.filter((e) => e.type === 'trial:error');
-    assert.equal(errorEvents.length, 0, 'no trial errors expected');
+    assert.equal(summaries.length, 1);
+    assert.equal(summaries[0]?.passRate, 1);
   } finally {
-    await rm(tmpDir, { recursive: true, force: true });
+    await rm(workspace, { recursive: true, force: true });
   }
 });

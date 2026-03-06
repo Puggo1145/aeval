@@ -1,8 +1,6 @@
 import type { ZodError, ZodIssue } from 'zod';
 import { ValidationError } from '../errors/index.js';
 
-export type UnknownRecord = Record<string, unknown>;
-
 export function throwValidationError(
   message: string,
   field: string,
@@ -124,10 +122,6 @@ export function throwFirstZodValidationError(error: ZodError, baseField: string)
   throwValidationError(message, field, details);
 }
 
-export function isRecord(value: unknown): value is UnknownRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 export function ensureNonEmptyString(value: string, field: string): string {
   const normalizedValue = value.trim();
   if (normalizedValue.length > 0) {
@@ -137,13 +131,4 @@ export function ensureNonEmptyString(value: string, field: string): string {
   throwValidationError(`Field '${field}' must be a non-empty string.`, field, {
     value,
   });
-}
-
-export function ensureSchemaVersion(value: unknown, expected: string, field: string): void {
-  if (value !== expected) {
-    throwValidationError(`Unsupported schema version at '${field}'.`, field, {
-      expected,
-      received: value,
-    });
-  }
 }
