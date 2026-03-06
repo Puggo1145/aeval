@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   formatInterruptedRunNote,
+  formatRunSummaryDetails,
   formatRunOptionHint,
   formatRunOptionLabel,
   formatRunOptionStatsHint,
@@ -154,6 +155,14 @@ test('formatTrialGraderDetails shows per-grader pass and reason', () => {
     execution: {
       schemaVersion: 'execution-result.v1',
       output: 'ok',
+      metrics: {
+        latencyMs: 3455,
+        tokenUsage: {
+          input: 10,
+          output: 20,
+          total: 30,
+        },
+      },
     },
     graderResults: [
       {
@@ -174,6 +183,91 @@ test('formatTrialGraderDetails shows per-grader pass and reason', () => {
   });
 
   assert.match(output, /Aggregate:\s+PASS \(score=1.00\)/);
+  assert.match(output, /Metrics:/);
+  assert.match(output, /latencyMs: 3455/);
+  assert.match(output, /tokenUsage\.input: 10/);
+  assert.match(output, /tokenUsage\.total: 30/);
   assert.match(output, /\[PASS\] contains greeting \(contains\) score=-/);
   assert.match(output, /reason: output includes greeting/);
+});
+
+test('formatRunSummaryDetails includes metrics for each trial', () => {
+  const output = formatRunSummaryDetails(
+    {
+      schemaVersion: 'run-summary.v1',
+      runId: 'run-1',
+      taskId: 'task-001',
+      runName: 'try-5-mini',
+      totalTrials: 2,
+      passRate: 1,
+      avgLatencyMs: 20,
+    },
+    {
+      suiteName: 'suite-a',
+      taskId: 'task-001',
+    },
+    [
+      {
+        runId: 'run-1',
+        trial: {
+          schemaVersion: 'trial-result.v1',
+          taskId: 'task-001',
+          runId: 'run-1',
+          runName: 'try-5-mini',
+          trialIndex: 0,
+          execution: {
+            schemaVersion: 'execution-result.v1',
+            output: 'ok',
+            metrics: {
+              latencyMs: 10,
+              model: 'gpt-5-mini',
+            },
+          },
+          graderResults: [],
+          aggregate: { pass: true },
+          timings: {
+            startedAt: '2026-03-04T00:00:00.000Z',
+            endedAt: '2026-03-04T00:00:01.000Z',
+            durationMs: 10,
+          },
+        },
+      },
+      {
+        runId: 'run-1',
+        trial: {
+          schemaVersion: 'trial-result.v1',
+          taskId: 'task-001',
+          runId: 'run-1',
+          runName: 'try-5-mini',
+          trialIndex: 1,
+          execution: {
+            schemaVersion: 'execution-result.v1',
+            output: 'ok',
+            metrics: {
+              latencyMs: 30,
+              tokenUsage: {
+                input: 1,
+                output: 2,
+                total: 3,
+              },
+            },
+          },
+          graderResults: [],
+          aggregate: { pass: true },
+          timings: {
+            startedAt: '2026-03-04T00:00:02.000Z',
+            endedAt: '2026-03-04T00:00:03.000Z',
+            durationMs: 30,
+          },
+        },
+      },
+    ],
+  );
+
+  assert.match(output, /Run ID:\s+run-1/);
+  assert.match(output, /Metrics:/);
+  assert.match(output, /Trial #0:/);
+  assert.match(output, /model: gpt-5-mini/);
+  assert.match(output, /Trial #1:/);
+  assert.match(output, /tokenUsage\.output: 2/);
 });

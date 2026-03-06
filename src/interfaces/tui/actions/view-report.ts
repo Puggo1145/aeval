@@ -78,7 +78,8 @@ export async function viewReport(core: CoreApi): Promise<void> {
   }
 
   if (record.summary) {
-    formatSummaryNote(record.summary, metadataByRunId.get(runId));
+    const trials = await core.listTrials(runId);
+    formatSummaryNote(record.summary, metadataByRunId.get(runId), trials);
     return;
   }
 

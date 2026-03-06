@@ -52,7 +52,84 @@ export function formatRunOptionStatsHint(record: RunRecord): string {
   return `status=${record.status} | task=${formatRunTaskId(record)}`;
 }
 
-export function formatSummaryNote(summary: RunSummary, metadata?: RunMetadata): void {
+export function formatSummaryNote(
+  summary: RunSummary,
+  metadata?: RunMetadata,
+  trials: TrialResultRecord[] = [],
+): void {
+  p.note(formatRunSummaryDetails(summary, metadata, trials), 'Run Summary');
+}
+
+export function formatInterruptedRunNote(record: RunRecord, metadata?: RunMetadata): void {
+  const lines = [
+    `Run ID:       ${record.runId}`,
+    `Status:       ${formatRunStatus(record.status)}`,
+    `Suite:        ${formatSuiteText(metadata?.suiteName ?? record.manifest?.suiteName)}`,
+    `Task:         ${formatTaskText(metadata?.taskId ?? formatRunTaskId(record))}`,
+    `Run Name:     ${record.manifest?.runName ?? 'unknown'}`,
+    `Started At:   ${record.manifest?.startedAt ?? 'unknown'}`,
+  ];
+
+  p.note(lines.join('\n'), 'Run Summary');
+}
+
+function sortJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sortJsonValue(item));
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, nested]) => [key, sortJsonValue(nested)]),
+    );
+  }
+
+  return value;
+}
+
+function indentBlock(text: string, prefix = '  '): string {
+  return text
+    .split('\n')
+    .map((line) => `${prefix}${line}`)
+    .join('\n');
+}
+
+function collectMetricLines(value: unknown, path: string[] = []): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => collectMetricLines(item, [...path, String(index)]));
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .flatMap(([key, nested]) => collectMetricLines(nested, [...path, key]));
+  }
+
+  const label = path.join('.');
+  const rendered =
+    typeof value === 'string'
+      ? value
+      : value === undefined
+        ? 'undefined'
+        : String(value);
+  return label.length > 0 ? [`${label}: ${rendered}`] : [rendered];
+}
+
+function formatMetricsValue(metrics: Record<string, unknown> | undefined): string {
+  if (!metrics || Object.keys(metrics).length === 0) {
+    return '  (no metrics)';
+  }
+
+  return indentBlock(collectMetricLines(sortJsonValue(metrics)).join('\n'));
+}
+
+export function formatRunSummaryDetails(
+  summary: RunSummary,
+  metadata?: RunMetadata,
+  trials: TrialResultRecord[] = [],
+): string {
   const lines: string[] = [
     `Run ID:       ${summary.runId}`,
     `Suite:        ${formatSuiteText(metadata?.suiteName)}`,
@@ -72,20 +149,15 @@ export function formatSummaryNote(summary: RunSummary, metadata?: RunMetadata): 
     lines.push(`Avg Latency:  ${summary.avgLatencyMs.toFixed(0)}ms`);
   }
 
-  p.note(lines.join('\n'), 'Run Summary');
-}
+  if (trials.length > 0) {
+    lines.push('', 'Metrics:');
+    for (const record of trials) {
+      lines.push(`  Trial #${record.trial.trialIndex}:`);
+      lines.push(formatMetricsValue(record.trial.execution.metrics));
+    }
+  }
 
-export function formatInterruptedRunNote(record: RunRecord, metadata?: RunMetadata): void {
-  const lines = [
-    `Run ID:       ${record.runId}`,
-    `Status:       ${formatRunStatus(record.status)}`,
-    `Suite:        ${formatSuiteText(metadata?.suiteName ?? record.manifest?.suiteName)}`,
-    `Task:         ${formatTaskText(metadata?.taskId ?? formatRunTaskId(record))}`,
-    `Run Name:     ${record.manifest?.runName ?? 'unknown'}`,
-    `Started At:   ${record.manifest?.startedAt ?? 'unknown'}`,
-  ];
-
-  p.note(lines.join('\n'), 'Run Summary');
+  return lines.join('\n');
 }
 
 export function formatComparisonNote(comparison: BaselineComparison): void {
@@ -195,6 +267,9 @@ export function formatTrialGraderDetails(trial: TrialResult): string {
     `Aggregate: ${trial.aggregate.pass ? 'PASS' : 'FAIL'} (score=${score})`,
     `Run:       ${trial.runName} (${trial.runId})`,
     `Duration:  ${trial.timings.durationMs}ms`,
+    '',
+    'Metrics:',
+    formatMetricsValue(trial.execution.metrics),
     '',
     'Graders:',
   ];
