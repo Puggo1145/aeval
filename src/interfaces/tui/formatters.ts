@@ -290,18 +290,32 @@ function truncateText(text: string, maxLength: number): string {
 
 export function formatTrialGraderDetails(trial: TrialResult): string {
   const score = trial.aggregate.score !== undefined ? trial.aggregate.score.toFixed(2) : '-';
+  const error = trial.execution.error;
   const lines = [
     `Task:      ${trial.taskId}`,
     `Trial:     #${trial.trialIndex}`,
     `Aggregate: ${trial.aggregate.pass ? 'PASS' : 'FAIL'} (score=${score})`,
     `Run:       ${trial.runName} (${trial.runId})`,
     `Duration:  ${trial.timings.durationMs}ms`,
+  ];
+
+  if (error) {
+    const code = error.code ?? 'unknown';
+    const retryable = error.retryable === undefined ? 'unknown' : error.retryable ? 'yes' : 'no';
+    lines.push('', 'Error:');
+    lines.push(`  Type:      ${error.type}`);
+    lines.push(`  Code:      ${code}`);
+    lines.push(`  Retryable: ${retryable}`);
+    lines.push(`  Message:   ${error.message}`);
+  }
+
+  lines.push(
     '',
     'Metrics:',
     formatMetricsValue(trial.execution.metrics),
     '',
     'Graders:',
-  ];
+  );
 
   if (trial.graderResults.length === 0) {
     lines.push('  (no grader results)');

@@ -223,6 +223,41 @@ test('formatTrialGraderDetails shows per-grader pass and reason', () => {
   assert.match(output, /reason: output includes greeting/);
 });
 
+test('formatTrialGraderDetails shows execution error details for failed trials', () => {
+  const output = formatTrialGraderDetails({
+    schemaVersion: 'trial-result.v1',
+    taskId: 'file-edit-agent/smoke/modify-greeting-002',
+    runId: 'run-2',
+    runName: 'try-5-mini',
+    trialIndex: 0,
+    execution: {
+      schemaVersion: 'execution-result.v1',
+      output: '',
+      error: {
+        type: 'system',
+        code: 'timeout',
+        message: 'Trial timed out after 30000ms',
+        retryable: false,
+      },
+    },
+    graderResults: [],
+    aggregate: { pass: false },
+    timings: {
+      startedAt: '2026-03-04T00:00:00.000Z',
+      endedAt: '2026-03-04T00:00:30.000Z',
+      durationMs: 30000,
+    },
+  });
+
+  assert.match(output, /Aggregate:\s+FAIL \(score=-\)/);
+  assert.match(output, /Error:/);
+  assert.match(output, /Type:\s+system/);
+  assert.match(output, /Code:\s+timeout/);
+  assert.match(output, /Retryable:\s+no/);
+  assert.match(output, /Message:\s+Trial timed out after 30000ms/);
+  assert.match(output, /Graders:\n  \(no grader results\)/);
+});
+
 test('formatRunSummaryDetails includes metrics for each trial', () => {
   const output = formatRunSummaryDetails(
     {
