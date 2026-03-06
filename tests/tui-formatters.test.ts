@@ -38,7 +38,7 @@ test('formatTrialsTable includes header row and aligned trial values', () => {
   ]);
 
   assert.match(output, /^Task ID\s+Trial\s+Status\s+Score\s+Duration/m);
-  assert.match(output, /file-edit-agent\/smoke\/create-hello-001/);
+  assert.match(output, /file-edit-agent\/smoke\/create-hell\.\.\./);
   assert.match(output, /\bPASS\b/);
   assert.match(output, /8571ms/);
 });
@@ -74,6 +74,38 @@ test('formatRunsTable includes suite and task columns', () => {
   assert.match(output, /^Run ID\s+Status\s+Suite\s+Task\s+Run Name\s+Pass Rate\s+Trials/m);
   assert.match(output, /file-edit-agent/);
   assert.match(output, /COMPLETED/);
+});
+
+test('formatRunsTable truncates long identifiers to keep columns stable', () => {
+  const output = formatRunsTable(
+    [
+      {
+        runId: 'run-1234567890-abcdefghijklmnopqrstuvwxyz',
+        status: 'completed',
+        manifest: null,
+        summary: {
+          schemaVersion: 'run-summary.v1',
+          runId: 'run-1234567890-abcdefghijklmnopqrstuvwxyz',
+          taskId: 'very/long/task/id/that/should/not/blow/up/the/table/layout',
+          runName: 'very-long-run-name-for-display',
+          totalTrials: 2,
+          passRate: 1,
+        },
+      },
+    ],
+    new Map([
+      [
+        'run-1234567890-abcdefghijklmnopqrstuvwxyz',
+        {
+          suiteName: 'suite-with-a-very-long-name',
+          taskId: 'very/long/task/id/that/should/not/blow_up/the_table_layout',
+        },
+      ],
+    ]),
+  );
+
+  assert.match(output, /run-1234567890-ab\.\.\./);
+  assert.match(output, /suite-with-a-ve\.\.\./);
 });
 
 test('formatRunOptionHint falls back to unknown suite and task when missing', () => {

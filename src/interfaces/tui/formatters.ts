@@ -186,6 +186,59 @@ export function formatComparisonNote(comparison: BaselineComparison): void {
   p.note(lines.join('\n'), 'Baseline Comparison');
 }
 
+function getTerminalWidth(): number {
+  const columns = process.stdout.columns;
+  return typeof columns === 'number' && columns > 0 ? columns : 120;
+}
+
+function formatBoundedTable(
+  header: string[],
+  rows: string[][],
+  maxWidths: number[],
+  minWidths: number[] = [],
+): string {
+  const spacingWidth = 2;
+  const widths = header.map((title, index) => {
+    const contentWidth = Math.max(title.length, ...rows.map((row) => (row[index] ?? '').length));
+    const minWidth = minWidths[index] ?? title.length;
+    const maxWidth = maxWidths[index] ?? contentWidth;
+    return Math.max(minWidth, Math.min(contentWidth, maxWidth));
+  });
+
+  const terminalWidth = getTerminalWidth();
+  const usedWidth =
+    widths.reduce((sum, width) => sum + width, 0) + spacingWidth * Math.max(0, header.length - 1);
+
+  if (usedWidth > terminalWidth) {
+    let overflow = usedWidth - terminalWidth;
+    for (let index = 0; index < widths.length && overflow > 0; index += 1) {
+      const minWidth = minWidths[index] ?? header[index]?.length ?? 1;
+      const shrinkable = widths[index] - minWidth;
+      if (shrinkable <= 0) {
+        continue;
+      }
+
+      const shrinkBy = Math.min(shrinkable, overflow);
+      widths[index] -= shrinkBy;
+      overflow -= shrinkBy;
+    }
+  }
+
+  const separator = ' '.repeat(spacingWidth);
+  const formatRow = (cells: string[]): string =>
+    cells
+      .map((cell, index) =>
+        truncateText(cell, widths[index] ?? cell.length).padEnd(widths[index] ?? 0),
+      )
+      .join(separator);
+
+  return [
+    formatRow(header),
+    widths.map((width) => '-'.repeat(width)).join(separator),
+    ...rows.map((row) => formatRow(row)),
+  ].join('\n');
+}
+
 export function formatRunsTable(
   records: RunRecord[],
   metadataByRunId: ReadonlyMap<string, RunMetadata> = new Map(),
@@ -205,19 +258,7 @@ export function formatRunsTable(
     r.summary ? String(r.summary.totalTrials) : '-',
   ]);
 
-  const widths = header.map((h, i) =>
-    Math.max(h.length, ...rows.map((row) => (row[i] ?? '').length)),
-  );
-
-  const formatRow = (cells: string[]): string =>
-    cells.map((cell, i) => cell.padEnd(widths[i] ?? 0)).join('  ');
-
-  const lines = [formatRow(header), widths.map((w) => '-'.repeat(w)).join('  ')];
-  for (const row of rows) {
-    lines.push(formatRow(row));
-  }
-
-  return lines.join('\n');
+  return formatBoundedTable(header, rows, [20, 12, 18, 28, 18, 10, 8], [10, 6, 8, 12, 8, 9, 6]);
 }
 
 export function formatTrialsTable(records: TrialResultRecord[]): string {
@@ -237,19 +278,7 @@ export function formatTrialsTable(records: TrialResultRecord[]): string {
     ];
   });
 
-  const widths = header.map((h, i) =>
-    Math.max(h.length, ...rows.map((row) => (row[i] ?? '').length)),
-  );
-
-  const formatRow = (cells: string[]): string =>
-    cells.map((cell, i) => cell.padEnd(widths[i] ?? 0)).join('  ');
-
-  const lines = [formatRow(header), widths.map((w) => '-'.repeat(w)).join('  ')];
-  for (const row of rows) {
-    lines.push(formatRow(row));
-  }
-
-  return lines.join('\n');
+  return formatBoundedTable(header, rows, [36, 8, 8, 8, 12], [12, 5, 6, 5, 8]);
 }
 
 function truncateText(text: string, maxLength: number): string {
