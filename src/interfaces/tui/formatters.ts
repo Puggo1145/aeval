@@ -36,12 +36,35 @@ function formatRunTaskId(record: RunRecord): string {
   return record.summary?.taskId ?? record.manifest?.taskId ?? 'unknown';
 }
 
-export function formatRunOptionLabel(record: RunRecord): string {
-  return record.summary?.runName ?? record.manifest?.runName ?? record.runId;
+function shortenRunId(runId: string): string {
+  const trimmed = runId.trim();
+  return trimmed.length <= 8 ? trimmed : trimmed.slice(0, 8);
 }
 
-export function formatRunOptionHint(metadata: RunMetadata | undefined): string {
-  return `suite: ${formatSuiteText(metadata?.suiteName)} | task: ${formatTaskText(metadata?.taskId)}`;
+function formatRunTimestamp(value: string | undefined): string | undefined {
+  if (!value || value.trim().length === 0) {
+    return undefined;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return undefined;
+  }
+
+  return value.slice(0, 16).replace('T', ' ') + 'Z';
+}
+
+export function formatRunOptionLabel(record: RunRecord): string {
+  const runName = record.summary?.runName ?? record.manifest?.runName ?? record.runId;
+  const timestamp = formatRunTimestamp(record.manifest?.completedAt ?? record.manifest?.startedAt);
+  const suffix = timestamp
+    ? `${timestamp} | ${shortenRunId(record.runId)}`
+    : shortenRunId(record.runId);
+  return `${runName} | ${suffix}`;
+}
+
+export function formatRunOptionHint(record: RunRecord, metadata: RunMetadata | undefined): string {
+  return `suite: ${formatSuiteText(metadata?.suiteName)} | task: ${formatTaskText(metadata?.taskId)} | runId: ${record.runId}`;
 }
 
 export function formatRunOptionStatsHint(record: RunRecord): string {

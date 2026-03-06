@@ -37,7 +37,7 @@ export async function clearResults(core: CoreApi, mode: ClearMode): Promise<void
   const runLabels = records.map((record) => ({
     runId: record.runId,
     label: formatRunOptionLabel(record),
-    hint: formatRunOptionHint(metadataByRunId.get(record.runId)),
+    hint: formatRunOptionHint(record, metadataByRunId.get(record.runId)),
   }));
 
   if (mode === 'all') {

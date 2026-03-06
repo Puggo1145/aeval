@@ -97,5 +97,5 @@ graders:
 execution:
   timeoutMs: 180000
   retryOnError: 0
-  trialsPerTask: 1
-  maxConcurrency: 2
+  trialsPerTask: 2
+  maxConcurrency: 3

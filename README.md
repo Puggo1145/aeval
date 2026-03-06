@@ -67,7 +67,7 @@ AIHUBMIX_API_KEY=
 
 - `YOUAPI_BASE_URL`：youapi 服务地址，provider 会向 `${YOUAPI_BASE_URL}/api/v1/eval/agent/run` 发请求。
 - `EVAL_API_SECRET`：内部 eval 接口认证头 `x-internal-secret`。从 Doppler 取一下就行
-- `AIHUBMIX_API_KEY`：只在任务使用 `llm-judge` grader 时需要。002 和 003 task 都需要 llm judge
+- `AIHUBMIX_API_KEY`：只在任务使用 `llm-judge` grader 时需要。样例 task 中的 002 和 003 task 都需要 llm judge
 
 ### 第二步：启动 TUI
 

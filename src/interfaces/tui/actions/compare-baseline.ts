@@ -37,7 +37,7 @@ export async function compareBaseline(core: CoreApi): Promise<void> {
       options: completedRuns.map((r) => ({
         value: r.runId,
         label: formatRunOptionLabel(r),
-        hint: formatRunOptionHint(metadataByRunId.get(r.runId)),
+        hint: formatRunOptionHint(r, metadataByRunId.get(r.runId)),
       })),
     }),
   );
@@ -63,7 +63,7 @@ export async function compareBaseline(core: CoreApi): Promise<void> {
         options: baselineOptions.map((r) => ({
           value: r.runId,
           label: formatRunOptionLabel(r),
-          hint: formatRunOptionHint(metadataByRunId.get(r.runId)),
+          hint: formatRunOptionHint(r, metadataByRunId.get(r.runId)),
         })),
       }),
     );

@@ -27,7 +27,7 @@ export async function setBaseline(core: CoreApi): Promise<void> {
       options: completedRuns.map((r) => ({
         value: r.runId,
         label: formatRunOptionLabel(r),
-        hint: formatRunOptionHint(metadataByRunId.get(r.runId)),
+        hint: formatRunOptionHint(r, metadataByRunId.get(r.runId)),
       })),
     }),
   );

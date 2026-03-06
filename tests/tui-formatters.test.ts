@@ -109,25 +109,78 @@ test('formatRunsTable truncates long identifiers to keep columns stable', () => 
 });
 
 test('formatRunOptionHint falls back to unknown suite and task when missing', () => {
-  assert.equal(formatRunOptionHint(undefined), 'suite: unknown | task: unknown');
+  assert.equal(
+    formatRunOptionHint(
+      {
+        runId: 'run-1',
+        status: 'completed',
+        manifest: null,
+        summary: {
+          schemaVersion: 'run-summary.v1',
+          runId: 'run-1',
+          taskId: 'task-001',
+          runName: 'try-5-mini',
+          totalTrials: 2,
+          passRate: 1,
+        },
+      },
+      undefined,
+    ),
+    'suite: unknown | task: unknown | runId: run-1',
+  );
 });
 
-test('formatRunOptionLabel shows human-readable run name only', () => {
+test('formatRunOptionLabel includes timestamp and shortened run id when manifest is present', () => {
   assert.equal(
     formatRunOptionLabel({
-      runId: 'run-1',
+      runId: '7a215d3d-f536-4c23-92a3-fbab4076d3b3',
       status: 'completed',
-      manifest: null,
+      manifest: {
+        schemaVersion: 'run-manifest.v1',
+        runId: '7a215d3d-f536-4c23-92a3-fbab4076d3b3',
+        suiteId: 'suite-a',
+        suiteName: 'Suite A',
+        taskId: 'task-001',
+        runName: 'try-5-mini',
+        taskSource: {
+          adapter: 'local',
+          ref: 'datasets/task-001.yaml',
+          revision: 'sha256-task-001',
+        },
+        taskHash: 'task-hash-001',
+        configHash: 'config-hash-001',
+        startedAt: '2026-03-06T08:30:45.000Z',
+        completedAt: '2026-03-06T08:31:10.000Z',
+      },
       summary: {
         schemaVersion: 'run-summary.v1',
-        runId: 'run-1',
+        runId: '7a215d3d-f536-4c23-92a3-fbab4076d3b3',
         taskId: 'task-001',
         runName: 'try-5-mini',
         totalTrials: 2,
         passRate: 1,
       },
     }),
-    'try-5-mini',
+    'try-5-mini | 2026-03-06 08:31Z | 7a215d3d',
+  );
+});
+
+test('formatRunOptionLabel falls back to shortened run id when manifest timestamp is missing', () => {
+  assert.equal(
+    formatRunOptionLabel({
+      runId: 'run-1234567890',
+      status: 'completed',
+      manifest: null,
+      summary: {
+        schemaVersion: 'run-summary.v1',
+        runId: 'run-1234567890',
+        taskId: 'task-001',
+        runName: 'try-5-mini',
+        totalTrials: 2,
+        passRate: 1,
+      },
+    }),
+    'try-5-mini | run-1234',
   );
 });
 
