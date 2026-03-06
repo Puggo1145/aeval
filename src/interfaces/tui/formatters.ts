@@ -1,6 +1,7 @@
 import * as p from '@clack/prompts';
 
-import type { RunSummary, RunSummaryRecord } from '../../core/contracts/run-summary.js';
+import type { RunRecord } from '../../core/contracts/run-record.js';
+import type { RunSummary } from '../../core/contracts/run-summary.js';
 import type { BaselineComparison } from '../../core/contracts/runtime.js';
 import type { TrialResult, TrialResultRecord } from '../../core/contracts/trial.js';
 import type { RunMetadata } from './run-metadata.js';
@@ -27,16 +28,28 @@ export function formatTaskText(value: string | undefined): string {
   return value.trim();
 }
 
-export function formatRunOptionLabel(record: RunSummaryRecord): string {
-  return record.summary.runName;
+function formatRunStatus(status: RunRecord['status']): string {
+  return status.toUpperCase();
+}
+
+function formatRunTaskId(record: RunRecord): string {
+  return record.summary?.taskId ?? record.manifest?.taskId ?? 'unknown';
+}
+
+export function formatRunOptionLabel(record: RunRecord): string {
+  return record.summary?.runName ?? record.manifest?.runName ?? record.runId;
 }
 
 export function formatRunOptionHint(metadata: RunMetadata | undefined): string {
   return `suite: ${formatSuiteText(metadata?.suiteName)} | task: ${formatTaskText(metadata?.taskId)}`;
 }
 
-export function formatRunOptionStatsHint(record: RunSummaryRecord): string {
-  return `pass=${formatPassRate(record.summary.passRate)} | task=${record.summary.taskId} | trials=${record.summary.totalTrials}`;
+export function formatRunOptionStatsHint(record: RunRecord): string {
+  if (record.summary) {
+    return `status=${record.status} | pass=${formatPassRate(record.summary.passRate)} | task=${record.summary.taskId} | trials=${record.summary.totalTrials}`;
+  }
+
+  return `status=${record.status} | task=${formatRunTaskId(record)}`;
 }
 
 export function formatSummaryNote(summary: RunSummary, metadata?: RunMetadata): void {
@@ -58,6 +71,19 @@ export function formatSummaryNote(summary: RunSummary, metadata?: RunMetadata): 
   if (summary.avgLatencyMs !== undefined) {
     lines.push(`Avg Latency:  ${summary.avgLatencyMs.toFixed(0)}ms`);
   }
+
+  p.note(lines.join('\n'), 'Run Summary');
+}
+
+export function formatInterruptedRunNote(record: RunRecord, metadata?: RunMetadata): void {
+  const lines = [
+    `Run ID:       ${record.runId}`,
+    `Status:       ${formatRunStatus(record.status)}`,
+    `Suite:        ${formatSuiteText(metadata?.suiteName ?? record.manifest?.suiteName)}`,
+    `Task:         ${formatTaskText(metadata?.taskId ?? formatRunTaskId(record))}`,
+    `Run Name:     ${record.manifest?.runName ?? 'unknown'}`,
+    `Started At:   ${record.manifest?.startedAt ?? 'unknown'}`,
+  ];
 
   p.note(lines.join('\n'), 'Run Summary');
 }
@@ -89,21 +115,22 @@ export function formatComparisonNote(comparison: BaselineComparison): void {
 }
 
 export function formatRunsTable(
-  records: RunSummaryRecord[],
+  records: RunRecord[],
   metadataByRunId: ReadonlyMap<string, RunMetadata> = new Map(),
 ): string {
   if (records.length === 0) {
     return 'No runs found.';
   }
 
-  const header = ['Run ID', 'Suite', 'Task', 'Run Name', 'Pass Rate', 'Trials'];
+  const header = ['Run ID', 'Status', 'Suite', 'Task', 'Run Name', 'Pass Rate', 'Trials'];
   const rows = records.map((r) => [
-    r.summary.runId,
+    r.runId,
+    formatRunStatus(r.status),
     formatSuiteText(metadataByRunId.get(r.runId)?.suiteName),
-    formatTaskText(metadataByRunId.get(r.runId)?.taskId ?? r.summary.taskId),
-    r.summary.runName,
-    formatPassRate(r.summary.passRate),
-    String(r.summary.totalTrials),
+    formatTaskText(metadataByRunId.get(r.runId)?.taskId ?? formatRunTaskId(r)),
+    r.summary?.runName ?? r.manifest?.runName ?? 'unknown',
+    r.summary ? formatPassRate(r.summary.passRate) : '-',
+    r.summary ? String(r.summary.totalTrials) : '-',
   ]);
 
   const widths = header.map((h, i) =>

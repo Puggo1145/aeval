@@ -1,5 +1,6 @@
 export * from './execution.js';
 export * from './run-manifest.js';
+export * from './run-record.js';
 export * from './run-summary.js';
 export * from './runtime.js';
 export * from './schema-versions.js';

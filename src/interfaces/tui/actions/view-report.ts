@@ -2,6 +2,7 @@ import * as p from '@clack/prompts';
 
 import type { CoreApi } from '../../../core/api/index.js';
 import {
+  formatInterruptedRunNote,
   formatRunOptionLabel,
   formatRunOptionStatsHint,
   formatSummaryNote,
@@ -70,11 +71,16 @@ export async function viewReport(core: CoreApi): Promise<void> {
     }),
   );
 
-  const summary = await core.getRunSummary(runId);
-  if (!summary) {
-    p.log.error(`Run '${runId}' not found.`);
+  const record = runsForTask.find((candidate) => candidate.runId === runId);
+  if (!record) {
+    p.log.error(`Run '${runId}' not found in run list.`);
     return;
   }
 
-  formatSummaryNote(summary, metadataByRunId.get(runId));
+  if (record.summary) {
+    formatSummaryNote(record.summary, metadataByRunId.get(runId));
+    return;
+  }
+
+  formatInterruptedRunNote(record, metadataByRunId.get(runId));
 }

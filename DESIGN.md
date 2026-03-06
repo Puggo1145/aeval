@@ -200,6 +200,8 @@ The TUI flow is:
 3. stream task execution
 4. inspect stored runs, summaries, and trials
 
+Results views include interrupted runs that have a manifest but no completed summary yet.
+
 Runtime display uses `taskId + runName + trialIndex`.
 
 ## 9. Design Constraints

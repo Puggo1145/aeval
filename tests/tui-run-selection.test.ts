@@ -7,6 +7,8 @@ test('groupRunsBySuiteAndTask groups runs by suite then task and falls back to u
   const records = [
     {
       runId: 'run-1',
+      status: 'completed' as const,
+      manifest: null,
       summary: {
         schemaVersion: 'run-summary.v1' as const,
         runId: 'run-1',
@@ -18,6 +20,8 @@ test('groupRunsBySuiteAndTask groups runs by suite then task and falls back to u
     },
     {
       runId: 'run-2',
+      status: 'completed' as const,
+      manifest: null,
       summary: {
         schemaVersion: 'run-summary.v1' as const,
         runId: 'run-2',
@@ -29,14 +33,24 @@ test('groupRunsBySuiteAndTask groups runs by suite then task and falls back to u
     },
     {
       runId: 'run-3',
-      summary: {
-        schemaVersion: 'run-summary.v1' as const,
+      status: 'interrupted' as const,
+      manifest: {
+        schemaVersion: 'run-manifest.v1' as const,
         runId: 'run-3',
+        suiteId: 'suite-b',
+        suiteName: 'Suite B',
         taskId: 'task-002',
         runName: 'mini',
-        totalTrials: 1,
-        passRate: 1,
+        taskSource: {
+          adapter: 'local',
+          ref: 'datasets/task-002.yaml',
+          revision: 'sha256-task-002',
+        },
+        taskHash: 'task-hash-002',
+        configHash: 'config-hash-002',
+        startedAt: '2026-03-06T00:00:00.000Z',
       },
+      summary: null,
     },
   ];
 

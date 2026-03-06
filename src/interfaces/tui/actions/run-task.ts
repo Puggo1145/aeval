@@ -1,7 +1,7 @@
 import * as p from '@clack/prompts';
 
 import type { CoreApi } from '../../../core/api/index.js';
-import type { RunSummaryRecord } from '../../../core/contracts/run-summary.js';
+import type { RunRecord } from '../../../core/contracts/run-record.js';
 import { StreamClosedError } from '../../../core/runtime/abort-reasons.js';
 import { formatRunsTable } from '../formatters.js';
 import { createLiveRegion } from '../live-region.js';
@@ -172,7 +172,7 @@ export async function runTask(core: CoreApi): Promise<void> {
   let completedTrials = 0;
   let totalTrials = 0;
   const runLogs: string[] = [];
-  const completedSummaries: RunSummaryRecord[] = [];
+  const completedRuns: RunRecord[] = [];
   const liveRegion = createLiveRegion();
 
   const renderPanel = (): void => {
@@ -245,8 +245,10 @@ export async function runTask(core: CoreApi): Promise<void> {
         case 'run:completed':
           activeRunName = event.summary.runName;
           completedTrials = totalTrials;
-          completedSummaries.push({
+          completedRuns.push({
             runId: event.summary.runId,
+            status: 'completed',
+            manifest: null,
             summary: event.summary,
           });
           renderPanel();
@@ -277,16 +279,16 @@ export async function runTask(core: CoreApi): Promise<void> {
 
   p.log.success(`${selectedTask.id} completed`);
 
-  if (completedSummaries.length === 0) {
+  if (completedRuns.length === 0) {
     return;
   }
 
   const metadata = await readRunMetadataMap(
     core,
-    completedSummaries.map((record) => record.runId),
+    completedRuns.map((record) => record.runId),
   );
 
-  for (const record of completedSummaries) {
+  for (const record of completedRuns) {
     if (!metadata.has(record.runId)) {
       metadata.set(record.runId, {
         suiteName: loadedSuite.definition.name,
@@ -295,5 +297,5 @@ export async function runTask(core: CoreApi): Promise<void> {
     }
   }
 
-  p.note(formatRunsTable(completedSummaries, metadata), `Task Results: ${selectedTask.id}`);
+  p.note(formatRunsTable(completedRuns, metadata), `Task Results: ${selectedTask.id}`);
 }

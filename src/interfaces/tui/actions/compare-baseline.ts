@@ -19,21 +19,22 @@ export async function compareBaseline(core: CoreApi): Promise<void> {
   const s = p.spinner();
   s.start('Loading runs…');
   const records = await core.listRuns();
+  const completedRuns = records.filter((record) => record.status === 'completed');
   s.stop('Runs loaded.');
 
-  if (records.length === 0) {
-    p.log.warn('No runs found.');
+  if (completedRuns.length === 0) {
+    p.log.warn('No completed runs found.');
     return;
   }
 
   const metadataByRunId = await readRunMetadataMap(
     core,
-    records.map((record) => record.runId),
+    completedRuns.map((record) => record.runId),
   );
   const currentRunId = handleCancel(
     await p.select({
       message: 'Select the current run to compare:',
-      options: records.map((r) => ({
+      options: completedRuns.map((r) => ({
         value: r.runId,
         label: formatRunOptionLabel(r),
         hint: formatRunOptionHint(metadataByRunId.get(r.runId)),
@@ -50,7 +51,7 @@ export async function compareBaseline(core: CoreApi): Promise<void> {
 
   let baselineRunId: string | undefined;
   if (useCustomBaseline) {
-    const baselineOptions = records.filter((r) => r.runId !== currentRunId);
+    const baselineOptions = completedRuns.filter((r) => r.runId !== currentRunId);
     if (baselineOptions.length === 0) {
       p.log.warn('No other runs available as baseline.');
       return;

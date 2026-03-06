@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  formatInterruptedRunNote,
   formatRunOptionHint,
   formatRunOptionLabel,
   formatRunOptionStatsHint,
@@ -46,6 +47,8 @@ test('formatRunsTable includes suite and task columns', () => {
     [
       {
         runId: 'run-1',
+        status: 'completed',
+        manifest: null,
         summary: {
           schemaVersion: 'run-summary.v1',
           runId: 'run-1',
@@ -67,8 +70,9 @@ test('formatRunsTable includes suite and task columns', () => {
     ]),
   );
 
-  assert.match(output, /^Run ID\s+Suite\s+Task\s+Run Name\s+Pass Rate\s+Trials/m);
+  assert.match(output, /^Run ID\s+Status\s+Suite\s+Task\s+Run Name\s+Pass Rate\s+Trials/m);
   assert.match(output, /file-edit-agent/);
+  assert.match(output, /COMPLETED/);
 });
 
 test('formatRunOptionHint falls back to unknown suite and task when missing', () => {
@@ -79,6 +83,8 @@ test('formatRunOptionLabel shows human-readable run name only', () => {
   assert.equal(
     formatRunOptionLabel({
       runId: 'run-1',
+      status: 'completed',
+      manifest: null,
       summary: {
         schemaVersion: 'run-summary.v1',
         runId: 'run-1',
@@ -96,6 +102,8 @@ test('formatRunOptionStatsHint includes pass rate, task id, and trial count', ()
   assert.equal(
     formatRunOptionStatsHint({
       runId: 'run-1',
+      status: 'completed',
+      manifest: null,
       summary: {
         schemaVersion: 'run-summary.v1',
         runId: 'run-1',
@@ -105,7 +113,34 @@ test('formatRunOptionStatsHint includes pass rate, task id, and trial count', ()
         passRate: 0.5,
       },
     }),
-    'pass=50.0% | task=task-001 | trials=3',
+    'status=completed | pass=50.0% | task=task-001 | trials=3',
+  );
+});
+
+test('formatRunOptionStatsHint shows interrupted status for incomplete runs', () => {
+  assert.equal(
+    formatRunOptionStatsHint({
+      runId: 'run-2',
+      status: 'interrupted',
+      manifest: {
+        schemaVersion: 'run-manifest.v1',
+        runId: 'run-2',
+        suiteId: 'suite-a',
+        suiteName: 'Suite A',
+        taskId: 'task-002',
+        runName: 'nano',
+        taskSource: {
+          adapter: 'local',
+          ref: 'datasets/task-002.yaml',
+          revision: 'sha256-task-002',
+        },
+        taskHash: 'task-hash-002',
+        configHash: 'config-hash-002',
+        startedAt: '2026-03-06T00:00:00.000Z',
+      },
+      summary: null,
+    }),
+    'status=interrupted | task=task-002',
   );
 });
 

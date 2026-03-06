@@ -137,6 +137,8 @@ Main entry points:
 - `core.getRunSummary(runId)`
 - `core.listTrials(runId)`
 
+`core.listRuns()` returns stored runs whether they are completed or interrupted. Completed runs include a summary; interrupted runs remain manifest-only.
+
 ## Local Reference Adapters
 
 `createLocalTaskSourceAdapter({ rootDir })` scans `rootDir` recursively for suite YAML files. `suite.discover[]` is resolved relative to that same `rootDir`.

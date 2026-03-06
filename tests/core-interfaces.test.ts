@@ -16,6 +16,7 @@ import type {
 import { createCore } from '../src/core/api/index.js';
 import { SCHEMA_VERSIONS } from '../src/core/contracts/index.js';
 import type { RunManifest } from '../src/core/contracts/run-manifest.js';
+import type { RunRecord } from '../src/core/contracts/run-record.js';
 import type { RunSummaryRecord } from '../src/core/contracts/run-summary.js';
 import type { SuiteDefinition } from '../src/core/contracts/suite.js';
 import type { TrialResultRecord } from '../src/core/contracts/trial.js';
@@ -62,7 +63,7 @@ class InMemoryResultStoreAdapter implements ResultStoreAdapter {
   }
 
   async listRunIds(): Promise<string[]> {
-    return [...this.summaries.keys()].sort();
+    return [...new Set([...this.manifests.keys(), ...this.summaries.keys(), ...this.trials.keys()])].sort();
   }
 
   async clearResultsByRunIds(runIds: string[]): Promise<ClearedResultEntry[]> {
@@ -261,6 +262,64 @@ test('streamTask emits run lifecycle events for each provider run', async () => 
 
   assert.deepEqual(startedRuns, ['mini', 'nano']);
   assert.equal(eventTypes.filter((type) => type === 'run:completed').length, 2);
+});
+
+test('listRuns includes interrupted runs without summaries', async () => {
+  const core = createTestCore();
+  const store = new InMemoryResultStoreAdapter();
+  const interruptedManifest: RunManifest = {
+    schemaVersion: SCHEMA_VERSIONS.RUN_MANIFEST,
+    runId: 'run-interrupted',
+    suiteId: 'basic-llm',
+    suiteName: 'Basic LLM',
+    taskId: 'basic-llm/task-001',
+    runName: 'mini',
+    taskSource: {
+      adapter: 'memory',
+      ref: 'datasets/task-001.yaml',
+      revision: 'sha256-task-001',
+    },
+    taskHash: 'task-hash-001',
+    configHash: 'config-hash-001',
+    startedAt: '2026-03-05T00:00:00.000Z',
+  };
+  await store.saveRunManifest(interruptedManifest);
+  await store.saveTrial({
+    runId: 'run-interrupted',
+    trial: {
+      schemaVersion: SCHEMA_VERSIONS.TRIAL_RESULT,
+      taskId: 'basic-llm/task-001',
+      runId: 'run-interrupted',
+      runName: 'mini',
+      trialIndex: 0,
+      execution: {
+        schemaVersion: SCHEMA_VERSIONS.EXECUTION_RESULT,
+        output: 'partial',
+      },
+      graderResults: [],
+      aggregate: {
+        pass: false,
+      },
+      timings: {
+        startedAt: '2026-03-05T00:00:00.000Z',
+        endedAt: '2026-03-05T00:00:01.000Z',
+        durationMs: 1000,
+      },
+    },
+  });
+  const interruptedCore = createCore({
+    taskSourceAdapter: createTaskSourceAdapter(),
+    resultStoreAdapter: store,
+    providerRegistry: new InMemoryProviderRegistry(),
+    graderRegistry: new InMemoryGraderRegistry(),
+  });
+
+  const runs = await interruptedCore.listRuns();
+  const interrupted = runs.find((run) => run.runId === 'run-interrupted');
+
+  assert.equal(interrupted?.status, 'interrupted');
+  assert.equal(interrupted?.summary, null);
+  assert.equal(interrupted?.manifest?.runName, 'mini');
 });
 
 test('loadSuites rejects when called without inputs', async () => {

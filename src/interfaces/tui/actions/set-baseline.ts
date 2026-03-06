@@ -9,21 +9,22 @@ export async function setBaseline(core: CoreApi): Promise<void> {
   const s = p.spinner();
   s.start('Loading runs…');
   const records = await core.listRuns();
+  const completedRuns = records.filter((record) => record.status === 'completed');
   s.stop('Runs loaded.');
 
-  if (records.length === 0) {
-    p.log.warn('No runs found.');
+  if (completedRuns.length === 0) {
+    p.log.warn('No completed runs found.');
     return;
   }
 
   const metadataByRunId = await readRunMetadataMap(
     core,
-    records.map((record) => record.runId),
+    completedRuns.map((record) => record.runId),
   );
   const runId = handleCancel(
     await p.select({
       message: 'Select a run to set as baseline:',
-      options: records.map((r) => ({
+      options: completedRuns.map((r) => ({
         value: r.runId,
         label: formatRunOptionLabel(r),
         hint: formatRunOptionHint(metadataByRunId.get(r.runId)),

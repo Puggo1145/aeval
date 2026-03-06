@@ -7,7 +7,8 @@ import type {
   TaskSourceAdapter,
 } from '../adapters/task-source-adapter.js';
 import type { RunManifest } from '../contracts/run-manifest.js';
-import type { RunSummary, RunSummaryRecord } from '../contracts/run-summary.js';
+import type { RunRecord } from '../contracts/run-record.js';
+import type { RunSummary } from '../contracts/run-summary.js';
 import type {
   BaselineComparison,
   BaselineThresholds,
@@ -70,7 +71,7 @@ export interface CoreApi {
     currentRunId: string,
     options?: CompareBaselineOptions,
   ): Promise<BaselineComparison>;
-  listRuns(): Promise<RunSummaryRecord[]>;
+  listRuns(): Promise<RunRecord[]>;
   clearResultsByRunIds(runIds: string[]): Promise<ClearedResultEntry[]>;
   clearResults(): Promise<ClearedResultEntry[]>;
 }
@@ -380,15 +381,22 @@ export function createCore({
       return comparison;
     },
 
-    async listRuns(): Promise<RunSummaryRecord[]> {
+    async listRuns(): Promise<RunRecord[]> {
       const runIds = await resultStoreAdapter.listRunIds();
-      const records: RunSummaryRecord[] = [];
+      const records: RunRecord[] = [];
 
       for (const runId of runIds) {
-        const record = await resultStoreAdapter.getRunSummary(runId);
-        if (record) {
-          records.push(record);
-        }
+        const [manifest, summaryRecord] = await Promise.all([
+          resultStoreAdapter.getRunManifest(runId),
+          resultStoreAdapter.getRunSummary(runId),
+        ]);
+
+        records.push({
+          runId,
+          status: summaryRecord ? 'completed' : 'interrupted',
+          manifest,
+          summary: summaryRecord?.summary ?? null,
+        });
       }
 
       return records.sort((a, b) => a.runId.localeCompare(b.runId));
