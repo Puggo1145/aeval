@@ -1,0 +1,88 @@
+schemaVersion: "task.v1"
+id: "file-edit-agent/smoke/weighted-release-note-003"
+desc: "Agent must update a file, use file tools, and give a grounded final summary."
+category: "file-edit-agent"
+capability: "file-modify"
+tier: "L1"
+difficulty: "medium"
+tags: ["smoke", "file-modify", "weighted", "tool-calls", "llm-judge"]
+
+provider:
+  id: "file-edit-agent"
+  runs:
+    - name: "gpt-4o-mini"
+      params:
+        model: "gpt-4o-mini"
+        task: "In release-notes.txt, change the line 'Status: draft' to 'Status: published'. Do not change any other line. Then reply with a short summary of the edit."
+        setup:
+          "release-notes.txt": |-
+            Launch Checklist
+            Status: draft
+            Owner: Ops
+        outcomePaths:
+          - "release-notes.txt"
+    - name: "gpt-5-mini"
+      params:
+        model: "gpt-5-mini"
+        task: "In release-notes.txt, change the line 'Status: draft' to 'Status: published'. Do not change any other line. Then reply with a short summary of the edit."
+        setup:
+          "release-notes.txt": |-
+            Launch Checklist
+            Status: draft
+            Owner: Ops
+        outcomePaths:
+          - "release-notes.txt"
+    - name: "gpt-5-nano"
+      params:
+        model: "gpt-5-nano"
+        task: "In release-notes.txt, change the line 'Status: draft' to 'Status: published'. Do not change any other line. Then reply with a short summary of the edit."
+        setup:
+          "release-notes.txt": |-
+            Launch Checklist
+            Status: draft
+            Owner: Ops
+        outcomePaths:
+          - "release-notes.txt"
+
+graders:
+  strategy: "WEIGHTED"
+  passThreshold: 0.85
+  layers:
+    - name: "release-notes.txt content must be updated exactly"
+      type: "outcome-check"
+      weight: 0.55
+      config:
+        expect:
+          "release-notes.txt": |-
+            Launch Checklist
+            Status: published
+            Owner: Ops
+
+    - name: "must use file read and write tools"
+      type: "tool-calls"
+      weight: 0.15
+      config:
+        required:
+          - tool: "read_file"
+          - tool: "write_file"
+
+    - name: "final answer must accurately describe the real file edit"
+      type: "llm-judge"
+      weight: 0.3
+      config:
+        dimension: "grounded correctness"
+        rubric: "Pass only if the final answer accurately describes the edit and stays grounded in the resulting file content."
+        assertions:
+          - "The answer states that the status changed from draft to published."
+          - "The answer does not claim any extra file changes beyond the provided outcome."
+        passThreshold: 1
+        contextFrom: "outcome"
+        judge:
+          provider: "aihubmix"
+          model: "gpt-4.1-mini"
+
+execution:
+  timeoutMs: 60000
+  retryOnError: 0
+  trialsPerTask: 2
+  maxConcurrency: 2

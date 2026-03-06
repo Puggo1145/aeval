@@ -75,6 +75,18 @@ Grader rules:
 3. `WEIGHTED` requires every layer to define `weight`
 4. unknown fields fail fast
 
+Built-in `llm-judge` layer config:
+
+1. `config.dimension` is required and non-empty
+2. `config.rubric` is required and non-empty
+3. `config.assertions.length >= 1`
+4. every `config.assertions[]` item is a non-empty string
+5. `config.passThreshold` is required and must satisfy `0 < passThreshold <= 1`
+6. `config.contextFrom` is optional and resolves against `ExecutionResult`
+7. `config.judge.provider` must be `aihubmix`
+8. `config.judge.model` is required and non-empty
+9. API keys are not part of task DSL; callers create the built-in judge provider explicitly and may source `AIHUBMIX_API_KEY` from environment variables
+
 ## 3. Runtime Contracts
 
 ### 3.1 TaskContext
@@ -99,6 +111,26 @@ type TaskProvider = (
 ```
 
 `params` is the selected run's `params`.
+
+Built-in `llm-judge` depends on a separate runtime contract:
+
+```ts
+interface JudgeProviderInput {
+  output: string;
+  rubric: string;
+  assertions: string[];
+  context?: unknown;
+  dimension: string;
+  judge: {
+    provider: 'aihubmix';
+    model: string;
+  };
+}
+```
+
+`JudgeProviderResult` returns a binary result per assertion, an averaged `score`,
+and an overall `reason`. Core stores the structured assertion breakdown in
+`TrialGraderResult.result.meta`.
 
 ### 3.3 RunEvent
 

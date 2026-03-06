@@ -2,8 +2,10 @@ import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  createBuiltinLlmJudgeProvider,
   createConsoleObserverAdapter,
   createCore,
+  createLlmJudgeGrader,
   createLocalResultStoreAdapter,
   createLocalTaskSourceAdapter,
   InMemoryGraderRegistry,
@@ -34,6 +36,8 @@ async function main(): Promise<void> {
 
   const graderRegistry = new InMemoryGraderRegistry();
   registerBuiltinGraders(graderRegistry);
+  const builtinLlmJudgeProvider = createBuiltinLlmJudgeProvider({ env: process.env });
+  graderRegistry.register('llm-judge', createLlmJudgeGrader(builtinLlmJudgeProvider));
 
   const providerRegistry = new InMemoryProviderRegistry();
   providerRegistry.register('youapi-agent', youapiAgentProvider);

@@ -2,8 +2,10 @@ import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  createBuiltinLlmJudgeProvider,
   createConsoleObserverAdapter,
   createCore,
+  createLlmJudgeGrader,
   createLocalResultStoreAdapter,
   createLocalTaskSourceAdapter,
   InMemoryGraderRegistry,
@@ -16,7 +18,7 @@ import { basicLlmProvider, fileEditAgentProvider } from './providers/index.ts';
 const currentDir = dirname(fileURLToPath(import.meta.url));
 
 function tryLoadEnvFile(): void {
-  if (process.env.OPENAI_API_KEY) return;
+  if (process.env.OPENAI_API_KEY && process.env.AIHUBMIX_API_KEY) return;
   const envPath = resolve(currentDir, '.env');
   if (!existsSync(envPath)) return;
   try {
@@ -32,6 +34,8 @@ async function main(): Promise<void> {
 
   const graderRegistry = new InMemoryGraderRegistry();
   registerBuiltinGraders(graderRegistry);
+  const builtinLlmJudgeProvider = createBuiltinLlmJudgeProvider({ env: process.env });
+  graderRegistry.register('llm-judge', createLlmJudgeGrader(builtinLlmJudgeProvider));
 
   const providerRegistry = new InMemoryProviderRegistry();
   providerRegistry.register('file-edit-agent', fileEditAgentProvider);

@@ -13,7 +13,7 @@ import { regex } from '../src/graders/builtins/regex.js';
 import { tokenBudget } from '../src/graders/builtins/token-budget.js';
 import { toolCalls } from '../src/graders/builtins/tool-calls.js';
 import { transcript } from '../src/graders/builtins/transcript.js';
-import type { JudgeProvider } from '../src/graders/llm/judge-provider.js';
+import { createBuiltinLlmJudgeConfigValidator } from '../src/graders/llm/builtin-llm-judge.js';
 import { createLlmJudgeGrader } from '../src/graders/llm/llm-judge.js';
 import { registerBuiltinGraders } from '../src/graders/register-builtins.js';
 
@@ -669,38 +669,86 @@ test('llm-judge: passes with mock judge', async () => {
   const mockJudge: JudgeProvider = {
     evaluate: async () => ({
       pass: true,
-      score: 0.95,
+      score: 1,
       reason: 'Answer is faithful to context.',
-      label: 'PASS',
+      assertions: [
+        {
+          assertion: 'The answer is grounded in context.',
+          pass: true,
+          reason: 'It is grounded.',
+        },
+      ],
+      provider: 'aihubmix',
+      model: 'gpt-4.1-mini',
     }),
   };
   const grader = createLlmJudgeGrader(mockJudge);
   const r = await grader(makeResult({ output: 'React Server Components reduce bundle size.' }), {
     dimension: 'faithfulness',
     rubric: 'PASS if grounded in context.',
+    assertions: ['The answer is grounded in context.'],
+    passThreshold: 1,
+    judge: {
+      provider: 'aihubmix',
+      model: 'gpt-4.1-mini',
+    },
   });
   assert.equal(r.pass, true);
-  assert.equal(r.score, 0.95);
-  assert.equal(r.meta?.label, 'PASS');
+  assert.equal(r.score, 1);
   assert.equal(r.meta?.dimension, 'faithfulness');
+  assert.equal(r.meta?.provider, 'aihubmix');
+  assert.equal(r.meta?.model, 'gpt-4.1-mini');
 });
 
-test('llm-judge: fails with mock judge', async () => {
+test('llm-judge: uses passThreshold against averaged assertion score', async () => {
   const mockJudge: JudgeProvider = {
     evaluate: async () => ({
       pass: false,
-      score: 0.2,
-      reason: 'Answer contains unsupported claims.',
-      label: 'FAIL',
+      score: 0.5,
+      reason: 'One assertion passed and one failed.',
+      assertions: [
+        {
+          assertion: 'The answer addresses the request.',
+          pass: true,
+          reason: 'It directly answers.',
+        },
+        {
+          assertion: 'The answer is fully grounded.',
+          pass: false,
+          reason: 'It adds unsupported detail.',
+        },
+      ],
+      provider: 'aihubmix',
+      model: 'claude-3-7-sonnet-latest',
     }),
   };
   const grader = createLlmJudgeGrader(mockJudge);
   const r = await grader(makeResult({ output: 'made up facts' }), {
     dimension: 'faithfulness',
     rubric: 'PASS if grounded in context.',
+    assertions: ['The answer addresses the request.', 'The answer is fully grounded.'],
+    passThreshold: 0.75,
+    judge: {
+      provider: 'aihubmix',
+      model: 'claude-3-7-sonnet-latest',
+    },
   });
   assert.equal(r.pass, false);
-  assert.equal(r.meta?.label, 'FAIL');
+  assert.equal(r.score, 0.5);
+  assert.equal(r.meta?.provider, 'aihubmix');
+  assert.equal(r.meta?.model, 'claude-3-7-sonnet-latest');
+  assert.deepEqual(r.meta?.assertions, [
+    {
+      assertion: 'The answer addresses the request.',
+      pass: true,
+      reason: 'It directly answers.',
+    },
+    {
+      assertion: 'The answer is fully grounded.',
+      pass: false,
+      reason: 'It adds unsupported detail.',
+    },
+  ]);
 });
 
 test('llm-judge: resolves contextFrom path', async () => {
@@ -708,7 +756,20 @@ test('llm-judge: resolves contextFrom path', async () => {
   const mockJudge: JudgeProvider = {
     evaluate: async (input) => {
       receivedInput = input;
-      return { pass: true, reason: 'ok' };
+      return {
+        pass: true,
+        score: 1,
+        reason: 'ok',
+        assertions: [
+          {
+            assertion: 'The answer uses the provided context.',
+            pass: true,
+            reason: 'ok',
+          },
+        ],
+        provider: 'aihubmix',
+        model: 'gpt-4.1-mini',
+      };
     },
   };
   const grader = createLlmJudgeGrader(mockJudge);
@@ -720,7 +781,13 @@ test('llm-judge: resolves contextFrom path', async () => {
     {
       dimension: 'faithfulness',
       rubric: 'PASS if grounded.',
+      assertions: ['The answer uses the provided context.'],
+      passThreshold: 1,
       contextFrom: 'outcome.boardContent',
+      judge: {
+        provider: 'aihubmix',
+        model: 'gpt-4.1-mini',
+      },
     },
   );
   assert.equal((receivedInput as { context: unknown }).context, 'some board content');
@@ -728,27 +795,163 @@ test('llm-judge: resolves contextFrom path', async () => {
 
 test('llm-judge: missing dimension fails', async () => {
   const mockJudge: JudgeProvider = {
-    evaluate: async () => ({ pass: true, reason: 'ok' }),
+    evaluate: async () => ({
+      pass: true,
+      score: 1,
+      reason: 'ok',
+      assertions: [],
+      provider: 'aihubmix',
+      model: 'gpt-4.1-mini',
+    }),
   };
   const grader = createLlmJudgeGrader(mockJudge);
-  const r = await grader(makeResult(), { rubric: 'some rubric' });
+  const r = await grader(makeResult(), {
+    rubric: 'some rubric',
+    assertions: ['a'],
+    passThreshold: 1,
+    judge: {
+      provider: 'aihubmix',
+      model: 'gpt-4.1-mini',
+    },
+  });
   assert.equal(r.pass, false);
   assert.ok(r.reason.includes('dimension'));
 });
 
 test('llm-judge: missing rubric fails', async () => {
   const mockJudge: JudgeProvider = {
-    evaluate: async () => ({ pass: true, reason: 'ok' }),
+    evaluate: async () => ({
+      pass: true,
+      score: 1,
+      reason: 'ok',
+      assertions: [],
+      provider: 'aihubmix',
+      model: 'gpt-4.1-mini',
+    }),
   };
   const grader = createLlmJudgeGrader(mockJudge);
-  const r = await grader(makeResult(), { dimension: 'faithfulness' });
+  const r = await grader(makeResult(), {
+    dimension: 'faithfulness',
+    assertions: ['a'],
+    passThreshold: 1,
+    judge: {
+      provider: 'aihubmix',
+      model: 'gpt-4.1-mini',
+    },
+  });
   assert.equal(r.pass, false);
   assert.ok(r.reason.includes('rubric'));
 });
 
+test('llm-judge: missing assertions fails', async () => {
+  const grader = createLlmJudgeGrader({
+    evaluate: async () => ({
+      pass: true,
+      score: 1,
+      reason: 'ok',
+      assertions: [],
+      provider: 'aihubmix',
+      model: 'gpt-4.1-mini',
+    }),
+  });
+
+  const r = await grader(makeResult(), {
+    dimension: 'faithfulness',
+    rubric: 'PASS if grounded.',
+    passThreshold: 1,
+    judge: {
+      provider: 'aihubmix',
+      model: 'gpt-4.1-mini',
+    },
+  });
+
+  assert.equal(r.pass, false);
+  assert.ok(r.reason.includes('assertions'));
+});
+
+test('llm-judge: empty assertions fail', async () => {
+  const grader = createLlmJudgeGrader({
+    evaluate: async () => ({
+      pass: true,
+      score: 1,
+      reason: 'ok',
+      assertions: [],
+      provider: 'aihubmix',
+      model: 'gpt-4.1-mini',
+    }),
+  });
+
+  const r = await grader(makeResult(), {
+    dimension: 'faithfulness',
+    rubric: 'PASS if grounded.',
+    assertions: [''],
+    passThreshold: 1,
+    judge: {
+      provider: 'aihubmix',
+      model: 'gpt-4.1-mini',
+    },
+  });
+
+  assert.equal(r.pass, false);
+  assert.ok(r.reason.includes('assertions'));
+});
+
+test('llm-judge: missing passThreshold fails', async () => {
+  const grader = createLlmJudgeGrader({
+    evaluate: async () => ({
+      pass: true,
+      score: 1,
+      reason: 'ok',
+      assertions: [],
+      provider: 'aihubmix',
+      model: 'gpt-4.1-mini',
+    }),
+  });
+
+  const r = await grader(makeResult(), {
+    dimension: 'faithfulness',
+    rubric: 'PASS if grounded.',
+    assertions: ['The answer is grounded.'],
+    judge: {
+      provider: 'aihubmix',
+      model: 'gpt-4.1-mini',
+    },
+  });
+
+  assert.equal(r.pass, false);
+  assert.ok(r.reason.includes('passThreshold'));
+});
+
+test('llm-judge: invalid passThreshold fails', async () => {
+  const grader = createLlmJudgeGrader({
+    evaluate: async () => ({
+      pass: true,
+      score: 1,
+      reason: 'ok',
+      assertions: [],
+      provider: 'aihubmix',
+      model: 'gpt-4.1-mini',
+    }),
+  });
+
+  const r = await grader(makeResult(), {
+    dimension: 'faithfulness',
+    rubric: 'PASS if grounded.',
+    assertions: ['The answer is grounded.'],
+    passThreshold: 1.1,
+    judge: {
+      provider: 'aihubmix',
+      model: 'gpt-4.1-mini',
+    },
+  });
+
+  assert.equal(r.pass, false);
+  assert.ok(r.reason.includes('passThreshold'));
+});
+
 // ==================== registerBuiltinGraders ====================
 
-test('registerBuiltinGraders: registers all 10 built-in graders', () => {
+test('registerBuiltinGraders: registers all 10 non-llm built-in graders', () => {
   const registry = new InMemoryGraderRegistry();
   registerBuiltinGraders(registry);
   const list = registry.list();
@@ -767,18 +970,45 @@ test('registerBuiltinGraders: registers all 10 built-in graders', () => {
   for (const name of expected) {
     assert.ok(list.includes(name), `Missing grader: ${name}`);
   }
-  // llm-judge should NOT be registered without judgeProvider
-  assert.ok(!list.includes('llm-judge'));
+  assert.equal(list.length, 10);
 });
 
-test('registerBuiltinGraders: registers llm-judge when judgeProvider provided', () => {
+test('llm-judge is registered explicitly on the GraderRegistry', () => {
   const registry = new InMemoryGraderRegistry();
-  const mockJudge: JudgeProvider = {
-    evaluate: async () => ({ pass: true, reason: 'ok' }),
+  const mockJudge = {
+    evaluate: async () => ({
+      pass: true,
+      score: 1,
+      reason: 'ok',
+      assertions: [],
+      provider: 'aihubmix',
+      model: 'gpt-4.1-mini',
+    }),
   };
-  registerBuiltinGraders(registry, { judgeProvider: mockJudge });
+  registerBuiltinGraders(registry);
+  registry.register('llm-judge', createLlmJudgeGrader(mockJudge));
+  registry.register('my-judge', createLlmJudgeGrader(mockJudge));
   assert.ok(registry.has('llm-judge'));
-  assert.equal(registry.list().length, 11);
+  assert.ok(registry.has('my-judge'));
+  assert.equal(registry.list().length, 12);
+});
+
+test('createBuiltinLlmJudgeConfigValidator: checks provider-specific api key availability', () => {
+  const validation = createBuiltinLlmJudgeConfigValidator({})({
+    dimension: 'correctness',
+    rubric: 'Pass if correct.',
+    assertions: ['The answer is correct.'],
+    passThreshold: 1,
+    judge: {
+      provider: 'aihubmix',
+      model: 'gpt-4.1-mini',
+    },
+  });
+
+  assert.deepEqual(validation, {
+    valid: false,
+    reason: "Judge provider 'aihubmix' requires process.env.AIHUBMIX_API_KEY.",
+  });
 });
 
 test('custom graders work via GraderRegistry.register()', () => {

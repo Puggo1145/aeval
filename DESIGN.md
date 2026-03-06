@@ -117,6 +117,12 @@ Rules:
 4. There is no provider-level default `params`.
 5. Unknown fields fail fast.
 
+Built-in `llm-judge` uses `layers[].config` to declare a rubric, `assertions[]`,
+`passThreshold`, optional `contextFrom`, and a `judge { provider, model }`
+selector. Secrets are not part of the task DSL; callers explicitly create the
+built-in judge provider at composition time and inject environment-backed
+credentials there.
+
 ## 5. Runtime
 
 ### 5.1 Provider Contract
@@ -131,6 +137,13 @@ type TaskProvider = (
 `TaskContext` contains `taskId`, `trialIndex`, `runName`, `runId`, and `signal`.
 
 Providers receive only the selected run params and the execution context.
+
+Built-in graders may depend on extra runtime wiring. `llm-judge` is wired
+explicitly by the caller: create the built-in AI SDK-backed judge provider,
+wrap it with `createLlmJudgeGrader(...)`, and register it on the grader
+registry. `registerBuiltinGraders(...)` only registers the pure built-in
+graders that need no extra runtime dependencies. Custom judge providers are
+registered directly through the grader registry.
 
 ### 5.2 Concurrency and Timeout
 

@@ -9,13 +9,6 @@ import { regex } from './builtins/regex.js';
 import { tokenBudget } from './builtins/token-budget.js';
 import { toolCalls } from './builtins/tool-calls.js';
 import { transcript } from './builtins/transcript.js';
-import type { JudgeProvider } from './llm/judge-provider.js';
-import { createLlmJudgeGrader } from './llm/llm-judge.js';
-
-export interface RegisterBuiltinGradersOptions {
-  /** Optional JudgeProvider for the llm-judge grader. If omitted, llm-judge is not registered. */
-  judgeProvider?: JudgeProvider;
-}
 
 /**
  * Registers all built-in graders into the given registry.
@@ -24,16 +17,11 @@ export interface RegisterBuiltinGradersOptions {
  *   exact-match, contains, regex, json-schema, length-check,
  *   tool-calls, transcript, outcome-check, latency-threshold, token-budget
  *
- * Optional:
- *   llm-judge — registered only when a JudgeProvider is supplied
- *
- * Note: `custom` graders are not auto-registered; users register them
- * via `graderRegistry.register('custom', fn)` or any custom type name.
+ * Note: `llm-judge` is registered explicitly by the caller so the judge
+ * provider wiring stays opt-in. `custom` graders are also registered
+ * directly via `graderRegistry.register(...)`.
  */
-export function registerBuiltinGraders(
-  registry: GraderRegistry,
-  options: RegisterBuiltinGradersOptions = {},
-): void {
+export function registerBuiltinGraders(registry: GraderRegistry): void {
   registry.register('exact-match', exactMatch);
   registry.register('contains', contains);
   registry.register('regex', regex);
@@ -44,8 +32,4 @@ export function registerBuiltinGraders(
   registry.register('outcome-check', outcomeCheck);
   registry.register('latency-threshold', latencyThreshold);
   registry.register('token-budget', tokenBudget);
-
-  if (options.judgeProvider) {
-    registry.register('llm-judge', createLlmJudgeGrader(options.judgeProvider));
-  }
 }

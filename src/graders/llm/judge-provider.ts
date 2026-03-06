@@ -1,21 +1,38 @@
+export type JudgeModelProvider = 'aihubmix';
+
+export interface JudgeModelConfig {
+  provider: JudgeModelProvider;
+  model: string;
+}
+
 /**
  * JudgeProvider — protocol for LLM-based semantic evaluation.
  *
- * Core only defines this interface; concrete implementations (e.g., calling
- * a specific LLM API) are injected at composition time.
+ * Core only defines this interface; concrete implementations are injected at
+ * composition time.
  */
 export interface JudgeProviderInput {
   output: string;
   rubric: string;
+  assertions: string[];
   context?: unknown;
   dimension: string;
+  judge: JudgeModelConfig;
+}
+
+export interface JudgeAssertionResult {
+  assertion: string;
+  pass: boolean;
+  reason: string;
 }
 
 export interface JudgeProviderResult {
   pass: boolean;
-  score?: number;
+  score: number;
   reason: string;
-  label?: 'PASS' | 'FAIL' | 'UNKNOWN';
+  assertions: JudgeAssertionResult[];
+  provider: JudgeModelProvider;
+  model: string;
 }
 
 export interface JudgeProvider {

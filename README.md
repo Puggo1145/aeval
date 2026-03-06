@@ -86,6 +86,66 @@ execution:
   maxConcurrency: 3
 ```
 
+### `llm-judge` grader
+
+`llm-judge` is a built-in grader for rubric-based semantic evaluation.
+`registerBuiltinGraders(...)` does not auto-register it. Users explicitly create the built-in judge provider, then create/register the grader.
+
+Task YAML only declares the judge model selection, not secrets:
+
+```yaml
+graders:
+  strategy: "ALL"
+  layers:
+    - name: "llm quality judge"
+      type: "llm-judge"
+      config:
+        dimension: "correctness"
+        rubric: "Judge whether the answer is correct and grounded."
+        assertions:
+          - "The final answer directly addresses the user request."
+          - "The answer does not invent facts not supported by context."
+        passThreshold: 1
+        contextFrom: "outcome.reference"
+        judge:
+          provider: "aihubmix"
+          model: "gpt-4.1-mini"
+```
+
+Default application wiring for non-LLM graders is still one line:
+
+```ts
+registerBuiltinGraders(graderRegistry);
+```
+
+To use `llm-judge`, wire it explicitly:
+
+```ts
+registerBuiltinGraders(graderRegistry);
+
+const judgeEnv = process.env;
+const judgeProvider = createBuiltinLlmJudgeProvider({
+  env: judgeEnv,
+});
+
+graderRegistry.register(
+  'llm-judge',
+  createLlmJudgeGrader(judgeProvider, {
+    validateConfig: createBuiltinLlmJudgeConfigValidator(judgeEnv),
+  }),
+);
+```
+
+The built-in provider reads:
+
+- `AIHUBMIX_API_KEY`
+
+If a task selects `judge.provider: "aihubmix"` and `AIHUBMIX_API_KEY` is missing, the built-in config validator fails fast during task readiness validation.
+
+If you need a non-built-in judge implementation, register it yourself with `graderRegistry.register(...)`, for example via `createLlmJudgeGrader(customJudgeProvider)`.
+
+Never put API keys in task YAML, grader config, logs, or committed files.
+
 ## Provider Contract
 
 ```ts

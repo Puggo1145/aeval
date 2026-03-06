@@ -9,6 +9,7 @@ import { createLocalTaskSourceAdapter } from '../src/adapters/task-source/local-
 import { createCore } from '../src/core/api/index.js';
 import type { RunEvent } from '../src/core/contracts/runtime.js';
 import { InMemoryGraderRegistry, InMemoryProviderRegistry } from '../src/core/runtime/index.js';
+import { createLlmJudgeGrader } from '../src/graders/llm/llm-judge.js';
 import { registerBuiltinGraders } from '../src/graders/register-builtins.js';
 
 async function createWorkspace(): Promise<string> {
@@ -70,6 +71,13 @@ graders:
       config:
         dimension: "factuality"
         rubric: "Pass if the answer clearly states Paris is the capital of France."
+        assertions:
+          - "The answer states that Paris is the capital of France."
+          - "The answer does not contradict the prompt."
+        passThreshold: 1
+        judge:
+          provider: "aihubmix"
+          model: "gpt-4.1-mini"
 execution:
   timeoutMs: 1000
 `;
@@ -144,19 +152,27 @@ test('E2E smoke: llm-judge protocol chain with mock JudgeProvider', async () => 
     }));
 
     const graderRegistry = new InMemoryGraderRegistry();
-    registerBuiltinGraders(graderRegistry, {
-      judgeProvider: {
+    graderRegistry.register(
+      'llm-judge',
+      createLlmJudgeGrader({
         async evaluate(input) {
           assert.match(input.output, /Paris/);
+          assert.equal(input.judge.provider, 'aihubmix');
           return {
             pass: true,
             score: 1,
             reason: 'looks correct',
-            label: 'PASS',
+            assertions: input.assertions.map((assertion) => ({
+              assertion,
+              pass: true,
+              reason: 'supported',
+            })),
+            provider: input.judge.provider,
+            model: input.judge.model,
           };
         },
-      },
-    });
+      }),
+    );
 
     const core = createCore({
       taskSourceAdapter: createLocalTaskSourceAdapter({ rootDir: workspace }),
@@ -172,6 +188,10 @@ test('E2E smoke: llm-judge protocol chain with mock JudgeProvider', async () => 
 
     assert.equal(summaries.length, 1);
     assert.equal(summaries[0]?.passRate, 1);
+
+    const runs = await core.listRuns();
+    const trials = await core.listTrials(runs[0]!.runId);
+    assert.equal(trials[0]?.trial.graderResults[0]?.result.meta?.provider, 'aihubmix');
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }
