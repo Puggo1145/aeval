@@ -24,6 +24,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "example:basics": "pnpm build && node --env-file=examples/basics/.env --import tsx examples/basics/main.ts",
+    "example:youapi-agent": "pnpm build && node --import tsx examples/youapi-agent/main.ts",
     "lint": "biome check . --diagnostic-level=error",
     "lint:fix": "biome check . --write --diagnostic-level=error",
     "format": "biome format . --write",
