@@ -194,3 +194,117 @@ test('createAiSdkJudgeProvider: normalizes missing assertion results to failed a
     },
   ]);
 });
+
+test('createAiSdkJudgeProvider: falls back to assertion order when texts do not match exactly', async () => {
+  const provider = createAiSdkJudgeProvider(
+    {
+      apiKey: 'test-aihubmix-key',
+    },
+    createDeps({
+      generateObject: (async () => ({
+        object: {
+          summary: 'All assertions pass.',
+          assertions: [
+            {
+              assertion: 'Assertion 1',
+              pass: true,
+              reason: 'Search and fetch occurred before writing.',
+            },
+            {
+              assertion: 'Assertion 2',
+              pass: true,
+              reason: 'The sources are official.',
+            },
+          ],
+        },
+      })) as AiSdkJudgeProviderDependencies['generateObject'],
+    }),
+  );
+
+  const result = await provider.evaluate({
+    output: 'Created: TypeScript latest stable release brief\nSummary: TypeScript 5.9 is the latest stable release.',
+    rubric: 'Pass if research is grounded.',
+    assertions: [
+      'The trace shows at least one public web search and at least one fetched source page used before the craft was written.',
+      'The fetched sources used for the release facts are official or clearly authoritative for the requested TypeScript release information.',
+    ],
+    dimension: 'web research grounding',
+    judge: {
+      provider: 'aihubmix',
+      model: 'gpt-5.4',
+    },
+  });
+
+  assert.equal(result.score, 1);
+  assert.deepEqual(result.assertions, [
+    {
+      assertion:
+        'The trace shows at least one public web search and at least one fetched source page used before the craft was written.',
+      pass: true,
+      reason: 'Search and fetch occurred before writing.',
+    },
+    {
+      assertion:
+        'The fetched sources used for the release facts are official or clearly authoritative for the requested TypeScript release information.',
+      pass: true,
+      reason: 'The sources are official.',
+    },
+  ]);
+});
+
+test('createAiSdkJudgeProvider: prefers exact text matches before positional fallback', async () => {
+  const provider = createAiSdkJudgeProvider(
+    {
+      apiKey: 'test-aihubmix-key',
+    },
+    createDeps({
+      generateObject: (async () => ({
+        object: {
+          summary: 'Mixed exact and fallback matches.',
+          assertions: [
+            {
+              assertion:
+                'The fetched sources used for the release facts are official or clearly authoritative for the requested TypeScript release information.',
+              pass: true,
+              reason: 'This exact assertion matched directly.',
+            },
+            {
+              assertion: 'Assertion 1',
+              pass: false,
+              reason: 'The prerequisite trace evidence was incomplete.',
+            },
+          ],
+        },
+      })) as AiSdkJudgeProviderDependencies['generateObject'],
+    }),
+  );
+
+  const expectedAssertions = [
+    'The trace shows at least one public web search and at least one fetched source page used before the craft was written.',
+    'The fetched sources used for the release facts are official or clearly authoritative for the requested TypeScript release information.',
+  ];
+
+  const result = await provider.evaluate({
+    output: 'Created: TypeScript latest stable release brief\nSummary: TypeScript 5.9 is the latest stable release.',
+    rubric: 'Pass if research is grounded.',
+    assertions: expectedAssertions,
+    dimension: 'web research grounding',
+    judge: {
+      provider: 'aihubmix',
+      model: 'gpt-5.4',
+    },
+  });
+
+  assert.deepEqual(result.assertions, [
+    {
+      assertion: expectedAssertions[0],
+      pass: false,
+      reason: 'The prerequisite trace evidence was incomplete.',
+    },
+    {
+      assertion: expectedAssertions[1],
+      pass: true,
+      reason: 'This exact assertion matched directly.',
+    },
+  ]);
+});

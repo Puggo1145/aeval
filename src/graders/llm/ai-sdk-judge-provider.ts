@@ -140,12 +140,47 @@ function normalizeAssertions(
   expectedAssertions: string[],
   actualAssertions: JudgeAssertionResult[],
 ): JudgeAssertionResult[] {
-  const actualByAssertion = new Map(actualAssertions.map((item) => [item.assertion, item]));
+  const normalizeAssertionKey = (value: string): string => value.trim().replace(/\s+/g, ' ');
+  const normalizedActual = actualAssertions.map((item) => ({
+    ...item,
+    normalizedAssertion: normalizeAssertionKey(item.assertion),
+  }));
+  const usedActualIndexes = new Set<number>();
+  const resolvedAssertions = new Array<JudgeAssertionResult | undefined>(expectedAssertions.length);
 
-  return expectedAssertions.map((assertion) => {
-    const actual = actualByAssertion.get(assertion);
-    if (actual) {
-      return actual;
+  expectedAssertions.forEach((assertion, expectedIndex) => {
+    const normalizedExpected = normalizeAssertionKey(assertion);
+    const exactMatchIndex = normalizedActual.findIndex(
+      (item, actualIndex) =>
+        !usedActualIndexes.has(actualIndex) && item.normalizedAssertion === normalizedExpected,
+    );
+
+    if (exactMatchIndex >= 0) {
+      usedActualIndexes.add(exactMatchIndex);
+      const actual = normalizedActual[exactMatchIndex];
+      resolvedAssertions[expectedIndex] = {
+        assertion,
+        pass: actual.pass,
+        reason: actual.reason,
+      };
+    }
+  });
+
+  return expectedAssertions.map((assertion, expectedIndex) => {
+    const exactMatch = resolvedAssertions[expectedIndex];
+    if (exactMatch) {
+      return exactMatch;
+    }
+
+    const fallbackIndex = normalizedActual.findIndex((_, actualIndex) => !usedActualIndexes.has(actualIndex));
+    if (fallbackIndex >= 0) {
+      usedActualIndexes.add(fallbackIndex);
+      const positional = normalizedActual[fallbackIndex];
+      return {
+        assertion,
+        pass: positional.pass,
+        reason: positional.reason,
+      };
     }
 
     return {

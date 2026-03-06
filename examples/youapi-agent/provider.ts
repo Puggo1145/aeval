@@ -2,6 +2,17 @@ import { type ExecutionResult, SCHEMA_VERSIONS, type TaskContext } from 'youeval
 
 type TurnRecord = NonNullable<NonNullable<ExecutionResult['trace']>['turns']>[number];
 type ToolCallRecord = NonNullable<TurnRecord['toolCalls']>[number];
+type WrittenCraft = {
+  tool: string;
+  id: string;
+  title?: string;
+  contentType?: string;
+  plainContent?: string;
+  rawContent?: string;
+  contentPreview?: string;
+  contentLength?: number;
+  isNew?: boolean;
+};
 
 type YouapiEvalAgentResponse = {
   output?: unknown;
@@ -126,18 +137,114 @@ function normalizeMetrics(
   };
 }
 
-function normalizeOutcome(outcome: unknown): ExecutionResult['outcome'] | undefined {
-  if (!isRecord(outcome)) {
+function getStringField(record: Record<string, unknown>, ...keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.length > 0) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function getBooleanField(record: Record<string, unknown>, ...keys: string[]): boolean | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'boolean') {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function getNumberField(record: Record<string, unknown>, ...keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function extractWrittenCraft(toolCall: ToolCallRecord): WrittenCraft | undefined {
+  if (toolCall.tool !== 'write' && toolCall.tool !== 'proxy_write') {
+    return undefined;
+  }
+  if (!isRecord(toolCall.result)) {
     return undefined;
   }
 
-  const normalized: Record<string, unknown> = { ...outcome };
-  if (outcome.chat_id !== undefined && normalized.chatId === undefined) {
-    normalized.chatId = outcome.chat_id;
+  const result = toolCall.result;
+  const contentMeta = isRecord(result.content) ? result.content : undefined;
+  const page = isRecord(result.page) ? result.page : undefined;
+  const note = isRecord(result.note) ? result.note : undefined;
+  const entity = page ?? note;
+  const entityContent = entity && isRecord(entity.content) ? entity.content : undefined;
+  const id =
+    getStringField(contentMeta ?? {}, 'id') ?? (entity ? getStringField(entity, 'id') : undefined);
+  const title =
+    getStringField(contentMeta ?? {}, 'title') ??
+    (entity ? getStringField(entity, 'title') : undefined);
+  const contentType =
+    getStringField(contentMeta ?? {}, 'contentType') ??
+    getStringField(result, 'content_type') ??
+    (entity ? getStringField(entity, 'type') : undefined);
+  const plainContent = entityContent ? getStringField(entityContent, 'plain') : undefined;
+  const rawContent = entityContent ? getStringField(entityContent, 'raw') : undefined;
+  const contentPreview = getStringField(contentMeta ?? {}, 'contentPreview');
+  const contentLength = getNumberField(contentMeta ?? {}, 'contentLength');
+  const isNew = getBooleanField(contentMeta ?? {}, 'isNew') ?? getBooleanField(result, 'is_new');
+
+  if (!id) {
+    return undefined;
+  }
+
+  return {
+    tool: toolCall.tool,
+    id,
+    ...(title !== undefined ? { title } : {}),
+    ...(contentType !== undefined ? { contentType } : {}),
+    ...(plainContent !== undefined ? { plainContent } : {}),
+    ...(rawContent !== undefined ? { rawContent } : {}),
+    ...(contentPreview !== undefined ? { contentPreview } : {}),
+    ...(contentLength !== undefined ? { contentLength } : {}),
+    ...(isNew !== undefined ? { isNew } : {}),
+  };
+}
+
+function extractWrittenCrafts(trace: ExecutionResult['trace'] | undefined): WrittenCraft[] {
+  if (!trace?.turns) {
+    return [];
+  }
+
+  return trace.turns.flatMap((turn) =>
+    (turn.toolCalls ?? [])
+      .map((toolCall) => extractWrittenCraft(toolCall))
+      .filter((craft): craft is WrittenCraft => craft !== undefined),
+  );
+}
+
+function normalizeOutcome(
+  outcome: unknown,
+  trace: ExecutionResult['trace'] | undefined,
+): ExecutionResult['outcome'] | undefined {
+  const normalized: Record<string, unknown> = isRecord(outcome) ? { ...outcome } : {};
+
+  if (normalized.chatId === undefined && normalized.chat_id !== undefined) {
+    normalized.chatId = normalized.chat_id;
     delete normalized.chat_id;
   }
 
-  return normalized;
+  const writtenCrafts = extractWrittenCrafts(trace);
+  if (writtenCrafts.length > 0) {
+    normalized.writtenCrafts = writtenCrafts;
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
 
 function getStringParam(
@@ -243,7 +350,7 @@ export async function youapiAgentProvider(
       payload.structuredOutput !== undefined ? payload.structuredOutput : payload.structured_output;
     const trace = normalizeTrace(payload.trace);
     const metrics = normalizeMetrics(payload.metrics, Date.now() - startedAt);
-    const outcome = normalizeOutcome(payload.outcome);
+    const outcome = normalizeOutcome(payload.outcome, trace);
 
     return {
       schemaVersion: SCHEMA_VERSIONS.EXECUTION_RESULT,

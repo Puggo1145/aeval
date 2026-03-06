@@ -6,14 +6,16 @@ import { StreamClosedError } from '../../../core/runtime/abort-reasons.js';
 import { formatRunsTable } from '../formatters.js';
 import { createLiveRegion } from '../live-region.js';
 import { type RunMetadata, readRunMetadataMap } from '../run-metadata.js';
+import {
+  formatTaskRunHeader,
+  getSpinnerFrameCount,
+  type RunPanelIndicatorState,
+} from '../task-run-panel.js';
 import { CancelError, handleCancel } from '../utils.js';
 
-const RUN_PROGRESS_BAR_WIDTH = 24;
-const ANSI_MAGENTA = '\x1b[35m';
-const ANSI_DIM = '\x1b[2m';
-const ANSI_RESET = '\x1b[0m';
 const ESCAPE_CHAR = '\u001b';
 const CTRL_C_CHAR = '\u0003';
+const SPINNER_INTERVAL_MS = 80;
 
 interface CancelWatcher {
   waitForCancel: Promise<void>;
@@ -35,17 +37,6 @@ function formatConsoleArgs(args: unknown[]): string {
       }
     })
     .join(' ');
-}
-
-function formatProgressBar(completed: number, total: number): string {
-  const safeTotal = Math.max(total, 1);
-  const clampedCompleted = Math.max(0, Math.min(completed, safeTotal));
-  const ratio = clampedCompleted / safeTotal;
-  const filled = Math.round(ratio * RUN_PROGRESS_BAR_WIDTH);
-  const empty = Math.max(0, RUN_PROGRESS_BAR_WIDTH - filled);
-  const filledBar = '━'.repeat(filled);
-  const remainingBar = '━'.repeat(empty);
-  return `${ANSI_MAGENTA}${filledBar}${ANSI_RESET}${ANSI_DIM}${remainingBar}${ANSI_RESET} ${clampedCompleted}/${total} trials`;
 }
 
 function splitLogLines(message: string): string[] {
@@ -171,13 +162,22 @@ export async function runTask(core: CoreApi): Promise<void> {
   let activeRunName = 'pending';
   let completedTrials = 0;
   let totalTrials = 0;
+  let indicatorState: RunPanelIndicatorState = 'pending';
+  let spinnerFrameIndex = 0;
   const runLogs: string[] = [];
   const completedRuns: RunRecord[] = [];
   const liveRegion = createLiveRegion();
 
   const renderPanel = (): void => {
     const lines = [
-      `${selectedTask.id} · ${activeRunName}  ${formatProgressBar(completedTrials, totalTrials)}`,
+      formatTaskRunHeader({
+        taskId: selectedTask.id,
+        runName: activeRunName,
+        completedTrials,
+        totalTrials,
+        indicatorState,
+        spinnerFrameIndex,
+      }),
       '',
       ...(runLogs.length > 0 ? runLogs : ['(waiting for console logs...)']),
     ];
@@ -193,6 +193,17 @@ export async function runTask(core: CoreApi): Promise<void> {
 
   const { restore } = routeConsoleToPanel(() => activeRunName, appendLog);
   renderPanel();
+  const spinnerTimer =
+    process.stdout.isTTY === true
+      ? setInterval(() => {
+          if (indicatorState !== 'running') {
+            return;
+          }
+          spinnerFrameIndex = (spinnerFrameIndex + 1) % getSpinnerFrameCount();
+          renderPanel();
+        }, SPINNER_INTERVAL_MS)
+      : null;
+  spinnerTimer?.unref();
   const cancelWatcher = createRunCancelWatcher();
   const streamAbortController = new AbortController();
   const streamIterator = loadedSuite
@@ -226,10 +237,13 @@ export async function runTask(core: CoreApi): Promise<void> {
           activeRunName = event.runName;
           totalTrials = event.totalTrials;
           completedTrials = 0;
+          indicatorState = 'running';
+          spinnerFrameIndex = 0;
           renderPanel();
           break;
         case 'trial:started':
           activeRunName = event.runName;
+          indicatorState = 'running';
           renderPanel();
           break;
         case 'trial:completed':
@@ -245,6 +259,7 @@ export async function runTask(core: CoreApi): Promise<void> {
         case 'run:completed':
           activeRunName = event.summary.runName;
           completedTrials = totalTrials;
+          indicatorState = 'completed';
           completedRuns.push({
             runId: event.summary.runId,
             status: 'completed',
@@ -271,6 +286,9 @@ export async function runTask(core: CoreApi): Promise<void> {
   } finally {
     if (runCancelledByUser) {
       await streamIterator.return?.();
+    }
+    if (spinnerTimer) {
+      clearInterval(spinnerTimer);
     }
     cancelWatcher?.dispose();
     liveRegion.clear();

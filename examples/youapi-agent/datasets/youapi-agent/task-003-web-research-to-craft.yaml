@@ -1,0 +1,101 @@
+schemaVersion: "task.v1"
+id: "youapi-agent/task-003-web-research-to-craft"
+desc: "A higher-complexity eval for the internal youapi agent endpoint. The agent must research up-to-date public web information, verify it against fetched source pages, and write a grounded document craft into the current board. Replace the UUIDs with a valid whitelisted test user context before running."
+category: "youapi-agent"
+capability: "web-research-to-craft"
+tier: "L2"
+difficulty: "hard"
+tags: ["web-search", "fetch", "write", "craft", "tool-calls", "llm-judge", "weighted"]
+
+provider:
+  id: "youapi-agent"
+  runs:
+    - name: "agent-can-research-web-and-write-craft"
+      params:
+        userId: "6850dead-afa7-41f7-9e1a-91645e0249db"
+        spaceId: "019cc16e-48df-73a6-87ad-6e597c86d366"
+        boardId: "019cc16f-425a-7d36-a248-afa397d5edc9"
+        prompt: |-
+          Search the public web for the latest stable TypeScript release.
+
+          Requirements:
+          1. Use official sources when possible, prioritizing typescriptlang.org and devblogs.microsoft.com/typescript.
+          2. Read the source pages you rely on before writing.
+          3. Create exactly one new document craft in the current board titled "TypeScript latest stable release brief".
+          4. The craft must contain:
+             - a one-sentence overview
+             - the exact stable version number
+             - the official release date
+             - exactly 3 concrete release highlights supported by the fetched source material
+             - a "Sources" section listing the official URLs you relied on
+
+          After creating the craft, reply with exactly two short lines:
+          Created: <title>
+          Summary: <one sentence>
+
+          Do not edit existing crafts. Do not invent facts or include unsupported claims.
+        messageMode: "agent"
+
+graders:
+  strategy: "WEIGHTED"
+  passThreshold: 0.85
+  layers:
+    - name: "final reply should follow the requested two-line format"
+      type: "regex"
+      weight: 0.05
+      config:
+        mustMatch:
+          - pattern: '^Created:[ \\t]+[^\\r\\n]+(?:\\r?\\n|[ \\t]+)Summary:[ \\t]+[^\\r\\n]+[ \\t]*$'
+
+    - name: "must search the web, fetch sources, and write exactly one new craft"
+      type: "tool-calls"
+      weight: 0.25
+      config:
+        required:
+          - tool: "google_search"
+          - tool: "fetch"
+          - tool: "write"
+        forbidden:
+          - tool: "edit"
+          - tool: "save_materials"
+          - tool: "create_board"
+        minCalls: 3
+        maxCalls: 10
+
+    - name: "researched facts should be grounded in fetched web sources"
+      type: "llm-judge"
+      weight: 0.35
+      config:
+        dimension: "web research grounding"
+        rubric: "Pass if the agent uses web search and at least one fetched official source page before writing, and the created craft's core TypeScript release facts are reasonably grounded in official fetched material or official search results in the trace without obvious invention."
+        assertions:
+          - "The trace shows at least one public web search and at least one fetched official or clearly authoritative source page used before the craft was written."
+          - "The latest-stable claim, release version, release date, and three release highlights written into the craft are supported by the fetched official source page and/or official search results in the trace, without obvious contradiction or invention."
+        passThreshold: 1
+        contextFrom: "trace.turns"
+        judge:
+          provider: "aihubmix"
+          model: "gpt-5.4"
+
+    - name: "written craft should accurately satisfy the information goal"
+      type: "llm-judge"
+      weight: 0.35
+      config:
+        dimension: "craft quality and task completion"
+        rubric: "Pass only if the created craft content itself satisfies the requested information target: one new TypeScript release brief with the requested title, core facts, exactly three grounded highlights, and source URLs."
+        assertions:
+          - "The outcome contains exactly one newly written craft with the requested title or an equivalent title that clearly matches the request."
+          - "The written craft includes the latest stable TypeScript version number and official release date in a way consistent with the supporting trace."
+          - "The written craft includes exactly three concrete release highlights, and they are specific enough to be meaningful rather than generic filler."
+          - "The written craft includes a Sources section with the URLs used to support the brief."
+        passThreshold: 1
+        contextFrom: "outcome.writtenCrafts"
+        judge:
+          provider: "aihubmix"
+          model: "gpt-5.4"
+
+execution:
+  timeoutMs: 180000
+  retryOnError: 0
+  trialsPerTask: 1
+  maxConcurrency: 2
