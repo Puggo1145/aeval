@@ -1,13 +1,144 @@
 import { type ExecutionResult, SCHEMA_VERSIONS, type TaskContext } from 'youeval';
 
+type TurnRecord = NonNullable<NonNullable<ExecutionResult['trace']>['turns']>[number];
+type ToolCallRecord = NonNullable<TurnRecord['toolCalls']>[number];
+
 type YouapiEvalAgentResponse = {
   output?: unknown;
   structuredOutput?: unknown;
-  trace?: ExecutionResult['trace'];
-  metrics?: ExecutionResult['metrics'];
-  outcome?: Record<string, unknown>;
+  structured_output?: unknown;
+  trace?: unknown;
+  metrics?: unknown;
+  outcome?: unknown;
   error?: ExecutionResult['error'];
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeToolCallRecord(value: unknown): ToolCallRecord | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const tool = typeof value.tool === 'string' ? value.tool : undefined;
+  if (!tool) {
+    return undefined;
+  }
+
+  const params = isRecord(value.params) ? value.params : undefined;
+  const durationMs =
+    typeof value.durationMs === 'number'
+      ? value.durationMs
+      : typeof value.duration_ms === 'number'
+        ? value.duration_ms
+        : undefined;
+
+  return {
+    tool,
+    ...(params ? { params } : {}),
+    ...(value.result !== undefined ? { result: value.result } : {}),
+    ...(durationMs !== undefined ? { durationMs } : {}),
+  };
+}
+
+function normalizeTurnRecord(value: unknown): TurnRecord | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const role = value.role;
+  if (role !== 'system' && role !== 'user' && role !== 'assistant') {
+    return undefined;
+  }
+
+  const content = typeof value.content === 'string' ? value.content : '';
+  const rawToolCalls = Array.isArray(value.toolCalls)
+    ? value.toolCalls
+    : Array.isArray(value.tool_calls)
+      ? value.tool_calls
+      : undefined;
+  const toolCalls = rawToolCalls
+    ?.map((toolCall) => normalizeToolCallRecord(toolCall))
+    .filter((toolCall): toolCall is ToolCallRecord => toolCall !== undefined);
+
+  return {
+    role,
+    content,
+    ...(toolCalls && toolCalls.length > 0 ? { toolCalls } : {}),
+  };
+}
+
+function normalizeTrace(trace: unknown): ExecutionResult['trace'] | undefined {
+  if (!isRecord(trace)) {
+    return undefined;
+  }
+
+  const turns = Array.isArray(trace.turns)
+    ? trace.turns
+        .map((turn) => normalizeTurnRecord(turn))
+        .filter((turn): turn is TurnRecord => turn !== undefined)
+    : undefined;
+  const rawEvents = Array.isArray(trace.rawEvents)
+    ? trace.rawEvents
+    : Array.isArray(trace.raw_events)
+      ? trace.raw_events
+      : undefined;
+
+  if ((!turns || turns.length === 0) && (!rawEvents || rawEvents.length === 0)) {
+    return undefined;
+  }
+
+  return {
+    ...(turns && turns.length > 0 ? { turns } : {}),
+    ...(rawEvents ? { rawEvents } : {}),
+  };
+}
+
+function normalizeMetrics(
+  metrics: unknown,
+  roundTripMs: number,
+): ExecutionResult['metrics'] {
+  if (!isRecord(metrics)) {
+    return { roundTripMs };
+  }
+
+  const latencyMs =
+    typeof metrics.latencyMs === 'number'
+      ? metrics.latencyMs
+      : typeof metrics.latency_ms === 'number'
+        ? metrics.latency_ms
+        : undefined;
+  const timeToFirstTokenMs =
+    typeof metrics.timeToFirstTokenMs === 'number'
+      ? metrics.timeToFirstTokenMs
+      : typeof metrics.time_to_first_token_ms === 'number'
+        ? metrics.time_to_first_token_ms
+        : undefined;
+  const model = typeof metrics.model === 'string' ? metrics.model : undefined;
+
+  return {
+    ...(latencyMs !== undefined ? { latencyMs } : {}),
+    ...(timeToFirstTokenMs !== undefined ? { timeToFirstTokenMs } : {}),
+    ...(model ? { model } : {}),
+    roundTripMs,
+  };
+}
+
+function normalizeOutcome(outcome: unknown): ExecutionResult['outcome'] | undefined {
+  if (!isRecord(outcome)) {
+    return undefined;
+  }
+
+  const normalized: Record<string, unknown> = { ...outcome };
+  if (outcome.chat_id !== undefined && normalized.chatId === undefined) {
+    normalized.chatId = outcome.chat_id;
+    delete normalized.chat_id;
+  }
+
+  return normalized;
+}
 
 function getStringParam(
   params: Readonly<Record<string, unknown>>,
@@ -108,19 +239,19 @@ export async function youapiAgentProvider(
 
     const payload = (await response.json()) as YouapiEvalAgentResponse;
     const output = typeof payload.output === 'string' ? payload.output : '';
+    const structuredOutput =
+      payload.structuredOutput !== undefined ? payload.structuredOutput : payload.structured_output;
+    const trace = normalizeTrace(payload.trace);
+    const metrics = normalizeMetrics(payload.metrics, Date.now() - startedAt);
+    const outcome = normalizeOutcome(payload.outcome);
 
     return {
       schemaVersion: SCHEMA_VERSIONS.EXECUTION_RESULT,
       output,
-      ...(payload.structuredOutput !== undefined
-        ? { structuredOutput: payload.structuredOutput }
-        : {}),
-      ...(payload.trace ? { trace: payload.trace } : {}),
-      metrics: {
-        ...(payload.metrics ?? {}),
-        roundTripMs: Date.now() - startedAt,
-      },
-      ...(payload.outcome ? { outcome: payload.outcome } : {}),
+      ...(structuredOutput !== undefined ? { structuredOutput } : {}),
+      ...(trace ? { trace } : {}),
+      metrics,
+      ...(outcome ? { outcome } : {}),
       ...(payload.error ? { error: payload.error } : {}),
     };
   } catch (error) {

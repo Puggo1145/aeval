@@ -1,0 +1,73 @@
+schemaVersion: "task.v1"
+id: "youapi-agent/task-002-board-library-grounded-summary"
+desc: "A more realistic read-only eval for the internal youapi agent endpoint. The agent should inspect the current board, search the wider library for related material, and return a grounded two-part summary. Replace the UUIDs with a valid whitelisted test user context before running."
+category: "youapi-agent"
+capability: "board-and-library-grounded-summary"
+tier: "L1"
+difficulty: "medium"
+tags: ["read-only", "board", "library-search", "tool-calls", "llm-judge"]
+
+provider:
+  id: "youapi-agent"
+  runs:
+    - name: "agent-grounded-board-and-library-summary"
+      params:
+        userId: "6850dead-afa7-41f7-9e1a-91645e0249db"
+        spaceId: "019cc16e-48df-73a6-87ad-6e597c86d366"
+        boardId: "019cc16f-425a-7d36-a248-afa397d5edc9"
+        prompt: |-
+          First inspect the current board, then search the user's library for materials related to this board's title or current contents.
+
+          Reply with exactly two short sections:
+          Board status: one grounded sentence summarizing what is currently on the board.
+          Library follow-up: one grounded sentence stating whether related materials were found in the library and one concrete next step.
+
+          Do not create, edit, or save any content.
+        messageMode: "agent"
+
+graders:
+  strategy: "WEIGHTED"
+  passThreshold: 0.85
+  layers:
+    - name: "response should not be empty"
+      type: "length-check"
+      weight: 0.1
+      config:
+        min: 40
+
+    - name: "must inspect board and search library without mutating content"
+      type: "tool-calls"
+      weight: 0.35
+      config:
+        required:
+          - tool: "list_board"
+          - tool: "search_boards"
+        forbidden:
+          - tool: "write"
+          - tool: "edit"
+          - tool: "save_materials"
+          - tool: "create_board"
+        minCalls: 2
+        maxCalls: 6
+
+    - name: "final answer should be grounded in board inspection and library search"
+      type: "llm-judge"
+      weight: 0.55
+      config:
+        dimension: "grounded task completion"
+        rubric: "Pass only if the final answer accurately summarizes the current board, accurately reflects whether the library search found related material, and stays strictly read-only."
+        assertions:
+          - "The answer includes a board-status summary grounded in the observed board state."
+          - "The answer includes a library follow-up grounded in the library search result, or clearly says that no related materials were found."
+          - "The answer does not claim to have created, edited, saved, or modified any content."
+        passThreshold: 1
+        contextFrom: "trace.turns"
+        judge:
+          provider: "aihubmix"
+          model: "gpt-5.4"
+
+execution:
+  timeoutMs: 120000
+  retryOnError: 0
+  trialsPerTask: 1
+  maxConcurrency: 2
