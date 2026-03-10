@@ -5,8 +5,15 @@ export type {
   AiSdkJudgeProviderPromptOptions,
 } from './ai-sdk-judge-provider.js';
 export { createAiSdkJudgeProvider, resolveAiSdkJudgeProviderOptionsFromEnv } from './ai-sdk-judge-provider.js';
-export type { BuiltinLlmJudgeProviderOptions } from './builtin-llm-judge.js';
-export { BuiltinLlmJudgeConfigValidator, BuiltinLlmJudgeProvider } from './builtin-llm-judge.js';
+export type {
+  BuiltinLlmJudgeGraderOptions,
+  BuiltinLlmJudgeProviderOptions,
+} from './builtin-llm-judge.js';
+export {
+  BuiltinLlmJudgeConfigValidator,
+  BuiltinLlmJudgeGrader,
+  BuiltinLlmJudgeProvider,
+} from './builtin-llm-judge.js';
 export type {
   JudgeAssertionResult,
   JudgeModelConfig,

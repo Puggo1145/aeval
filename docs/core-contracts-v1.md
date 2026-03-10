@@ -87,7 +87,7 @@ Built-in `llm-judge` layer config:
 6. `config.contextFrom` is optional and resolves against `ExecutionResult`
 7. `config.judge.provider` must be `aihubmix`
 8. `config.judge.model` is required and non-empty
-9. API keys are not part of task DSL; callers create the built-in judge provider explicitly and may source `AIHUBMIX_API_KEY` from environment variables
+9. API keys are not part of task DSL; callers register the built-in `llm-judge` grader explicitly and may source `AIHUBMIX_API_KEY` from environment variables
 
 ## 3. Runtime Contracts
 
@@ -136,8 +136,8 @@ and an overall `reason`. Core stores the structured assertion breakdown in
 
 ### 3.3 RunEvent
 
-Runtime emits class-backed events from `src/core/domain/run-event.ts`.
-Consumers may still branch on the stable `type` discriminant and fields below:
+Runtime exposes `RunEvent` as a plain discriminated union.
+Consumers branch on the stable `type` discriminant and fields below:
 
 ```ts
 type RunEvent =
@@ -193,7 +193,7 @@ class TrialErrorEvent {
 
 class RunCompletedEvent {
   readonly type = "run:completed";
-  constructor(readonly summary: RunSummary);
+  constructor(readonly summary: RunSummaryData);
 }
 ```
 
@@ -208,12 +208,12 @@ Rules:
 ```ts
 interface Tasks {
   listSuites(): Promise<SuiteDescriptor[]>;
-  resolveSuite(suiteId: string): Promise<Suite>;
-  resolveTask(taskRef: TaskRef): Promise<Task>;
+  resolveSuite(suiteId: string): Promise<ResolvedSuite>;
+  resolveTask(taskRef: TaskRef): Promise<ResolvedTask>;
 }
 ```
 
-`Task` must include:
+`ResolvedTask.source` must include:
 
 1. `source.adapter`
 2. `source.ref`
@@ -232,12 +232,12 @@ Rules:
 
 ```ts
 core.listSuites(): Promise<SuiteDescriptor[]>
-core.loadSuite(input): Promise<Suite>
-core.loadSuites(...inputs): Promise<Suite[]>
+core.loadSuite(input): Promise<LoadedSuite>
+core.loadSuites(...inputs): Promise<LoadedSuite[]>
 
-suite.listTasks(): Promise<TaskIndex[]>
-suite.runTask(taskId): Promise<RunSummary[]>
-suite.streamTask(taskId): AsyncIterable<RunEvent>
+loadedSuite.listTasks(): Promise<TaskIndex[]>
+loadedSuite.runTask(taskId): Promise<RunSummaryData[]>
+loadedSuite.streamTask(taskId): AsyncIterable<RunEvent>
 ```
 
 Rules:

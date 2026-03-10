@@ -1,6 +1,6 @@
 import * as p from '@clack/prompts';
 
-import type { CoreApi } from '../../../core/api/index.js';
+import type { CoreApi } from '../../../index.js';
 import { formatRunOptionHint, formatRunOptionLabel } from '../formatters.js';
 import { readRunMetadataMap } from '../run-metadata.js';
 import { handleCancel } from '../utils.js';

@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import type { GraderResult } from '../../core/contracts/trial.js';
-import type { ExecutionResult } from '../../core/domain/execution-result.js';
+import type { ExecutionResult, ExecutionResultData, GraderResult } from '../../index.js';
 import { ConfiguredGrader } from '../base-grader.js';
 import {
   type GraderConfigValidationResult,
@@ -54,7 +53,7 @@ type RegexConfig = z.infer<typeof RegexConfigSchema>;
  * At least one of mustMatch or mustNotMatch must be provided.
  */
 async function gradeRegex(
-  result: ExecutionResult,
+  result: ExecutionResult | ExecutionResultData,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
   const parsed = parseGraderConfig(RegexConfigSchema, config);

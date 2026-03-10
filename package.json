@@ -9,6 +9,18 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./adapters": {
+      "types": "./dist/adapters/index.d.ts",
+      "default": "./dist/adapters/index.js"
+    },
+    "./graders": {
+      "types": "./dist/graders/index.d.ts",
+      "default": "./dist/graders/index.js"
+    },
+    "./interfaces/tui": {
+      "types": "./dist/interfaces/tui/index.d.ts",
+      "default": "./dist/interfaces/tui/index.js"
     }
   },
   "description": "Evaluation toolkit for YouMind services",

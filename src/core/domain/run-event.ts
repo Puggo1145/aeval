@@ -1,4 +1,11 @@
-import type { RunSummary } from './run-summary.js';
+import type { RunSummaryData } from '../contracts/run-summary.js';
+import type {
+  RunCompletedEvent as RunCompletedEventContract,
+  RunStartedEvent as RunStartedEventContract,
+  TrialCompletedEvent as TrialCompletedEventContract,
+  TrialErrorEvent as TrialErrorEventContract,
+  TrialStartedEvent as TrialStartedEventContract,
+} from '../contracts/runtime.js';
 
 abstract class BaseRunEvent {
   abstract readonly type:
@@ -9,7 +16,7 @@ abstract class BaseRunEvent {
     | 'run:completed';
 }
 
-export class RunStartedEvent extends BaseRunEvent {
+export class RunStartedEvent extends BaseRunEvent implements RunStartedEventContract {
   readonly type = 'run:started';
 
   constructor(
@@ -22,7 +29,7 @@ export class RunStartedEvent extends BaseRunEvent {
   }
 }
 
-export class TrialStartedEvent extends BaseRunEvent {
+export class TrialStartedEvent extends BaseRunEvent implements TrialStartedEventContract {
   readonly type = 'trial:started';
 
   constructor(
@@ -35,7 +42,7 @@ export class TrialStartedEvent extends BaseRunEvent {
   }
 }
 
-export class TrialCompletedEvent extends BaseRunEvent {
+export class TrialCompletedEvent extends BaseRunEvent implements TrialCompletedEventContract {
   readonly type = 'trial:completed';
 
   constructor(
@@ -50,7 +57,7 @@ export class TrialCompletedEvent extends BaseRunEvent {
   }
 }
 
-export class TrialErrorEvent extends BaseRunEvent {
+export class TrialErrorEvent extends BaseRunEvent implements TrialErrorEventContract {
   readonly type = 'trial:error';
 
   constructor(
@@ -65,17 +72,10 @@ export class TrialErrorEvent extends BaseRunEvent {
   }
 }
 
-export class RunCompletedEvent extends BaseRunEvent {
+export class RunCompletedEvent extends BaseRunEvent implements RunCompletedEventContract {
   readonly type = 'run:completed';
 
-  constructor(readonly summary: RunSummary) {
+  constructor(readonly summary: RunSummaryData) {
     super();
   }
 }
-
-export type RunEvent =
-  | RunStartedEvent
-  | TrialStartedEvent
-  | TrialCompletedEvent
-  | TrialErrorEvent
-  | RunCompletedEvent;

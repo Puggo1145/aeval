@@ -15,24 +15,21 @@ import {
 test('formatTrialsTable includes header row and aligned trial values', () => {
   const output = formatTrialsTable([
     {
+      schemaVersion: 'trial-result.v1',
+      taskId: 'file-edit-agent/smoke/create-hello-001',
       runId: 'run-1',
-      trial: {
-        schemaVersion: 'trial-result.v1',
-        taskId: 'file-edit-agent/smoke/create-hello-001',
-        runId: 'run-1',
-        runName: 'try-5-mini',
-        trialIndex: 0,
-        execution: {
-          schemaVersion: 'execution-result.v1',
-          output: 'ok',
-        },
-        graderResults: [],
-        aggregate: { pass: true },
-        timings: {
-          startedAt: '2026-03-04T00:00:00.000Z',
-          endedAt: '2026-03-04T00:00:01.000Z',
-          durationMs: 8571,
-        },
+      runName: 'try-5-mini',
+      trialIndex: 0,
+      execution: {
+        schemaVersion: 'execution-result.v1',
+        output: 'ok',
+      },
+      graderResults: [],
+      aggregate: { pass: true },
+      timings: {
+        startedAt: '2026-03-04T00:00:00.000Z',
+        endedAt: '2026-03-04T00:00:01.000Z',
+        durationMs: 8571,
       },
     },
   ]);
@@ -328,57 +325,51 @@ test('formatRunSummaryDetails includes metrics for each trial', () => {
     },
     [
       {
+        schemaVersion: 'trial-result.v1',
+        taskId: 'task-001',
         runId: 'run-1',
-        trial: {
-          schemaVersion: 'trial-result.v1',
-          taskId: 'task-001',
-          runId: 'run-1',
-          runName: 'try-5-mini',
-          trialIndex: 0,
-          execution: {
-            schemaVersion: 'execution-result.v1',
-            output: 'ok',
-            metrics: {
-              latencyMs: 10,
-              model: 'gpt-5-mini',
-            },
+        runName: 'try-5-mini',
+        trialIndex: 0,
+        execution: {
+          schemaVersion: 'execution-result.v1',
+          output: 'ok',
+          metrics: {
+            latencyMs: 10,
+            model: 'gpt-5-mini',
           },
-          graderResults: [],
-          aggregate: { pass: true },
-          timings: {
-            startedAt: '2026-03-04T00:00:00.000Z',
-            endedAt: '2026-03-04T00:00:01.000Z',
-            durationMs: 10,
-          },
+        },
+        graderResults: [],
+        aggregate: { pass: true },
+        timings: {
+          startedAt: '2026-03-04T00:00:00.000Z',
+          endedAt: '2026-03-04T00:00:01.000Z',
+          durationMs: 10,
         },
       },
       {
+        schemaVersion: 'trial-result.v1',
+        taskId: 'task-001',
         runId: 'run-1',
-        trial: {
-          schemaVersion: 'trial-result.v1',
-          taskId: 'task-001',
-          runId: 'run-1',
-          runName: 'try-5-mini',
-          trialIndex: 1,
-          execution: {
-            schemaVersion: 'execution-result.v1',
-            output: 'ok',
-            metrics: {
-              latencyMs: 30,
-              tokenUsage: {
-                input: 1,
-                output: 2,
-                total: 3,
-              },
+        runName: 'try-5-mini',
+        trialIndex: 1,
+        execution: {
+          schemaVersion: 'execution-result.v1',
+          output: 'ok',
+          metrics: {
+            latencyMs: 30,
+            tokenUsage: {
+              input: 1,
+              output: 2,
+              total: 3,
             },
           },
-          graderResults: [],
-          aggregate: { pass: true },
-          timings: {
-            startedAt: '2026-03-04T00:00:02.000Z',
-            endedAt: '2026-03-04T00:00:03.000Z',
-            durationMs: 30,
-          },
+        },
+        graderResults: [],
+        aggregate: { pass: true },
+        timings: {
+          startedAt: '2026-03-04T00:00:02.000Z',
+          endedAt: '2026-03-04T00:00:03.000Z',
+          durationMs: 30,
         },
       },
     ],

@@ -7,7 +7,6 @@ export {
   type LoadSuiteInput,
 } from './api/core-api.js';
 export * from './contracts/index.js';
-export * from './domain/index.js';
 export * from './errors/index.js';
 export * from './orchestrator/index.js';
 export * from './runtime/dependency-resolver.js';

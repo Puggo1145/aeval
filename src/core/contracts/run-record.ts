@@ -1,11 +1,11 @@
-import type { RunManifest } from '../domain/run-manifest.js';
-import type { RunSummary } from '../domain/run-summary.js';
+import type { RunManifestRecord } from './run-manifest.js';
+import type { RunSummaryData } from './run-summary.js';
 
 export type RunStatus = 'completed' | 'interrupted';
 
 export interface RunRecord {
   runId: string;
   status: RunStatus;
-  manifest: RunManifest | null;
-  summary: RunSummary | null;
+  manifest: RunManifestRecord | null;
+  summary: RunSummaryData | null;
 }

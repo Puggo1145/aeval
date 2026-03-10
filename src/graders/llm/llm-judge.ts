@@ -1,8 +1,12 @@
 import { z } from 'zod';
-import type { Grader, GraderValidationResult } from '../../core/contracts/runtime.js';
-import type { GraderResult } from '../../core/contracts/trial.js';
-import type { ExecutionResult } from '../../core/domain/execution-result.js';
-import type { GraderLayer } from '../../core/domain/grader-layer.js';
+import type {
+  ExecutionResult,
+  ExecutionResultData,
+  Grader,
+  GraderLayer,
+  GraderResult,
+  GraderValidationResult,
+} from '../../index.js';
 import { parseGraderConfig } from '../config-validation.js';
 import type { JudgeProvider } from './judge-provider.js';
 
@@ -34,7 +38,7 @@ export interface LlmJudgeGraderOptions {
   validateConfig?: (config: LlmJudgeConfig) => GraderValidationResult;
 }
 
-function resolveContextPath(result: ExecutionResult, path: string): unknown {
+function resolveContextPath(result: ExecutionResult | ExecutionResultData, path: string): unknown {
   const parts = path.split('.');
   let current: unknown = result;
 
@@ -56,7 +60,7 @@ export class LlmJudgeGrader implements Grader {
     private readonly options: LlmJudgeGraderOptions = {},
   ) {}
 
-  async grade(result: ExecutionResult, layer: GraderLayer): Promise<GraderResult> {
+  async grade(result: ExecutionResult | ExecutionResultData, layer: GraderLayer): Promise<GraderResult> {
     const parsed = parseGraderConfig(LlmJudgeConfigSchema, layer.config);
     if (!parsed.ok) {
       return {

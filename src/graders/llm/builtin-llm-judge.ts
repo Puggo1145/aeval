@@ -6,11 +6,14 @@ import {
   resolveAiSdkJudgeProviderOptionsFromEnv,
 } from './ai-sdk-judge-provider.js';
 import type { JudgeModelProvider, JudgeProvider } from './judge-provider.js';
+import { LlmJudgeGrader } from './llm-judge.js';
 
 export interface BuiltinLlmJudgeProviderOptions {
   env?: AiSdkJudgeProviderEnvironment;
   promptOptions?: AiSdkJudgeProviderPromptOptions;
 }
+
+export interface BuiltinLlmJudgeGraderOptions extends BuiltinLlmJudgeProviderOptions {}
 
 export class BuiltinLlmJudgeProvider implements JudgeProvider {
   private readonly provider: JudgeProvider;
@@ -39,6 +42,17 @@ export class BuiltinLlmJudgeConfigValidator {
       };
     }
 
-    return { valid: true };
+  return { valid: true };
+  }
+}
+
+export class BuiltinLlmJudgeGrader extends LlmJudgeGrader {
+  constructor(options: BuiltinLlmJudgeGraderOptions = {}) {
+    const env = options.env ?? process.env;
+    const validator = new BuiltinLlmJudgeConfigValidator(env);
+
+    super(new BuiltinLlmJudgeProvider(options), {
+      validateConfig: (config) => validator.validate(config),
+    });
   }
 }

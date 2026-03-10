@@ -1,12 +1,23 @@
 import type { SuiteDocument } from '../contracts/suite.js';
 import type { TaskDocument } from '../contracts/task.js';
-import type { Suite } from '../domain/suite.js';
-import type { Task } from '../domain/task.js';
 
 export interface SuiteDescriptor {
   id: string;
   name: string;
   ref: string;
+}
+
+export interface SuiteSource {
+  adapter: string;
+  ref: string;
+  fetchedAt: string;
+}
+
+export interface TaskSource {
+  adapter: string;
+  ref: string;
+  revision: string;
+  fetchedAt: string;
 }
 
 export interface TaskRef {
@@ -26,10 +37,21 @@ export interface TaskIndex {
   taskRef: TaskRef;
 }
 
+export interface ResolvedSuite {
+  document: SuiteDocument;
+  source?: SuiteSource;
+  taskIndexes: TaskIndex[];
+}
+
+export interface ResolvedTask {
+  document: TaskDocument;
+  source: TaskSource;
+}
+
 export interface Tasks {
   listSuites(): Promise<SuiteDescriptor[]>;
-  resolveSuite(suiteId: string): Promise<Suite>;
-  resolveTask(taskRef: TaskRef): Promise<Task>;
+  resolveSuite(suiteId: string): Promise<ResolvedSuite>;
+  resolveTask(taskRef: TaskRef): Promise<ResolvedTask>;
 }
 
 export type SuiteInput = SuiteDocument;

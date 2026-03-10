@@ -6,7 +6,13 @@ import type {
   ClearedResultEntry,
   Stores,
 } from '../src/core/adapters/result-store-adapter.js';
-import type { SuiteDescriptor, TaskRef, Tasks } from '../src/core/adapters/task-source-adapter.js';
+import type {
+  ResolvedSuite,
+  ResolvedTask,
+  SuiteDescriptor,
+  TaskRef,
+  Tasks,
+} from '../src/core/adapters/task-source-adapter.js';
 import { Core } from '../src/core/api/index.js';
 import { SCHEMA_VERSIONS } from '../src/core/contracts/index.js';
 import type { RunManifestRecord } from '../src/core/contracts/run-manifest.js';
@@ -192,13 +198,20 @@ function createTasks(): Tasks {
     async listSuites(): Promise<SuiteDescriptor[]> {
       return [suiteDescriptor];
     },
-    async resolveSuite(suiteId: string): Promise<Suite> {
+    async resolveSuite(suiteId: string): Promise<ResolvedSuite> {
       assert.equal(suiteId, 'basic-llm');
-      return suite;
+      return {
+        document: suite.toDocument(),
+        source: suite.source,
+        taskIndexes: [...suite.taskIndexes!],
+      };
     },
-    async resolveTask(taskRef: TaskRef): Promise<Task> {
+    async resolveTask(taskRef: TaskRef): Promise<ResolvedTask> {
       assert.equal(taskRef.ref, 'datasets/task-001.yaml');
-      return task;
+      return {
+        document: task.toDocument(),
+        source: task.source!,
+      };
     },
   };
 }
@@ -236,6 +249,21 @@ function createTestCore(stores: Stores = new InMemoryStore()) {
 
   return new Core({
     tasks: createTasks(),
+    stores,
+    providers,
+    graders,
+  });
+}
+
+function createTestCoreWithTasks(tasks: Tasks, stores: Stores = new InMemoryStore()) {
+  const providers = new Providers();
+  providers.register(new MockProvider());
+
+  const graders = new Graders();
+  graders.register(new AlwaysPassGrader());
+
+  return new Core({
+    tasks,
     stores,
     providers,
     graders,
@@ -288,6 +316,85 @@ test('loadSuite accepts bare suite definitions and listTasks returns task indexe
       },
     },
   ]);
+});
+
+test('loadSuite syncs LoadedSuite metadata after resolving a bare suite input', async () => {
+  const core = createTestCore();
+  const suite = await core.loadSuite(createSuiteDocument());
+
+  assert.equal(suite.source, undefined);
+  assert.equal(suite.taskIndexes, undefined);
+
+  const taskIndexes = await suite.listTasks();
+
+  assert.equal(suite.source?.adapter, 'memory');
+  assert.deepEqual(suite.taskIndexes, taskIndexes);
+});
+
+test('loadSuite uses resolved suite metadata when persisting runs from a bare suite input', async () => {
+  const store = new InMemoryStore();
+  const bareSuiteDocument = createSuiteDocument();
+  const resolvedSuiteDocument = {
+    ...bareSuiteDocument,
+    name: 'Resolved Basic LLM',
+  };
+  const taskDocument = createTaskDocument();
+
+  const tasks: Tasks = {
+    async listSuites(): Promise<SuiteDescriptor[]> {
+      return [
+        {
+          id: resolvedSuiteDocument.id,
+          name: resolvedSuiteDocument.name,
+          ref: 'suites/basic.yaml',
+        },
+      ];
+    },
+    async resolveSuite(suiteId: string): Promise<ResolvedSuite> {
+      assert.equal(suiteId, resolvedSuiteDocument.id);
+      return {
+        document: resolvedSuiteDocument,
+        source: {
+          adapter: 'memory',
+          ref: 'suites/basic.yaml',
+          fetchedAt: '2026-03-05T00:00:00.000Z',
+        },
+        taskIndexes: [
+          {
+            id: taskDocument.id,
+            desc: taskDocument.desc,
+            runCount: taskDocument.provider.runs.length,
+            taskRef: {
+              suiteId,
+              ref: 'datasets/task-001.yaml',
+            },
+          },
+        ],
+      };
+    },
+    async resolveTask(taskRef: TaskRef): Promise<ResolvedTask> {
+      assert.equal(taskRef.ref, 'datasets/task-001.yaml');
+      return {
+        document: taskDocument,
+        source: {
+          adapter: 'memory',
+          ref: 'datasets/task-001.yaml',
+          revision: 'sha256-task-001',
+          fetchedAt: '2026-03-05T00:00:00.000Z',
+        },
+      };
+    },
+  };
+
+  const core = createTestCoreWithTasks(tasks, store);
+  const suite = await core.loadSuite(bareSuiteDocument);
+  const summaries = await suite.runTask(taskDocument.id);
+
+  assert.equal(suite.name, resolvedSuiteDocument.name);
+  assert.equal(summaries.length, 2);
+
+  const manifest = await core.getRunManifest(summaries[0]!.runId);
+  assert.equal(manifest?.suiteName, resolvedSuiteDocument.name);
 });
 
 test('Task.fromDocument rejects unknown fields without external validation', () => {

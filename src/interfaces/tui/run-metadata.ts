@@ -1,4 +1,4 @@
-import type { CoreApi } from '../../core/api/index.js';
+import type { CoreApi } from '../../index.js';
 
 export interface RunMetadata {
   suiteName?: string;

@@ -1,11 +1,15 @@
-import type { Grader, GraderValidationResult } from '../core/contracts/runtime.js';
-import type { GraderResult } from '../core/contracts/trial.js';
-import type { ExecutionResult } from '../core/domain/execution-result.js';
-import type { GraderLayer } from '../core/domain/grader-layer.js';
+import type {
+  ExecutionResult,
+  ExecutionResultData,
+  Grader,
+  GraderLayer,
+  GraderResult,
+  GraderValidationResult,
+} from '../index.js';
 
 export interface ConfiguredGraderOptions {
   type: string;
-  grade: (result: ExecutionResult, layer: GraderLayer) => Promise<GraderResult>;
+  grade: (result: ExecutionResult | ExecutionResultData, layer: GraderLayer) => Promise<GraderResult>;
   validate?: (layer: GraderLayer) => GraderValidationResult;
 }
 
@@ -21,7 +25,7 @@ export class ConfiguredGrader implements Grader {
     this.validateFn = options.validate;
   }
 
-  async grade(result: ExecutionResult, layer: GraderLayer): Promise<GraderResult> {
+  async grade(result: ExecutionResult | ExecutionResultData, layer: GraderLayer): Promise<GraderResult> {
     return this.gradeFn(result, layer);
   }
 

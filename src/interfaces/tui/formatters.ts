@@ -1,12 +1,12 @@
 import * as p from '@clack/prompts';
 
-import type { RunRecord } from '../../core/contracts/run-record.js';
-import type { BaselineComparison } from '../../core/contracts/runtime.js';
-import type { RunSummary } from '../../core/domain/run-summary.js';
-import type { Trial } from '../../core/domain/trial.js';
+import type {
+  BaselineComparison,
+  RunRecord,
+  RunSummaryData,
+  TrialRecord,
+} from '../../index.js';
 import type { RunMetadata } from './run-metadata.js';
-
-type TrialView = { runId: string; trial: Trial['trial'] };
 
 function formatPassRate(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`;
@@ -78,9 +78,9 @@ export function formatRunOptionStatsHint(record: RunRecord): string {
 }
 
 export function formatSummaryNote(
-  summary: RunSummary,
+  summary: RunSummaryData,
   metadata?: RunMetadata,
-  trials: TrialView[] = [],
+  trials: TrialRecord[] = [],
 ): void {
   p.note(formatRunSummaryDetails(summary, metadata, trials), 'Run Summary');
 }
@@ -151,9 +151,9 @@ function formatMetricsValue(metrics: Record<string, unknown> | undefined): strin
 }
 
 export function formatRunSummaryDetails(
-  summary: RunSummary,
+  summary: RunSummaryData,
   metadata?: RunMetadata,
-  trials: TrialView[] = [],
+  trials: TrialRecord[] = [],
 ): string {
   const lines: string[] = [
     `Run ID:       ${summary.runId}`,
@@ -177,8 +177,8 @@ export function formatRunSummaryDetails(
   if (trials.length > 0) {
     lines.push('', 'Metrics:');
     for (const record of trials) {
-      lines.push(`  Trial #${record.trial.trialIndex}:`);
-      lines.push(formatMetricsValue(record.trial.execution.metrics));
+      lines.push(`  Trial #${record.trialIndex}:`);
+      lines.push(formatMetricsValue(record.execution.metrics));
     }
   }
 
@@ -286,20 +286,19 @@ export function formatRunsTable(
   return formatBoundedTable(header, rows, [20, 12, 18, 28, 18, 10, 8], [10, 6, 8, 12, 8, 9, 6]);
 }
 
-export function formatTrialsTable(records: { runId: string; trial: Trial['trial'] }[]): string {
+export function formatTrialsTable(records: TrialRecord[]): string {
   if (records.length === 0) {
     return 'No trials found.';
   }
 
   const header = ['Task ID', 'Trial', 'Status', 'Score', 'Duration'];
   const rows = records.map((record) => {
-    const trial = record.trial;
     return [
-      trial.taskId,
-      String(trial.trialIndex),
-      trial.aggregate.pass ? 'PASS' : 'FAIL',
-      trial.aggregate.score !== undefined ? trial.aggregate.score.toFixed(2) : '-',
-      `${trial.timings.durationMs}ms`,
+      record.taskId,
+      String(record.trialIndex),
+      record.aggregate.pass ? 'PASS' : 'FAIL',
+      record.aggregate.score !== undefined ? record.aggregate.score.toFixed(2) : '-',
+      `${record.timings.durationMs}ms`,
     ];
   });
 
@@ -313,7 +312,7 @@ function truncateText(text: string, maxLength: number): string {
   return `${text.slice(0, Math.max(0, maxLength - 3))}...`;
 }
 
-export function formatTrialGraderDetails(trial: Trial['trial']): string {
+export function formatTrialGraderDetails(trial: TrialRecord): string {
   const score = trial.aggregate.score !== undefined ? trial.aggregate.score.toFixed(2) : '-';
   const error = trial.execution.error;
   const lines = [

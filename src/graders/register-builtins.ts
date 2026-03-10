@@ -1,4 +1,4 @@
-import type { Graders } from '../core/contracts/runtime.js';
+import type { Graders } from '../index.js';
 import { contains } from './builtins/contains.js';
 import { exactMatch } from './builtins/exact-match.js';
 import { jsonSchema } from './builtins/json-schema.js';

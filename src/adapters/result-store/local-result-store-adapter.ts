@@ -5,13 +5,11 @@ import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type {
   BaselineRecord,
   ClearedResultEntry,
+  RunManifestRecord,
+  RunSummaryRecord,
   Stores,
-} from '../../core/adapters/result-store-adapter.js';
-import type { RunManifestRecord } from '../../core/contracts/run-manifest.js';
-import type { RunSummaryRecord } from '../../core/contracts/run-summary.js';
-import type { TrialResultRecord } from '../../core/contracts/trial.js';
-import { StoreError, ValidationError } from '../../core/errors/index.js';
-import { ensureNonEmptyString } from '../../core/validation/helpers.js';
+  TrialResultRecord,
+} from '../../index.js';
 
 const MANIFEST_FILE = 'manifest.json';
 const SUMMARY_FILE = 'summary.json';
@@ -20,6 +18,29 @@ const BASELINE_FILE = 'baseline.json';
 
 export interface LocalStoreOptions {
   rootDir: string;
+}
+
+class ValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ValidationError';
+  }
+}
+
+class StoreError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'StoreError';
+  }
+}
+
+function ensureNonEmptyString(value: string, field: string): string {
+  const normalized = value.trim();
+  if (normalized.length > 0) {
+    return normalized;
+  }
+
+  throw new ValidationError(`Field '${field}' must be a non-empty string.`);
 }
 
 function trialFileName(taskId: string, trialIndex: number): string {
@@ -31,21 +52,11 @@ function normalizeRunId(runId: string): string {
   const normalized = ensureNonEmptyString(runId, 'runId');
 
   if (normalized.includes('/') || normalized.includes('\\')) {
-    throw new ValidationError("Field 'runId' must not contain path separators.", {
-      details: {
-        field: 'runId',
-        value: runId,
-      },
-    });
+    throw new ValidationError("Field 'runId' must not contain path separators.");
   }
 
   if (normalized === '.' || normalized === '..') {
-    throw new ValidationError(`Field 'runId' must not be '${normalized}'.`, {
-      details: {
-        field: 'runId',
-        value: runId,
-      },
-    });
+    throw new ValidationError(`Field 'runId' must not be '${normalized}'.`);
   }
 
   return normalized;
@@ -60,14 +71,7 @@ function assertPathInsideRoot(rootPath: string, targetPath: string, runId: strin
     return;
   }
 
-  throw new ValidationError(`Run '${runId}' points outside configured result store root.`, {
-    details: {
-      field: 'runId',
-      runId,
-      rootDir: rootPath,
-      targetPath,
-    },
-  });
+  throw new ValidationError(`Run '${runId}' points outside configured result store root.`);
 }
 
 function isPathOutsideRoot(rootPath: string, targetPath: string): boolean {
@@ -93,10 +97,7 @@ async function readJsonFileOrNull<T>(filePath: string): Promise<T | null> {
       return null;
     }
 
-    throw new StoreError(`Failed to read file '${filePath}'.`, {
-      details: { filePath },
-      cause,
-    });
+    throw new StoreError(`Failed to read file '${filePath}'.`, { cause });
   }
 }
 
@@ -125,14 +126,7 @@ async function assertResolvedPathInsideRoot(
     return;
   }
 
-  throw new ValidationError(`Run '${runId}' points outside configured result store root.`, {
-    details: {
-      field: 'runId',
-      runId,
-      rootDir: rootRealPath,
-      targetPath: targetRealPath,
-    },
-  });
+  throw new ValidationError(`Run '${runId}' points outside configured result store root.`);
 }
 
 async function rejectSymlinkPath(path: string, field: string): Promise<void> {
@@ -142,12 +136,7 @@ async function rejectSymlinkPath(path: string, field: string): Promise<void> {
       return;
     }
 
-    throw new ValidationError(`Field '${field}' must not resolve to a symbolic link.`, {
-      details: {
-        field,
-        path,
-      },
-    });
+    throw new ValidationError(`Field '${field}' must not resolve to a symbolic link.`);
   } catch (cause) {
     if (extractFsErrorCode(cause) === 'ENOENT') {
       return;
@@ -169,10 +158,7 @@ async function collectEntriesForDeletion(rootDirPath: string): Promise<ClearedRe
       if (extractFsErrorCode(cause) === 'ENOENT') {
         return [];
       }
-      throw new StoreError(`Failed to read directory '${dirPath}'.`, {
-        details: { dirPath },
-        cause,
-      });
+      throw new StoreError(`Failed to read directory '${dirPath}'.`, { cause });
     }
 
     const sorted = dirents.sort((a, b) => a.name.localeCompare(b.name));
@@ -210,13 +196,7 @@ function assertTrialRunIdsMatch(input: TrialResultRecord): void {
     return;
   }
 
-  throw new ValidationError("Field 'trial.runId' must match 'runId'.", {
-    details: {
-      field: 'trial.runId',
-      runId: normalizedRecordRunId,
-      trialRunId: normalizedTrialRunId,
-    },
-  });
+  throw new ValidationError("Field 'trial.runId' must match 'runId'.");
 }
 
 export class LocalStore implements Stores {
@@ -282,10 +262,7 @@ export class LocalStore implements Stores {
         return [];
       }
 
-      throw new StoreError(`Failed to list trials directory '${trialsDir}'.`, {
-        details: { runId, trialsDir },
-        cause,
-      });
+      throw new StoreError(`Failed to list trials directory '${trialsDir}'.`, { cause });
     }
 
     const jsonFiles = entries.filter((entry) => entry.endsWith('.json')).sort();
@@ -330,10 +307,7 @@ export class LocalStore implements Stores {
         return [];
       }
 
-      throw new StoreError(`Failed to list run directories in '${this.rootDirPath}'.`, {
-        details: { rootDir: this.rootDirPath },
-        cause,
-      });
+      throw new StoreError(`Failed to list run directories in '${this.rootDirPath}'.`, { cause });
     }
 
     const runIds: string[] = [];
@@ -351,10 +325,7 @@ export class LocalStore implements Stores {
         if (errorCode === 'ENOENT') {
           return [];
         }
-        throw new StoreError(`Failed to list trials directory '${trialsDir}'.`, {
-          details: { runId: dirName, trialsDir },
-          cause,
-        });
+        throw new StoreError(`Failed to list trials directory '${trialsDir}'.`, { cause });
       });
       const hasTrialRecord = trialEntries.some((entry) => entry.endsWith('.json'));
       if (hasTrialRecord) {
@@ -406,9 +377,7 @@ export class LocalStore implements Stores {
         }
 
         if (!dirStat.isDirectory()) {
-          throw new StoreError(`Expected run path '${dir}' to be a directory.`, {
-            details: { runId, dir },
-          });
+          throw new StoreError(`Expected run path '${dir}' to be a directory.`);
         }
 
         const runEntries = await collectEntriesForDeletion(dir);
@@ -446,10 +415,7 @@ export class LocalStore implements Stores {
         throw cause;
       }
 
-      throw new StoreError(`Write failed (strict-only): ${context}`, {
-        details: { context, rootDir: this.rootDir },
-        cause,
-      });
+      throw new StoreError(`Write failed (strict-only): ${context}`, { cause });
     }
   }
 }

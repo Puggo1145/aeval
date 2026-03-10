@@ -1,19 +1,28 @@
 import type { Observer } from '../adapters/observer-adapter.js';
 import type { ClearedResultEntry, Stores } from '../adapters/result-store-adapter.js';
-import type { SuiteDescriptor, TaskIndex, Tasks } from '../adapters/task-source-adapter.js';
+import type {
+  ResolvedSuite,
+  ResolvedTask,
+  SuiteDescriptor,
+  TaskIndex,
+  Tasks,
+} from '../adapters/task-source-adapter.js';
+import type { RunManifestRecord } from '../contracts/run-manifest.js';
 import type { RunRecord } from '../contracts/run-record.js';
+import type { RunSummaryData } from '../contracts/run-summary.js';
 import type {
   BaselineComparison,
   BaselineThresholds,
   Graders,
   Providers,
+  RunEvent,
   RuntimeDefaults,
 } from '../contracts/runtime.js';
 import type { SuiteDocument } from '../contracts/suite.js';
-import { RunCompletedEvent, type RunEvent } from '../domain/run-event.js';
-import { RunManifest } from '../domain/run-manifest.js';
+import type { TrialRecord } from '../contracts/trial.js';
 import { RunSummary } from '../domain/run-summary.js';
 import { Suite } from '../domain/suite.js';
+import { Task } from '../domain/task.js';
 import { Trial } from '../domain/trial.js';
 import { ERROR_CODES, RuntimeError, ValidationError } from '../errors/index.js';
 import { TaskRunOrchestrator } from '../orchestrator/run-orchestrator.js';
@@ -45,6 +54,57 @@ export interface CoreDependencies {
 }
 
 export type CoreApi = Core;
+
+export interface LoadedSuiteInit {
+  getSuite(): Suite;
+  listTasks(): Promise<TaskIndex[]>;
+  runTask(taskId: string): Promise<RunSummaryData[]>;
+  streamTask(taskId: string, options?: { signal?: AbortSignal }): AsyncIterable<RunEvent>;
+}
+
+export class LoadedSuite {
+  constructor(private readonly input: LoadedSuiteInit) {}
+
+  get schemaVersion(): Suite['schemaVersion'] {
+    return this.input.getSuite().schemaVersion;
+  }
+
+  get id(): string {
+    return this.input.getSuite().id;
+  }
+
+  get name(): string {
+    return this.input.getSuite().name;
+  }
+
+  get discover(): readonly string[] {
+    return this.input.getSuite().discover;
+  }
+
+  get source(): Suite['source'] {
+    return this.input.getSuite().source;
+  }
+
+  get taskIndexes(): readonly TaskIndex[] | undefined {
+    return this.input.getSuite().taskIndexes;
+  }
+
+  get definition(): SuiteDocument {
+    return this.input.getSuite().definition;
+  }
+
+  async listTasks(): Promise<TaskIndex[]> {
+    return this.input.listTasks();
+  }
+
+  async runTask(taskId: string): Promise<RunSummaryData[]> {
+    return this.input.runTask(taskId);
+  }
+
+  streamTask(taskId: string, options?: { signal?: AbortSignal }): AsyncIterable<RunEvent> {
+    return this.input.streamTask(taskId, options);
+  }
+}
 
 async function resolveBaselineRunIdInput(
   baselineRunId: string | undefined,
@@ -89,47 +149,46 @@ export class Core {
     return this.tasks.listSuites();
   }
 
-  async loadSuite(input: LoadSuiteInput): Promise<Suite> {
+  async loadSuite(input: LoadSuiteInput): Promise<LoadedSuite> {
     if (typeof input === 'string') {
       const suiteId = ensureNonEmptyString(input, 'suiteId');
-      const suite = await this.tasks.resolveSuite(suiteId);
-      return this.bindSuite(suite);
+      const suite = toInternalSuite(await this.tasks.resolveSuite(suiteId), this.tasks);
+      return this.bindSuite(suite, true);
     }
 
     const raw = await input;
     return this.bindSuite(Suite.fromDocument(raw, { tasks: this.tasks }), false);
   }
 
-  async loadSuites(...inputs: LoadSuiteInput[]): Promise<Suite[]> {
+  async loadSuites(...inputs: LoadSuiteInput[]): Promise<LoadedSuite[]> {
     if (inputs.length === 0) {
       throw new ValidationError('At least one suite input is required.', {
         details: { field: 'inputs' },
       });
     }
 
-    const suites: Suite[] = [];
+    const suites: LoadedSuite[] = [];
     for (const input of inputs) {
       suites.push(await this.loadSuite(input));
     }
     return suites;
   }
 
-  async getRunManifest(runId: string): Promise<RunManifest | null> {
+  async getRunManifest(runId: string): Promise<RunManifestRecord | null> {
     const normalizedRunId = ensureNonEmptyString(runId, 'runId');
-    const record = await this.stores.getRunManifest(normalizedRunId);
-    return record ? RunManifest.fromRecord(record) : null;
+    return this.stores.getRunManifest(normalizedRunId);
   }
 
-  async getRunSummary(runId: string): Promise<RunSummary | null> {
+  async getRunSummary(runId: string): Promise<RunSummaryData | null> {
     const normalizedRunId = ensureNonEmptyString(runId, 'runId');
     const record = await this.stores.getRunSummary(normalizedRunId);
-    return record ? RunSummary.fromRecord(record.summary) : null;
+    return record?.summary ?? null;
   }
 
-  async listTrials(runId: string): Promise<Trial[]> {
+  async listTrials(runId: string): Promise<TrialRecord[]> {
     const normalizedRunId = ensureNonEmptyString(runId, 'runId');
     const records = await this.stores.listTrials(normalizedRunId);
-    return records.map((record) => Trial.fromRecord(record.trial));
+    return records.map((record) => record.trial);
   }
 
   async setBaseline(runId: string): Promise<void> {
@@ -247,8 +306,8 @@ export class Core {
       records.push({
         runId,
         status: summaryRecord ? 'completed' : 'interrupted',
-        manifest: manifestRecord ? RunManifest.fromRecord(manifestRecord) : null,
-        summary: summaryRecord ? RunSummary.fromRecord(summaryRecord.summary) : null,
+        manifest: manifestRecord,
+        summary: summaryRecord?.summary ?? null,
       });
     }
 
@@ -263,19 +322,26 @@ export class Core {
     return this.stores.clearResultsByRunIds(runIds);
   }
 
-  private bindSuite(suite: Suite, preloaded = true): Suite {
+  private bindSuite(suite: Suite, preloaded = true): LoadedSuite {
     const suiteCore = this;
+    let currentSuite = suite;
     let suitePromise: Promise<Suite> | undefined = preloaded ? Promise.resolve(suite) : undefined;
 
     const resolveSuiteData = async (): Promise<Suite> => {
       if (!suitePromise) {
-        suitePromise = this.tasks.resolveSuite(suite.id);
+        suitePromise = this.tasks
+          .resolveSuite(suite.id)
+          .then((resolved) => {
+            const resolvedSuite = toInternalSuite(resolved, this.tasks);
+            currentSuite = mergeSuiteMetadata(currentSuite, resolvedSuite);
+            return resolvedSuite;
+          });
       }
 
       return suitePromise;
     };
 
-    const resolveTaskById = async (taskId: string) => {
+    const resolveTaskById = async (taskId: string): Promise<Task> => {
       const normalizedTaskId = ensureNonEmptyString(taskId, 'taskId');
       const resolvedSuite = await resolveSuiteData();
       const taskIndexes = await resolvedSuite.listTasks();
@@ -294,7 +360,7 @@ export class Core {
         );
       }
 
-      const task = await this.tasks.resolveTask(taskIndex.taskRef);
+      const task = toInternalTask(await this.tasks.resolveTask(taskIndex.taskRef));
       if (task.id !== normalizedTaskId) {
         throw new RuntimeError(
           `Task source resolved '${task.id}' for requested task '${normalizedTaskId}'.`,
@@ -318,13 +384,15 @@ export class Core {
       {
         listTasks: async (): Promise<TaskIndex[]> => {
           const resolvedSuite = await resolveSuiteData();
-          return resolvedSuite.listTasks();
+          const taskIndexes = await resolvedSuite.listTasks();
+          currentSuite = mergeSuiteMetadata(currentSuite, resolvedSuite, taskIndexes);
+          return taskIndexes;
         },
 
-        runTask: async (taskId: string): Promise<RunSummary[]> => {
-          const summaries: RunSummary[] = [];
+        runTask: async (taskId: string): Promise<RunSummaryData[]> => {
+          const summaries: RunSummaryData[] = [];
           for await (const event of suiteWithActions.streamTask(taskId)) {
-            if (event instanceof RunCompletedEvent) {
+            if (event.type === 'run:completed') {
               summaries.push(event.summary);
             }
           }
@@ -349,7 +417,7 @@ export class Core {
 
             yield* new TaskRunOrchestrator(
               {
-                suite,
+                suite: currentSuite,
                 task,
                 run,
                 execution,
@@ -368,6 +436,39 @@ export class Core {
       this.tasks,
     );
 
-    return suiteWithActions;
+    currentSuite = suiteWithActions;
+
+    return new LoadedSuite({
+      getSuite: () => currentSuite,
+      listTasks: () => suiteWithActions.listTasks(),
+      runTask: (taskId: string) => suiteWithActions.runTask(taskId),
+      streamTask: (taskId: string, options?: { signal?: AbortSignal }) =>
+        suiteWithActions.streamTask(taskId, options),
+    });
   }
+}
+
+function toInternalSuite(input: ResolvedSuite, tasks: Tasks): Suite {
+  return Suite.fromDocument(input.document, {
+    ...(input.source ? { source: input.source } : {}),
+    taskIndexes: input.taskIndexes,
+    tasks,
+  });
+}
+
+function toInternalTask(input: ResolvedTask): Task {
+  return Task.fromDocument(input.document, input.source);
+}
+
+function mergeSuiteMetadata(base: Suite, next: Suite, taskIndexes?: TaskIndex[]): Suite {
+  return Suite.fromDocument(next.definition, {
+    ...(next.source ? { source: next.source } : base.source ? { source: base.source } : {}),
+    ...(taskIndexes
+      ? { taskIndexes }
+      : next.taskIndexes
+        ? { taskIndexes: [...next.taskIndexes] }
+        : base.taskIndexes
+          ? { taskIndexes: [...base.taskIndexes] }
+          : {}),
+  });
 }

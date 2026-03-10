@@ -1,19 +1,13 @@
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Core, Graders, Providers } from 'youeval';
+import { ConsoleObserver, LocalStore, LocalTask } from 'youeval/adapters';
 import {
-  BuiltinLlmJudgeConfigValidator,
-  BuiltinLlmJudgeProvider,
-  ConsoleObserver,
-  Core,
-  Graders,
-  LlmJudgeGrader,
-  LocalStore,
-  LocalTask,
-  Providers,
+  BuiltinLlmJudgeGrader,
   registerBuiltinGraders,
-  runTui,
-} from 'youeval';
+} from 'youeval/graders';
+import { runTui } from 'youeval/interfaces/tui';
 import { BasicLlmProvider, FileEditAgentProvider } from './providers/index.ts';
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
@@ -35,12 +29,7 @@ async function main(): Promise<void> {
 
   const graders = new Graders();
   registerBuiltinGraders(graders);
-  const builtinLlmJudgeProvider = new BuiltinLlmJudgeProvider({ env: process.env });
-  graders.register(
-    new LlmJudgeGrader(builtinLlmJudgeProvider, {
-      validateConfig: (config) => new BuiltinLlmJudgeConfigValidator(process.env).validate(config),
-    }),
-  );
+  graders.register(new BuiltinLlmJudgeGrader({ env: process.env }));
 
   const providers = new Providers();
   providers.register(new FileEditAgentProvider());

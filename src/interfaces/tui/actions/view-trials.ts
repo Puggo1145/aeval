@@ -1,6 +1,6 @@
 import * as p from '@clack/prompts';
 
-import type { CoreApi } from '../../../core/api/index.js';
+import type { CoreApi } from '../../../index.js';
 import {
   formatRunOptionLabel,
   formatRunOptionStatsHint,
@@ -86,11 +86,10 @@ export async function viewTrials(core: CoreApi): Promise<void> {
         message: 'Select a trial to view grader results:',
         options: [
           ...trials.map((record, index) => {
-            const trial = record.trial;
             return {
               value: index,
-              label: `${trial.taskId} #${trial.trialIndex}`,
-              hint: trial.aggregate.pass ? 'PASS' : 'FAIL',
+              label: `${record.taskId} #${record.trialIndex}`,
+              hint: record.aggregate.pass ? 'PASS' : 'FAIL',
             };
           }),
           { value: 'back', label: 'Back' },
@@ -102,7 +101,7 @@ export async function viewTrials(core: CoreApi): Promise<void> {
       return;
     }
 
-    const selectedTrial = trials[selectedIndex]?.trial;
+    const selectedTrial = trials[selectedIndex];
     if (!selectedTrial) {
       p.log.error('Selected trial not found.');
       return;

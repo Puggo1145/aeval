@@ -1,4 +1,4 @@
-import type { RunRecord } from '../../core/contracts/run-record.js';
+import type { RunRecord } from '../../index.js';
 
 import type { RunMetadata } from './run-metadata.js';
 

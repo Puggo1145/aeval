@@ -1,7 +1,6 @@
 import type { ExecutionResult } from '../domain/execution-result.js';
-import type { GraderLayer } from '../domain/grader-layer.js';
-import type { Run } from '../domain/run.js';
-import type { RunEvent } from '../domain/run-event.js';
+import type { ExecutionResultData } from './execution.js';
+import type { RunSummaryData } from './run-summary.js';
 import type { GraderResult } from './trial.js';
 
 export interface TaskContext {
@@ -10,6 +9,18 @@ export interface TaskContext {
   runName: string;
   runId: string;
   signal: AbortSignal;
+}
+
+export interface Run {
+  readonly name: string;
+  readonly params: Readonly<Record<string, unknown>>;
+}
+
+export interface GraderLayer {
+  readonly name: string;
+  readonly type: string;
+  readonly config: Readonly<Record<string, unknown>>;
+  readonly weight?: number;
 }
 
 export interface Provider {
@@ -36,7 +47,7 @@ export interface GraderValidationResult {
 
 export interface Grader {
   readonly type: string;
-  grade(result: ExecutionResult, layer: GraderLayer): Promise<GraderResult>;
+  grade(result: ExecutionResult | ExecutionResultData, layer: GraderLayer): Promise<GraderResult>;
   validate?(layer: GraderLayer): GraderValidationResult;
 }
 
@@ -47,6 +58,54 @@ export interface Graders {
   has(type: string): boolean;
   list(): string[];
 }
+
+export interface RunStartedEvent {
+  readonly type: 'run:started';
+  readonly runId: string;
+  readonly taskId: string;
+  readonly runName: string;
+  readonly totalTrials: number;
+}
+
+export interface TrialStartedEvent {
+  readonly type: 'trial:started';
+  readonly taskId: string;
+  readonly runId: string;
+  readonly runName: string;
+  readonly trialIndex: number;
+}
+
+export interface TrialCompletedEvent {
+  readonly type: 'trial:completed';
+  readonly taskId: string;
+  readonly runId: string;
+  readonly runName: string;
+  readonly trialIndex: number;
+  readonly pass: boolean;
+  readonly durationMs: number;
+}
+
+export interface TrialErrorEvent {
+  readonly type: 'trial:error';
+  readonly taskId: string;
+  readonly runId: string;
+  readonly runName: string;
+  readonly trialIndex: number;
+  readonly errorType: 'agent' | 'system';
+  readonly message: string;
+}
+
+export interface RunCompletedEvent {
+  readonly type: 'run:completed';
+  readonly summary: RunSummaryData;
+}
+
+export type RunEvent =
+  | RunStartedEvent
+  | TrialStartedEvent
+  | TrialCompletedEvent
+  | TrialErrorEvent
+  | RunCompletedEvent;
 
 export type TaskRunEvent = RunEvent;
 

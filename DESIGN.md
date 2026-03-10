@@ -57,6 +57,9 @@ Interfaces
 3. Providers and graders are resolved through containers injected into Core.
 4. TUI consumes Core APIs only. It does not call infrastructure classes directly.
 5. `contracts` own structural document parsing/validation; `domain` enforces runtime invariants on construction.
+6. Built-in adapters, graders, and TUI are treated like external modules for boundary control.
+7. Public package surfaces are limited to `youeval`, `youeval/adapters`, `youeval/graders`, and `youeval/interfaces/tui`.
+8. `core/domain`, `core/runtime`, `core/orchestrator`, `core/utils`, and `core/validation` remain internal implementation layers.
 
 ## 4. DSL
 
@@ -141,11 +144,10 @@ interface Provider {
 Providers receive the selected `Run` object and the execution context.
 
 Built-in graders may depend on extra runtime wiring. `llm-judge` is wired
-explicitly by the caller: create the built-in AI SDK-backed judge provider,
-wrap it with `new LlmJudgeGrader(...)`, and register it on `graders`.
-`registerBuiltinGraders(...)` only registers the pure built-in
+explicitly by the caller: register `new BuiltinLlmJudgeGrader(...)` on
+`graders`. `registerBuiltinGraders(...)` only registers the pure built-in
 graders that need no extra runtime dependencies. Custom judge providers are
-registered directly through `graders`.
+still registered directly through `new LlmJudgeGrader(customJudgeProvider)`.
 
 ### 5.2 Concurrency and Timeout
 
@@ -175,8 +177,8 @@ Each task run is a first-class run record:
 ```ts
 interface Tasks {
   listSuites(): Promise<SuiteDescriptor[]>;
-  resolveSuite(suiteId: string): Promise<Suite>;
-  resolveTask(taskRef: TaskRef): Promise<Task>;
+  resolveSuite(suiteId: string): Promise<ResolvedSuite>;
+  resolveTask(taskRef: TaskRef): Promise<ResolvedTask>;
 }
 ```
 
@@ -195,12 +197,12 @@ Provider and grader resolvability stays in Core, not in the adapter.
 new Core({ tasks, stores, providers, graders, observers })
 
 core.listSuites(): Promise<SuiteDescriptor[]>
-core.loadSuite(input): Promise<Suite>
-core.loadSuites(...inputs): Promise<Suite[]>
+core.loadSuite(input): Promise<LoadedSuite>
+core.loadSuites(...inputs): Promise<LoadedSuite[]>
 
-suite.listTasks(): Promise<TaskIndex[]>
-suite.runTask(taskId): Promise<RunSummary[]>
-suite.streamTask(taskId): AsyncIterable<RunEvent>
+loadedSuite.listTasks(): Promise<TaskIndex[]>
+loadedSuite.runTask(taskId): Promise<RunSummaryData[]>
+loadedSuite.streamTask(taskId): AsyncIterable<RunEvent>
 ```
 
 `loadSuite` accepts either:

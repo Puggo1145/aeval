@@ -1,7 +1,6 @@
 import * as p from '@clack/prompts';
 
-import type { CoreApi } from '../../../core/api/index.js';
-import type { BaselineThresholds } from '../../../core/contracts/runtime.js';
+import type { BaselineThresholds, CoreApi } from '../../../index.js';
 import { formatComparisonNote, formatRunOptionHint, formatRunOptionLabel } from '../formatters.js';
 import { readRunMetadataMap } from '../run-metadata.js';
 import { handleCancel } from '../utils.js';

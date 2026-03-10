@@ -7,7 +7,6 @@ import {
   RunStartedEvent,
   TrialErrorEvent,
 } from '../src/core/domain/run-event.js';
-import { RunSummary } from '../src/core/domain/run-summary.js';
 
 test('console observer logs run:started with task and trial counts', () => {
   const observer = new ConsoleObserver();
@@ -55,16 +54,14 @@ test('console observer logs run:completed using task-run summary fields', () => 
 
   try {
     observer.onEvent(
-      new RunCompletedEvent(
-        new RunSummary({
-          schemaVersion: 'run-summary.v1',
-          runId: 'run-1',
-          taskId: 'task-001',
-          runName: 'mini',
-          totalTrials: 2,
-          passRate: 1,
-        }),
-      ),
+      new RunCompletedEvent({
+        schemaVersion: 'run-summary.v1',
+        runId: 'run-1',
+        taskId: 'task-001',
+        runName: 'mini',
+        totalTrials: 2,
+        passRate: 1,
+      }),
     );
   } finally {
     console.log = originalLog;

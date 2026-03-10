@@ -1,8 +1,6 @@
 import * as p from '@clack/prompts';
 
-import type { CoreApi } from '../../../core/api/index.js';
-import type { RunRecord } from '../../../core/contracts/run-record.js';
-import { StreamClosedError } from '../../../core/runtime/abort-reasons.js';
+import type { CoreApi, RunRecord } from '../../../index.js';
 import { formatRunsTable } from '../formatters.js';
 import { createLiveRegion } from '../live-region.js';
 import { type RunMetadata, readRunMetadataMap } from '../run-metadata.js';
@@ -223,7 +221,7 @@ export async function runTask(core: CoreApi): Promise<void> {
 
       if (typeof nextResult === 'symbol') {
         runCancelledByUser = true;
-        streamAbortController.abort(new StreamClosedError());
+        streamAbortController.abort();
         break;
       }
 

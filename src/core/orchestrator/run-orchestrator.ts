@@ -3,11 +3,10 @@ import { randomUUID } from 'node:crypto';
 import type { Observer } from '../adapters/observer-adapter.js';
 import type { Stores } from '../adapters/result-store-adapter.js';
 import { SYSTEM_ERROR_CODES } from '../contracts/execution.js';
-import type { Graders, Providers } from '../contracts/runtime.js';
+import type { Graders, Providers, RunEvent } from '../contracts/runtime.js';
 import type { Run } from '../domain/run.js';
 import {
   RunCompletedEvent,
-  type RunEvent,
   RunStartedEvent,
   TrialCompletedEvent,
   TrialErrorEvent,
@@ -205,7 +204,7 @@ export class TaskRunOrchestrator {
         yield event;
       }
 
-      if (isStreamClosedError(runAbortController.signal.reason)) {
+      if (this.input.signal?.aborted || isStreamClosedError(runAbortController.signal.reason)) {
         return;
       }
 
@@ -225,7 +224,7 @@ export class TaskRunOrchestrator {
       manifest = manifest.complete();
       await this.deps.stores.saveRunManifest(manifest.toRecord());
 
-      const completedEvent = new RunCompletedEvent(summary);
+      const completedEvent = new RunCompletedEvent(summary.toRecord());
       yield completedEvent;
       await notifyObservers(this.deps.observers, completedEvent);
     } finally {

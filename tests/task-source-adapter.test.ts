@@ -127,9 +127,9 @@ test('resolveSuite expands discover globs with deterministic task ordering', asy
 
     const adapter = new LocalTask({ rootDir });
     const resolvedSuite = await adapter.resolveSuite('basic-llm');
-    const tasks = await resolvedSuite.listTasks();
+    const tasks = resolvedSuite.taskIndexes;
 
-    assert.equal(resolvedSuite.id, 'basic-llm');
+    assert.equal(resolvedSuite.document.id, 'basic-llm');
     assert.equal(tasks.length, 2);
     assert.deepEqual(
       tasks.map((task) => ({
@@ -165,7 +165,7 @@ discover:
 
     const adapter = new LocalTask({ rootDir });
     const resolvedSuite = await adapter.resolveSuite('basic-llm');
-    const tasks = await resolvedSuite.listTasks();
+    const tasks = resolvedSuite.taskIndexes;
 
     assert.deepEqual(
       tasks.map((task) => task.taskRef.ref),
@@ -186,9 +186,9 @@ test('resolveTask returns validated task and stable source revision', async () =
     const taskA = await adapter.resolveTask({ suiteId: 'basic-llm', ref: 'task-a.yaml' });
     const taskB = await adapter.resolveTask({ suiteId: 'basic-llm', ref: 'task-b.yaml' });
 
-    assert.equal(taskA.id, 'basic-llm/task-001');
-    assert.equal(taskA.source?.revision, taskB.source?.revision);
-    assert.ok(taskA.source?.revision.startsWith('sha256-'));
+    assert.equal(taskA.document.id, 'basic-llm/task-001');
+    assert.equal(taskA.source.revision, taskB.source.revision);
+    assert.ok(taskA.source.revision.startsWith('sha256-'));
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }

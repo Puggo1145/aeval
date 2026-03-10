@@ -41,6 +41,17 @@ pnpm build
 pnpm test
 ```
 
+## 公开入口与边界
+
+外部实现只应依赖这 4 个公开入口：
+
+- `youeval`：Core、registry、稳定 contract / DSL / record 类型、`ExecutionResult`
+- `youeval/adapters`：`LocalTask`、`LocalStore`、`ConsoleObserver`
+- `youeval/graders`：built-in graders、`registerBuiltinGraders`、LLM judge 相关能力
+- `youeval/interfaces/tui`：`runTui`
+
+内置 adapters / graders / TUI 虽然随包一起发布，但在依赖边界上按“外部用户实现”处理，不应直接依赖 `core/domain/*`、`core/runtime/*`、`core/utils/*` 这类内部实现路径。
+
 ## 从 `youapi-agent` 示例入门
 
 这个例子演示的是：用本地 TUI 选择任务，然后调用一个内部 `youapi` eval endpoint，把返回结果交给 grader 判分。
@@ -381,9 +392,7 @@ config:
 ```ts
 const graders = new Graders();
 registerBuiltinGraders(graders);
-
-const builtinLlmJudgeProvider = new BuiltinLlmJudgeProvider({ env: process.env });
-graders.register(new LlmJudgeGrader(builtinLlmJudgeProvider));
+graders.register(new BuiltinLlmJudgeGrader({ env: process.env }));
 ```
 
 注意：
@@ -397,14 +406,17 @@ graders.register(new LlmJudgeGrader(builtinLlmJudgeProvider));
 `examples/youapi-agent/main.ts` 是一个最小完整接线示例：
 
 ```ts
+import { Core, Graders, Providers } from 'youeval';
+import {
+  BuiltinLlmJudgeGrader,
+  registerBuiltinGraders,
+} from 'youeval/graders';
+import { ConsoleObserver, LocalStore, LocalTask } from 'youeval/adapters';
+import { runTui } from 'youeval/interfaces/tui';
+
 const graders = new Graders();
 registerBuiltinGraders(graders);
-const builtinLlmJudgeProvider = new BuiltinLlmJudgeProvider({ env: process.env });
-graders.register(
-  new LlmJudgeGrader(builtinLlmJudgeProvider, {
-    validateConfig: (config) => new BuiltinLlmJudgeConfigValidator(process.env).validate(config),
-  }),
-);
+graders.register(new BuiltinLlmJudgeGrader({ env: process.env }));
 
 const providers = new Providers();
 providers.register(new YouapiAgentProvider());
@@ -530,15 +542,10 @@ interface Provider {
 最小版本：
 
 ```ts
-import {
-  Core,
-  Graders,
-  LocalStore,
-  LocalTask,
-  Providers,
-  registerBuiltinGraders,
-  runTui,
-} from 'youeval';
+import { Core, Graders, Providers } from 'youeval';
+import { LocalStore, LocalTask } from 'youeval/adapters';
+import { registerBuiltinGraders } from 'youeval/graders';
+import { runTui } from 'youeval/interfaces/tui';
 import { MyProvider } from './provider.ts';
 
 const graders = new Graders();
@@ -680,6 +687,8 @@ const summaries = await loadedSuite.runTask(tasks[0].id);
 - `core.getRunManifest(runId)`
 - `core.getRunSummary(runId)`
 - `core.listTrials(runId)`
+
+`core.loadSuite(...)` 返回的是公开 API handle，不是内部 domain `Suite` 实现；外部模块应只使用这些公开方法和返回的 record 数据。
 
 ## 本地参考适配器
 

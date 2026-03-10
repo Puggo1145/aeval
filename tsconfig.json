@@ -6,7 +6,10 @@
     "moduleResolution": "Node16",
     "baseUrl": ".",
     "paths": {
-      "youeval": ["./src/index.ts"]
+      "youeval": ["./src/index.ts"],
+      "youeval/adapters": ["./src/adapters/index.ts"],
+      "youeval/graders": ["./src/graders/index.ts"],
+      "youeval/interfaces/tui": ["./src/interfaces/tui/index.ts"]
     },
     "allowImportingTsExtensions": true,
     "esModuleInterop": true,

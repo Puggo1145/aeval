@@ -1,3 +1,4 @@
+import type { TaskSource } from '../adapters/task-source-adapter.js';
 import type {
   TaskDocument,
   TaskExecutionDocument,
@@ -10,13 +11,6 @@ import { ValidationError } from '../errors/index.js';
 import { cloneAndFreezeRecord } from '../utils/immutability.js';
 import { GraderLayer } from './grader-layer.js';
 import { Run } from './run.js';
-
-export interface TaskSource {
-  adapter: string;
-  ref: string;
-  revision: string;
-  fetchedAt: string;
-}
 
 export interface TaskInit {
   document: unknown;

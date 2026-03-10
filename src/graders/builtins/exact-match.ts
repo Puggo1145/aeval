@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import type { GraderResult } from '../../core/contracts/trial.js';
-import type { ExecutionResult } from '../../core/domain/execution-result.js';
+import type { ExecutionResult, ExecutionResultData, GraderResult } from '../../index.js';
 import { ConfiguredGrader } from '../base-grader.js';
 import {
   type GraderConfigValidationResult,
@@ -27,7 +26,7 @@ type ExactMatchConfig = z.infer<typeof ExactMatchConfigSchema>;
  *   trim?: boolean            — trim whitespace before comparison, default false
  */
 async function gradeExactMatch(
-  result: ExecutionResult,
+  result: ExecutionResult | ExecutionResultData,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
   const parsed = parseGraderConfig(ExactMatchConfigSchema, config);

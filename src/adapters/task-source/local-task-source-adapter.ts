@@ -1,31 +1,50 @@
+import { createHash } from 'node:crypto';
 import { lstat, readdir, readFile, realpath } from 'node:fs/promises';
 import { isAbsolute, matchesGlob, relative, resolve, sep } from 'node:path';
 
+import canonicalizeModule from 'canonicalize';
 import { parse } from 'yaml';
 
 import type {
+  ResolvedSuite,
+  ResolvedTask,
   SuiteDescriptor,
+  SuiteSource,
   TaskIndex,
   TaskRef,
+  TaskSource,
   Tasks,
-} from '../../core/adapters/task-source-adapter.js';
-import { SCHEMA_VERSIONS } from '../../core/contracts/schema-versions.js';
-import { Suite } from '../../core/domain/suite.js';
-import { Task } from '../../core/domain/task.js';
-import { computeSha256 } from '../../core/utils/hash.js';
-import { ensureNonEmptyString } from '../../core/validation/helpers.js';
+} from '../../index.js';
+import {
+  parseSuiteDocument,
+  parseTaskDocument,
+  SCHEMA_VERSIONS,
+  type SuiteDocument,
+  type TaskDocument,
+} from '../../index.js';
 
 const ADAPTER_ID = 'local';
 const YAML_EXTENSIONS = new Set(['.yaml', '.yml']);
 const GLOB_MAGIC_PATTERN = /[*?[{\]}]/;
+const canonicalize = canonicalizeModule as unknown as (value: unknown) => string | undefined;
 
 interface SuiteEntry {
   ref: string;
-  suite: Suite;
+  document: SuiteDocument;
+  source: SuiteSource;
 }
 
 export interface LocalTaskOptions {
   rootDir: string;
+}
+
+function ensureNonEmptyString(value: string, field: string): string {
+  const normalized = value.trim();
+  if (normalized.length > 0) {
+    return normalized;
+  }
+
+  throw new Error(`Field '${field}' must be a non-empty string.`);
 }
 
 function normalizeRelativeValue(value: string, field: string): string {
@@ -84,6 +103,15 @@ async function readYamlObject(filePath: string, label: string): Promise<Record<s
   return parsed as Record<string, unknown>;
 }
 
+function computeSha256(value: unknown): string {
+  const serialized = canonicalize(value);
+  if (serialized === undefined) {
+    throw new TypeError('Unsupported value type in canonical JSON payload.');
+  }
+
+  return createHash('sha256').update(serialized).digest('hex');
+}
+
 async function collectYamlFiles(startDirRealPath: string, rootDirRealPath: string): Promise<string[]> {
   async function walk(dirPath: string): Promise<string[]> {
     const dirents = await readdir(dirPath, { withFileTypes: true });
@@ -128,27 +156,26 @@ async function scanSuites(rootDirRealPath: string): Promise<SuiteEntry[]> {
       continue;
     }
 
-    const suite = Suite.fromDocument(document, {
+    const ref = toDisplayPath(relative(rootDirRealPath, filePath));
+    entries.push({
+      ref,
+      document: parseSuiteDocument(document),
       source: {
         adapter: ADAPTER_ID,
-        ref: toDisplayPath(relative(rootDirRealPath, filePath)),
+        ref,
         fetchedAt: new Date().toISOString(),
       },
     });
-    entries.push({
-      ref: toDisplayPath(relative(rootDirRealPath, filePath)),
-      suite,
-    });
   }
 
-  entries.sort((a, b) => a.suite.id.localeCompare(b.suite.id) || a.ref.localeCompare(b.ref));
+  entries.sort((a, b) => a.document.id.localeCompare(b.document.id) || a.ref.localeCompare(b.ref));
 
   const seenIds = new Set<string>();
   for (const entry of entries) {
-    if (seenIds.has(entry.suite.id)) {
-      throw new Error(`Suite id '${entry.suite.id}' must be unique under rootDir.`);
+    if (seenIds.has(entry.document.id)) {
+      throw new Error(`Suite id '${entry.document.id}' must be unique under rootDir.`);
     }
-    seenIds.add(entry.suite.id);
+    seenIds.add(entry.document.id);
   }
 
   return entries;
@@ -215,7 +242,7 @@ async function collectTaskRefsForDiscoverPattern(
   return [fileRef];
 }
 
-function taskIndexFromTask(task: Task, suiteId: string, ref: string): TaskIndex {
+function taskIndexFromTask(task: TaskDocument, suiteId: string, ref: string): TaskIndex {
   return {
     id: task.id,
     ...(task.desc !== undefined ? { desc: task.desc } : {}),
@@ -224,7 +251,7 @@ function taskIndexFromTask(task: Task, suiteId: string, ref: string): TaskIndex 
     ...(task.tier !== undefined ? { tier: task.tier } : {}),
     ...(task.difficulty !== undefined ? { difficulty: task.difficulty } : {}),
     ...(task.tags !== undefined ? { tags: [...task.tags] } : {}),
-    runCount: task.runs.length,
+    runCount: task.provider.runs.length,
     taskRef: {
       suiteId,
       ref,
@@ -236,7 +263,7 @@ async function resolveTaskFile(
   rootDirRealPath: string,
   taskRef: TaskRef,
   options?: { skipSuiteDocument?: boolean },
-): Promise<{ ref: string; task: Task } | null> {
+): Promise<{ ref: string; document: TaskDocument; source: TaskSource } | null> {
   ensureNonEmptyString(taskRef.suiteId, 'taskRef.suiteId');
   const normalizedRef = normalizeRelativeValue(taskRef.ref, 'taskRef.ref');
   const taskPath = resolve(rootDirRealPath, normalizedRef);
@@ -253,16 +280,17 @@ async function resolveTaskFile(
   }
 
   const revision = `sha256-${computeSha256(document).slice(0, 12)}`;
-  const task = Task.fromDocument(document, {
+  const source: TaskSource = {
     adapter: ADAPTER_ID,
     ref: normalizedRef,
     revision,
     fetchedAt: new Date().toISOString(),
-  });
+  };
 
   return {
     ref: normalizedRef,
-    task,
+    document: parseTaskDocument(document),
+    source,
   };
 }
 
@@ -279,16 +307,16 @@ export class LocalTask implements Tasks {
     const rootDirRealPath = await this.resolveRootDirRealPath();
     const suites = await scanSuites(rootDirRealPath);
     return suites.map((entry) => ({
-      id: entry.suite.id,
-      name: entry.suite.name,
+      id: entry.document.id,
+      name: entry.document.name,
       ref: entry.ref,
     }));
   }
 
-  async resolveSuite(suiteId: string): Promise<Suite> {
+  async resolveSuite(suiteId: string): Promise<ResolvedSuite> {
     const rootDirRealPath = await this.resolveRootDirRealPath();
     const entry = await this.findSuiteEntry(suiteId);
-    const patterns = entry.suite.discover.map((pattern) => normalizeDiscoverPattern(pattern));
+    const patterns = entry.document.discover.map((pattern) => normalizeDiscoverPattern(pattern));
     const matchedTaskRefs = Array.from(
       new Set(
         (
@@ -300,7 +328,7 @@ export class LocalTask implements Tasks {
     ).sort();
 
     if (matchedTaskRefs.length === 0) {
-      throw new Error(`Suite '${entry.suite.id}' did not match any task files.`);
+      throw new Error(`Suite '${entry.document.id}' did not match any task files.`);
     }
 
     const seenTaskIds = new Set<string>();
@@ -309,7 +337,7 @@ export class LocalTask implements Tasks {
       const resolvedTask = await resolveTaskFile(
         rootDirRealPath,
         {
-          suiteId: entry.suite.id,
+          suiteId: entry.document.id,
           ref: fileRef,
         },
         { skipSuiteDocument: true },
@@ -318,34 +346,33 @@ export class LocalTask implements Tasks {
         continue;
       }
 
-      const { task } = resolvedTask;
+      const { document } = resolvedTask;
 
-      if (seenTaskIds.has(task.id)) {
-        throw new Error(`Task id '${task.id}' must be unique within suite '${entry.suite.id}'.`);
+      if (seenTaskIds.has(document.id)) {
+        throw new Error(`Task id '${document.id}' must be unique within suite '${entry.document.id}'.`);
       }
-      seenTaskIds.add(task.id);
-      taskIndexes.push(taskIndexFromTask(task, entry.suite.id, fileRef));
+      seenTaskIds.add(document.id);
+      taskIndexes.push(taskIndexFromTask(document, entry.document.id, fileRef));
     }
 
-    return Suite.fromDocument(entry.suite.toDocument(), {
-      source: {
-        adapter: ADAPTER_ID,
-        ref: entry.ref,
-        fetchedAt: new Date().toISOString(),
-      },
+    return {
+      document: entry.document,
+      source: entry.source,
       taskIndexes,
-      tasks: this,
-    });
+    };
   }
 
-  async resolveTask(taskRef: TaskRef): Promise<Task> {
+  async resolveTask(taskRef: TaskRef): Promise<ResolvedTask> {
     const rootDirRealPath = await this.resolveRootDirRealPath();
     const resolvedTask = await resolveTaskFile(rootDirRealPath, taskRef);
     if (resolvedTask === null) {
       throw new Error(`Task '${taskRef.ref}' resolves to a suite document, not a task document.`);
     }
 
-    return resolvedTask.task;
+    return {
+      document: resolvedTask.document,
+      source: resolvedTask.source,
+    };
   }
 
   private async resolveRootDirRealPath(): Promise<string> {
@@ -356,7 +383,7 @@ export class LocalTask implements Tasks {
     const normalizedSuiteId = ensureNonEmptyString(suiteId, 'suiteId');
     const rootDirRealPath = await this.resolveRootDirRealPath();
     const suites = await scanSuites(rootDirRealPath);
-    const entry = suites.find((candidate) => candidate.suite.id === normalizedSuiteId);
+    const entry = suites.find((candidate) => candidate.document.id === normalizedSuiteId);
     if (entry) {
       return entry;
     }

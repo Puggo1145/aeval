@@ -14,7 +14,10 @@ import { regex as regexGrader } from '../src/graders/builtins/regex.js';
 import { tokenBudget } from '../src/graders/builtins/token-budget.js';
 import { toolCalls as toolCallsGrader } from '../src/graders/builtins/tool-calls.js';
 import { transcript as transcriptGrader } from '../src/graders/builtins/transcript.js';
-import { BuiltinLlmJudgeConfigValidator } from '../src/graders/llm/builtin-llm-judge.js';
+import {
+  BuiltinLlmJudgeConfigValidator,
+  BuiltinLlmJudgeGrader,
+} from '../src/graders/llm/builtin-llm-judge.js';
 import type { JudgeProvider, JudgeProviderResult } from '../src/graders/llm/judge-provider.js';
 import { LlmJudgeGrader } from '../src/graders/llm/llm-judge.js';
 import { registerBuiltinGraders } from '../src/graders/register-builtins.js';
@@ -1023,22 +1026,21 @@ test('registerBuiltinGraders: registers all 10 non-llm built-in graders', () => 
 
 test('llm-judge is registered explicitly on the GraderRegistry', () => {
   const registry = new Graders();
-  const judgeResult: JudgeProviderResult = {
-    pass: true,
-    score: 1,
-    reason: 'ok',
-    assertions: [],
-    provider: 'aihubmix',
-    model: 'gpt-4.1-mini',
-  };
-  const mockJudge: JudgeProvider = {
-    evaluate: async () => judgeResult,
-  };
   registerBuiltinGraders(registry);
-  registry.register(new LlmJudgeGrader(mockJudge));
+  registry.register(new BuiltinLlmJudgeGrader({ env: {} }));
   registry.register({
     type: 'my-judge',
-    grade: (result, layer) => new LlmJudgeGrader(mockJudge).grade(result, layer),
+    grade: (result, layer) =>
+      new LlmJudgeGrader({
+        evaluate: async () => ({
+          pass: true,
+          score: 1,
+          reason: 'ok',
+          assertions: [],
+          provider: 'aihubmix',
+          model: 'gpt-4.1-mini',
+        }),
+      }).grade(result, layer),
   });
   assert.ok(registry.has('llm-judge'));
   assert.ok(registry.has('my-judge'));
@@ -1051,6 +1053,31 @@ test('BuiltinLlmJudgeConfigValidator checks provider-specific api key availabili
       provider: 'aihubmix',
     },
   });
+
+  assert.deepEqual(validation, {
+    valid: false,
+    reason: "Judge provider 'aihubmix' requires process.env.AIHUBMIX_API_KEY.",
+  });
+});
+
+test('BuiltinLlmJudgeGrader validates provider-specific api key availability', () => {
+  const grader = new BuiltinLlmJudgeGrader({ env: {} });
+  const validation = grader.validate(
+    new GraderLayer({
+      name: 'judge',
+      type: 'llm-judge',
+      config: {
+        dimension: 'correctness',
+        rubric: 'Be correct.',
+        assertions: ['Answer is correct.'],
+        passThreshold: 1,
+        judge: {
+          provider: 'aihubmix',
+          model: 'gpt-4.1-mini',
+        },
+      },
+    }),
+  );
 
   assert.deepEqual(validation, {
     valid: false,

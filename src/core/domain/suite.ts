@@ -1,18 +1,12 @@
-import type { TaskIndex, Tasks } from '../adapters/task-source-adapter.js';
+import type { SuiteSource, TaskIndex, Tasks } from '../adapters/task-source-adapter.js';
+import type { RunSummaryData } from '../contracts/run-summary.js';
+import type { RunEvent } from '../contracts/runtime.js';
 import type { SuiteDocument } from '../contracts/suite.js';
 import { parseSuiteDocument } from '../contracts/suite.js';
-import type { RunEvent } from './run-event.js';
-import type { RunSummary } from './run-summary.js';
-
-export interface SuiteSource {
-  adapter: string;
-  ref: string;
-  fetchedAt: string;
-}
 
 export interface SuiteActions {
   listTasks(): Promise<TaskIndex[]>;
-  runTask(taskId: string): Promise<RunSummary[]>;
+  runTask(taskId: string): Promise<RunSummaryData[]>;
   streamTask(taskId: string, options?: { signal?: AbortSignal }): AsyncIterable<RunEvent>;
 }
 
@@ -89,10 +83,10 @@ export class Suite {
     }
 
     const resolved = await this.tasks.resolveSuite(this.id);
-    return resolved.listTasks();
+    return [...resolved.taskIndexes];
   }
 
-  async runTask(taskId: string): Promise<RunSummary[]> {
+  async runTask(taskId: string): Promise<RunSummaryData[]> {
     if (!this.actions) {
       throw new Error(`Suite '${this.id}' is not bound to Core runtime actions.`);
     }
