@@ -14,7 +14,7 @@ import { handleCancel } from '../utils.js';
 export async function viewReport(core: CoreApi): Promise<void> {
   const s = p.spinner();
   s.start('Loading runs…');
-  const records = await core.listRuns();
+  const records = await core.results.list();
   s.stop('Runs loaded.');
 
   if (records.length === 0) {
@@ -78,7 +78,7 @@ export async function viewReport(core: CoreApi): Promise<void> {
   }
 
   if (record.summary) {
-    const trials = await core.listTrials(runId);
+    const trials = await core.results.listTrials(runId);
     formatSummaryNote(record.summary, metadataByRunId.get(runId), trials);
     return;
   }

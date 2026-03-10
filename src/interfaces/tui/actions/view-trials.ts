@@ -14,7 +14,7 @@ import { handleCancel } from '../utils.js';
 export async function viewTrials(core: CoreApi): Promise<void> {
   const s = p.spinner();
   s.start('Loading runs…');
-  const records = await core.listRuns();
+  const records = await core.results.list();
   s.stop('Runs loaded.');
 
   if (records.length === 0) {
@@ -71,7 +71,7 @@ export async function viewTrials(core: CoreApi): Promise<void> {
     }),
   );
 
-  const trials = await core.listTrials(runId);
+  const trials = await core.results.listTrials(runId);
 
   if (trials.length === 0) {
     p.log.warn(`No trials found for run '${runId}'.`);

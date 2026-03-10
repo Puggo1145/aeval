@@ -17,7 +17,7 @@ function parseOptionalNumber(raw: string): number | undefined {
 export async function compareBaseline(core: CoreApi): Promise<void> {
   const s = p.spinner();
   s.start('Loading runs…');
-  const records = await core.listRuns();
+  const records = await core.results.list();
   const completedRuns = records.filter((record) => record.status === 'completed');
   s.stop('Runs loaded.');
 
@@ -111,7 +111,7 @@ export async function compareBaseline(core: CoreApi): Promise<void> {
     }
   }
 
-  const comparison = await core.compareBaseline(currentRunId, {
+  const comparison = await core.baseline.compare(currentRunId, {
     baselineRunId,
     thresholds,
   });

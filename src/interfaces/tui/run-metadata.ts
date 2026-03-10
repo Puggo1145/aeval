@@ -15,7 +15,7 @@ function normalizeString(raw: unknown): string | undefined {
 }
 
 export async function readRunMetadata(core: CoreApi, runId: string): Promise<RunMetadata> {
-  const manifest = await core.getRunManifest(runId);
+  const manifest = await core.results.getManifest(runId);
   return {
     suiteName: normalizeString(manifest?.suiteName),
     taskId: normalizeString(manifest?.taskId),

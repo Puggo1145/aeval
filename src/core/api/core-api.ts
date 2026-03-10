@@ -53,7 +53,31 @@ export interface CoreDependencies {
   runtimeDefaults?: RuntimeDefaults;
 }
 
-export type CoreApi = Core;
+export interface CoreSuitesApi {
+  list(): Promise<SuiteDescriptor[]>;
+  load(input: LoadSuiteInput): Promise<LoadedSuite>;
+  loadMany(...inputs: LoadSuiteInput[]): Promise<LoadedSuite[]>;
+}
+
+export interface CoreResultsApi {
+  list(): Promise<RunRecord[]>;
+  getManifest(runId: string): Promise<RunManifestRecord | null>;
+  getSummary(runId: string): Promise<RunSummaryData | null>;
+  listTrials(runId: string): Promise<TrialRecord[]>;
+  clearAll(): Promise<ClearedResultEntry[]>;
+  clearByRunIds(runIds: string[]): Promise<ClearedResultEntry[]>;
+}
+
+export interface CoreBaselineApi {
+  set(runId: string): Promise<void>;
+  compare(currentRunId: string, options?: CompareBaselineOptions): Promise<BaselineComparison>;
+}
+
+export interface CoreApi {
+  readonly suites: CoreSuitesApi;
+  readonly results: CoreResultsApi;
+  readonly baseline: CoreBaselineApi;
+}
 
 export interface LoadedSuiteInit {
   getSuite(): Suite;
@@ -128,13 +152,16 @@ async function resolveBaselineRunIdInput(
   });
 }
 
-export class Core {
+export class Core implements CoreApi {
   readonly tasks: Tasks;
   readonly stores: Stores;
   readonly providers: Providers;
   readonly graders: Graders;
   readonly observers: readonly Observer[];
   readonly runtimeDefaults: Required<RuntimeDefaults>;
+  readonly suites: CoreSuitesApi;
+  readonly results: CoreResultsApi;
+  readonly baseline: CoreBaselineApi;
 
   constructor(input: CoreDependencies) {
     this.tasks = input.tasks;
@@ -143,13 +170,31 @@ export class Core {
     this.graders = input.graders;
     this.observers = Object.freeze([...(input.observers ?? [])]);
     this.runtimeDefaults = normalizeRuntimeDefaults(input.runtimeDefaults);
+    this.suites = Object.freeze({
+      list: () => this.listSuitesFromTasks(),
+      load: (suite: LoadSuiteInput) => this.loadSuiteHandle(suite),
+      loadMany: (...inputs: LoadSuiteInput[]) => this.loadSuiteHandles(...inputs),
+    });
+    this.results = Object.freeze({
+      list: () => this.listRunRecords(),
+      getManifest: (runId: string) => this.getRunManifestRecord(runId),
+      getSummary: (runId: string) => this.getRunSummaryData(runId),
+      listTrials: (runId: string) => this.listTrialRecords(runId),
+      clearAll: () => this.clearAllRunResults(),
+      clearByRunIds: (runIds: string[]) => this.clearRunResultsById(runIds),
+    });
+    this.baseline = Object.freeze({
+      set: (runId: string) => this.saveBaselineRun(runId),
+      compare: (currentRunId: string, options?: CompareBaselineOptions) =>
+        this.compareAgainstBaseline(currentRunId, options),
+    });
   }
 
-  async listSuites(): Promise<SuiteDescriptor[]> {
+  private async listSuitesFromTasks(): Promise<SuiteDescriptor[]> {
     return this.tasks.listSuites();
   }
 
-  async loadSuite(input: LoadSuiteInput): Promise<LoadedSuite> {
+  private async loadSuiteHandle(input: LoadSuiteInput): Promise<LoadedSuite> {
     if (typeof input === 'string') {
       const suiteId = ensureNonEmptyString(input, 'suiteId');
       const suite = toInternalSuite(await this.tasks.resolveSuite(suiteId), this.tasks);
@@ -160,7 +205,7 @@ export class Core {
     return this.bindSuite(Suite.fromDocument(raw, { tasks: this.tasks }), false);
   }
 
-  async loadSuites(...inputs: LoadSuiteInput[]): Promise<LoadedSuite[]> {
+  private async loadSuiteHandles(...inputs: LoadSuiteInput[]): Promise<LoadedSuite[]> {
     if (inputs.length === 0) {
       throw new ValidationError('At least one suite input is required.', {
         details: { field: 'inputs' },
@@ -169,29 +214,29 @@ export class Core {
 
     const suites: LoadedSuite[] = [];
     for (const input of inputs) {
-      suites.push(await this.loadSuite(input));
+      suites.push(await this.loadSuiteHandle(input));
     }
     return suites;
   }
 
-  async getRunManifest(runId: string): Promise<RunManifestRecord | null> {
+  private async getRunManifestRecord(runId: string): Promise<RunManifestRecord | null> {
     const normalizedRunId = ensureNonEmptyString(runId, 'runId');
     return this.stores.getRunManifest(normalizedRunId);
   }
 
-  async getRunSummary(runId: string): Promise<RunSummaryData | null> {
+  private async getRunSummaryData(runId: string): Promise<RunSummaryData | null> {
     const normalizedRunId = ensureNonEmptyString(runId, 'runId');
     const record = await this.stores.getRunSummary(normalizedRunId);
     return record?.summary ?? null;
   }
 
-  async listTrials(runId: string): Promise<TrialRecord[]> {
+  private async listTrialRecords(runId: string): Promise<TrialRecord[]> {
     const normalizedRunId = ensureNonEmptyString(runId, 'runId');
     const records = await this.stores.listTrials(normalizedRunId);
     return records.map((record) => record.trial);
   }
 
-  async setBaseline(runId: string): Promise<void> {
+  private async saveBaselineRun(runId: string): Promise<void> {
     const normalizedRunId = ensureNonEmptyString(runId, 'runId');
     const record = await this.stores.getRunSummary(normalizedRunId);
     if (!record) {
@@ -206,7 +251,7 @@ export class Core {
     });
   }
 
-  async compareBaseline(
+  private async compareAgainstBaseline(
     currentRunId: string,
     options: CompareBaselineOptions = {},
   ): Promise<BaselineComparison> {
@@ -293,7 +338,7 @@ export class Core {
     return comparison;
   }
 
-  async listRuns(): Promise<RunRecord[]> {
+  private async listRunRecords(): Promise<RunRecord[]> {
     const runIds = await this.stores.listRunIds();
     const records: RunRecord[] = [];
 
@@ -314,11 +359,11 @@ export class Core {
     return records.sort((a, b) => a.runId.localeCompare(b.runId));
   }
 
-  async clearResults(): Promise<ClearedResultEntry[]> {
+  private async clearAllRunResults(): Promise<ClearedResultEntry[]> {
     return this.stores.clearAllResults();
   }
 
-  async clearResultsByRunIds(runIds: string[]): Promise<ClearedResultEntry[]> {
+  private async clearRunResultsById(runIds: string[]): Promise<ClearedResultEntry[]> {
     return this.stores.clearResultsByRunIds(runIds);
   }
 
@@ -329,13 +374,11 @@ export class Core {
 
     const resolveSuiteData = async (): Promise<Suite> => {
       if (!suitePromise) {
-        suitePromise = this.tasks
-          .resolveSuite(suite.id)
-          .then((resolved) => {
-            const resolvedSuite = toInternalSuite(resolved, this.tasks);
-            currentSuite = mergeSuiteMetadata(currentSuite, resolvedSuite);
-            return resolvedSuite;
-          });
+        suitePromise = this.tasks.resolveSuite(suite.id).then((resolved) => {
+          const resolvedSuite = toInternalSuite(resolved, this.tasks);
+          currentSuite = mergeSuiteMetadata(currentSuite, resolvedSuite);
+          return resolvedSuite;
+        });
       }
 
       return suitePromise;

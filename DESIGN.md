@@ -196,16 +196,26 @@ Provider and grader resolvability stays in Core, not in the adapter.
 ```ts
 new Core({ tasks, stores, providers, graders, observers })
 
-core.listSuites(): Promise<SuiteDescriptor[]>
-core.loadSuite(input): Promise<LoadedSuite>
-core.loadSuites(...inputs): Promise<LoadedSuite[]>
+core.suites.list(): Promise<SuiteDescriptor[]>
+core.suites.load(input): Promise<LoadedSuite>
+core.suites.loadMany(...inputs): Promise<LoadedSuite[]>
+
+core.results.list(): Promise<RunRecord[]>
+core.results.getManifest(runId): Promise<RunManifestRecord | null>
+core.results.getSummary(runId): Promise<RunSummaryData | null>
+core.results.listTrials(runId): Promise<TrialRecord[]>
+core.results.clearAll(): Promise<ClearedResultEntry[]>
+core.results.clearByRunIds(runIds): Promise<ClearedResultEntry[]>
+
+core.baseline.set(runId): Promise<void>
+core.baseline.compare(currentRunId, options?): Promise<BaselineComparison>
 
 loadedSuite.listTasks(): Promise<TaskIndex[]>
 loadedSuite.runTask(taskId): Promise<RunSummaryData[]>
 loadedSuite.streamTask(taskId): AsyncIterable<RunEvent>
 ```
 
-`loadSuite` accepts either:
+`core.suites.load` accepts either:
 
 1. a suite id discovered through `tasks`
 2. a bare suite object or promise that resolves to one

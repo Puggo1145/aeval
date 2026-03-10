@@ -669,26 +669,30 @@ const core = new Core({
   },
 });
 
-const suites = await core.listSuites();
-const loadedSuite = await core.loadSuite(suites[0].id);
+const suites = await core.suites.list();
+const loadedSuite = await core.suites.load(suites[0].id);
 const tasks = await loadedSuite.listTasks();
 const summaries = await loadedSuite.runTask(tasks[0].id);
 ```
 
-主要入口：
+主要入口按职责分组：
 
-- `core.listSuites()`
-- `core.loadSuite(input)`
-- `core.loadSuites(...inputs)`
+- `core.suites.list()`
+- `core.suites.load(input)`
+- `core.suites.loadMany(...inputs)`
 - `loadedSuite.listTasks()`
 - `loadedSuite.runTask(taskId)`
 - `loadedSuite.streamTask(taskId)`
-- `core.listRuns()`
-- `core.getRunManifest(runId)`
-- `core.getRunSummary(runId)`
-- `core.listTrials(runId)`
+- `core.results.list()`
+- `core.results.getManifest(runId)`
+- `core.results.getSummary(runId)`
+- `core.results.listTrials(runId)`
+- `core.results.clearAll()`
+- `core.results.clearByRunIds(runIds)`
+- `core.baseline.set(runId)`
+- `core.baseline.compare(currentRunId, options)`
 
-`core.loadSuite(...)` 返回的是公开 API handle，不是内部 domain `Suite` 实现；外部模块应只使用这些公开方法和返回的 record 数据。
+`core.suites.load(...)` 返回的是公开 API handle，不是内部 domain `Suite` 实现；外部模块应只使用这些公开方法和返回的 record 数据。
 
 ## 本地参考适配器
 

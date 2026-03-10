@@ -122,7 +122,7 @@ function formatTaskHint(task: { runCount: number; desc?: string; capability?: st
 }
 
 export async function runTask(core: CoreApi): Promise<void> {
-  const suites = await core.listSuites();
+  const suites = await core.suites.list();
   if (suites.length === 0) {
     p.log.warn('No suites found.');
     return;
@@ -139,7 +139,7 @@ export async function runTask(core: CoreApi): Promise<void> {
     }),
   );
 
-  const loadedSuite = await core.loadSuite(selectedSuite.id);
+  const loadedSuite = await core.suites.load(selectedSuite.id);
   const tasks = await loadedSuite.listTasks();
   if (tasks.length === 0) {
     p.log.warn(`No tasks found in suite '${selectedSuite.id}'.`);

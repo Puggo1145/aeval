@@ -8,7 +8,7 @@ export async function listRuns(core: CoreApi): Promise<void> {
   const s = p.spinner();
   s.start('Loading runs…');
 
-  const records = await core.listRuns();
+  const records = await core.results.list();
   const metadata = await readRunMetadataMap(
     core,
     records.map((record) => record.runId),

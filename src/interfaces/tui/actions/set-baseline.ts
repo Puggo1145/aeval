@@ -8,7 +8,7 @@ import { handleCancel } from '../utils.js';
 export async function setBaseline(core: CoreApi): Promise<void> {
   const s = p.spinner();
   s.start('Loading runs…');
-  const records = await core.listRuns();
+  const records = await core.results.list();
   const completedRuns = records.filter((record) => record.status === 'completed');
   s.stop('Runs loaded.');
 
@@ -32,6 +32,6 @@ export async function setBaseline(core: CoreApi): Promise<void> {
     }),
   );
 
-  await core.setBaseline(runId);
+  await core.baseline.set(runId);
   p.log.success(`Baseline set to run '${runId}'.`);
 }

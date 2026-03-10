@@ -3,7 +3,10 @@ export {
   type CompareBaselineOptions,
   Core,
   type CoreApi,
+  type CoreBaselineApi,
   type CoreDependencies,
+  type CoreResultsApi,
+  type CoreSuitesApi,
   type LoadSuiteInput,
 } from './api/core-api.js';
 export * from './contracts/index.js';

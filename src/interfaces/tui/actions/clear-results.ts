@@ -8,7 +8,7 @@ import { handleCancel } from '../utils.js';
 const SECOND_CONFIRM_TOKEN = 'DELETE';
 type ClearMode = 'selected' | 'all';
 
-function renderDeletedEntries(entries: Awaited<ReturnType<CoreApi['clearResults']>>): void {
+function renderDeletedEntries(entries: Awaited<ReturnType<CoreApi['results']['clearAll']>>): void {
   if (entries.length === 0) {
     p.log.info('No result files found.');
     return;
@@ -23,7 +23,7 @@ function renderDeletedEntries(entries: Awaited<ReturnType<CoreApi['clearResults'
 }
 
 export async function clearResults(core: CoreApi, mode: ClearMode): Promise<void> {
-  const records = await core.listRuns();
+  const records = await core.results.list();
   const runCount = records.length;
   if (runCount === 0) {
     p.log.info('No runs found. Nothing to clear.');
@@ -71,7 +71,7 @@ export async function clearResults(core: CoreApi, mode: ClearMode): Promise<void
 
     const s = p.spinner();
     s.start('Deleting all results...');
-    const deletedEntries = await core.clearResults();
+    const deletedEntries = await core.results.clearAll();
     s.stop('Results deleted.');
     renderDeletedEntries(deletedEntries);
     return;
@@ -119,7 +119,7 @@ export async function clearResults(core: CoreApi, mode: ClearMode): Promise<void
 
   const s = p.spinner();
   s.start('Deleting selected results...');
-  const deletedEntries = await core.clearResultsByRunIds(selectedRunIds);
+  const deletedEntries = await core.results.clearByRunIds(selectedRunIds);
   s.stop('Selected results deleted.');
   renderDeletedEntries(deletedEntries);
 }

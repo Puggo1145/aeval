@@ -14,22 +14,17 @@ import type {
   Tasks,
 } from '../src/core/adapters/task-source-adapter.js';
 import { Core } from '../src/core/api/index.js';
-import { SCHEMA_VERSIONS } from '../src/core/contracts/index.js';
+import { parseTaskDocument, SCHEMA_VERSIONS } from '../src/core/contracts/index.js';
 import type { RunManifestRecord } from '../src/core/contracts/run-manifest.js';
-import type { RunRecord } from '../src/core/contracts/run-record.js';
 import type { RunSummaryRecord } from '../src/core/contracts/run-summary.js';
 import type { SuiteDocument } from '../src/core/contracts/suite.js';
 import type { TaskDocument } from '../src/core/contracts/task.js';
 import type { TrialResultRecord } from '../src/core/contracts/trial.js';
-import { parseTaskDocument } from '../src/core/contracts/index.js';
 import { ExecutionResult } from '../src/core/domain/execution-result.js';
 import { Suite } from '../src/core/domain/suite.js';
 import { Task } from '../src/core/domain/task.js';
-import {
-  resolveExecutionPolicy,
-  validateTaskRuntime,
-} from '../src/core/runtime/task-execution.js';
 import { Graders, Providers } from '../src/core/runtime/index.js';
+import { resolveExecutionPolicy, validateTaskRuntime } from '../src/core/runtime/task-execution.js';
 
 class InMemoryStore implements Stores {
   private readonly manifests = new Map<string, RunManifestRecord>();
@@ -72,7 +67,9 @@ class InMemoryStore implements Stores {
   }
 
   async listRunIds(): Promise<string[]> {
-    return [...new Set([...this.manifests.keys(), ...this.summaries.keys(), ...this.trials.keys()])].sort();
+    return [
+      ...new Set([...this.manifests.keys(), ...this.summaries.keys(), ...this.trials.keys()]),
+    ].sort();
   }
 
   async clearResultsByRunIds(runIds: string[]): Promise<ClearedResultEntry[]> {
@@ -273,7 +270,7 @@ function createTestCoreWithTasks(tasks: Tasks, stores: Stores = new InMemoryStor
 test('listSuites exposes adapter-backed suite discovery', async () => {
   const core = createTestCore();
 
-  const suites = await core.listSuites();
+  const suites = await core.suites.list();
 
   assert.deepEqual(suites, [
     {
@@ -284,9 +281,37 @@ test('listSuites exposes adapter-backed suite discovery', async () => {
   ]);
 });
 
+test('CoreApi groups adapter-backed methods by suites, results, and baseline', async () => {
+  const core = createTestCore();
+
+  const suites = await core.suites.list();
+  assert.equal(suites[0]?.id, 'basic-llm');
+
+  const suite = await core.suites.load('basic-llm');
+  const summaries = await suite.runTask('basic-llm/task-001');
+  const runId = summaries[0]!.runId;
+
+  const runs = await core.results.list();
+  assert.equal(runs.length, 2);
+
+  const manifest = await core.results.getManifest(runId);
+  assert.equal(manifest?.taskId, 'basic-llm/task-001');
+
+  const summary = await core.results.getSummary(runId);
+  assert.equal(summary?.runId, runId);
+
+  const trials = await core.results.listTrials(runId);
+  assert.equal(trials.length, 2);
+
+  await core.baseline.set(runId);
+  const comparison = await core.baseline.compare(runId);
+  assert.equal(comparison.baselineRunId, runId);
+  assert.equal(comparison.currentRunId, runId);
+});
+
 test('loadSuite by id and runTask executes all provider runs', async () => {
   const core = createTestCore();
-  const suite = await core.loadSuite('basic-llm');
+  const suite = await core.suites.load('basic-llm');
 
   const summaries = await suite.runTask('basic-llm/task-001');
 
@@ -301,7 +326,7 @@ test('loadSuite by id and runTask executes all provider runs', async () => {
 
 test('loadSuite accepts bare suite definitions and listTasks returns task indexes', async () => {
   const core = createTestCore();
-  const suite = await core.loadSuite(createSuiteDocument());
+  const suite = await core.suites.load(createSuiteDocument());
 
   const tasks = await suite.listTasks();
 
@@ -320,7 +345,7 @@ test('loadSuite accepts bare suite definitions and listTasks returns task indexe
 
 test('loadSuite syncs LoadedSuite metadata after resolving a bare suite input', async () => {
   const core = createTestCore();
-  const suite = await core.loadSuite(createSuiteDocument());
+  const suite = await core.suites.load(createSuiteDocument());
 
   assert.equal(suite.source, undefined);
   assert.equal(suite.taskIndexes, undefined);
@@ -387,13 +412,13 @@ test('loadSuite uses resolved suite metadata when persisting runs from a bare su
   };
 
   const core = createTestCoreWithTasks(tasks, store);
-  const suite = await core.loadSuite(bareSuiteDocument);
+  const suite = await core.suites.load(bareSuiteDocument);
   const summaries = await suite.runTask(taskDocument.id);
 
   assert.equal(suite.name, resolvedSuiteDocument.name);
   assert.equal(summaries.length, 2);
 
-  const manifest = await core.getRunManifest(summaries[0]!.runId);
+  const manifest = await core.results.getManifest(summaries[0]!.runId);
   assert.equal(manifest?.suiteName, resolvedSuiteDocument.name);
 });
 
@@ -518,7 +543,7 @@ test('validateTaskRuntime and resolveExecutionPolicy cover task runtime prep', (
 
 test('streamTask emits run lifecycle events for each provider run', async () => {
   const core = createTestCore();
-  const suite = await core.loadSuite('basic-llm');
+  const suite = await core.suites.load('basic-llm');
   const eventTypes: string[] = [];
   const startedRuns: string[] = [];
 
@@ -578,7 +603,7 @@ test('listRuns includes interrupted runs without summaries', async () => {
   });
   const core = createTestCore(stores);
 
-  const runs = await core.listRuns();
+  const runs = await core.results.list();
   const interrupted = runs.find((run) => run.runId === 'run-interrupted');
 
   assert.equal(interrupted?.status, 'interrupted');
@@ -589,7 +614,7 @@ test('listRuns includes interrupted runs without summaries', async () => {
 test('loadSuites rejects when called without inputs', async () => {
   const core = createTestCore();
 
-  await assert.rejects(() => core.loadSuites(), /At least one suite input is required/);
+  await assert.rejects(() => core.suites.loadMany(), /At least one suite input is required/);
 });
 
 test('Core rejects invalid runtimeDefaults.maxConcurrency', () => {

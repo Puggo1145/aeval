@@ -231,9 +231,19 @@ Rules:
 ## 5. Core API
 
 ```ts
-core.listSuites(): Promise<SuiteDescriptor[]>
-core.loadSuite(input): Promise<LoadedSuite>
-core.loadSuites(...inputs): Promise<LoadedSuite[]>
+core.suites.list(): Promise<SuiteDescriptor[]>
+core.suites.load(input): Promise<LoadedSuite>
+core.suites.loadMany(...inputs): Promise<LoadedSuite[]>
+
+core.results.list(): Promise<RunRecord[]>
+core.results.getManifest(runId): Promise<RunManifestRecord | null>
+core.results.getSummary(runId): Promise<RunSummaryData | null>
+core.results.listTrials(runId): Promise<TrialRecord[]>
+core.results.clearAll(): Promise<ClearedResultEntry[]>
+core.results.clearByRunIds(runIds): Promise<ClearedResultEntry[]>
+
+core.baseline.set(runId): Promise<void>
+core.baseline.compare(currentRunId, options?): Promise<BaselineComparison>
 
 loadedSuite.listTasks(): Promise<TaskIndex[]>
 loadedSuite.runTask(taskId): Promise<RunSummaryData[]>
@@ -242,7 +252,7 @@ loadedSuite.streamTask(taskId): AsyncIterable<RunEvent>
 
 Rules:
 
-1. `loadSuite` accepts a discovered suite id or a bare suite object/promise
+1. `core.suites.load(input)` accepts a discovered suite id or a bare suite object/promise
 2. `runTask(taskId)` executes all runs defined by the task
 3. runs are serial across `provider.runs[]`
 4. trials may run concurrently within one run

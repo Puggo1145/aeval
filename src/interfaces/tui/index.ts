@@ -134,7 +134,7 @@ export async function runTui(core: CoreApi): Promise<void> {
     if (groupId === 'results') {
       const s = p.spinner();
       s.start('Loading runs…');
-      const records = await core.listRuns();
+      const records = await core.results.list();
       s.stop('Runs loaded.');
 
       if (records.length === 0) {
