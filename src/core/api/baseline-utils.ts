@@ -1,21 +1,21 @@
 import type { BaselineComparison, BaselineThresholds } from '../contracts/runtime.js';
-import type { TrialResultRecord } from '../contracts/trial.js';
+import type { Trial } from '../domain/trial.js';
 import { ValidationError } from '../errors/index.js';
 
-function buildTaskPassIndex(trials: TrialResultRecord[]): Map<string, boolean> {
+function buildTaskPassIndex(trials: Trial[]): Map<string, boolean> {
   const index = new Map<string, boolean>();
 
-  for (const record of trials) {
-    const current = index.get(record.trial.taskId) ?? false;
-    index.set(record.trial.taskId, current || record.trial.aggregate.pass);
+  for (const trial of trials) {
+    const current = index.get(trial.taskId) ?? false;
+    index.set(trial.taskId, current || trial.aggregate.pass);
   }
 
   return index;
 }
 
 export function computeRegressionDiff(
-  baselineTrials: TrialResultRecord[],
-  currentTrials: TrialResultRecord[],
+  baselineTrials: Trial[],
+  currentTrials: Trial[],
 ): { regressions: string[]; improvements: string[] } {
   const baselinePassIndex = buildTaskPassIndex(baselineTrials);
   const currentPassIndex = buildTaskPassIndex(currentTrials);

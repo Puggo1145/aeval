@@ -1,18 +1,15 @@
-import {
-  type ExecutionResult,
-  SYSTEM_ERROR_CODES,
-  type SystemErrorCode,
-} from '../contracts/execution.js';
-import type { Grader, TaskContext } from '../contracts/runtime.js';
-import { SCHEMA_VERSIONS } from '../contracts/schema-versions.js';
-import type { TaskDefinition } from '../contracts/task.js';
-import type { TrialResult } from '../contracts/trial.js';
+import { SYSTEM_ERROR_CODES, type SystemErrorCode } from '../contracts/execution.js';
+import type { Graders, Providers, TaskContext } from '../contracts/runtime.js';
+import { ExecutionResult } from '../domain/execution-result.js';
+import type { Run } from '../domain/run.js';
+import type { Task } from '../domain/task.js';
+import { Trial } from '../domain/trial.js';
 import {
   createTrialTimeoutAbortReason,
   isStreamClosedError,
   isTrialTimeoutAbortReason,
 } from '../runtime/abort-reasons.js';
-import { aggregateGraders } from './grader-aggregate.js';
+import { GraderAggregator } from './grader-aggregate.js';
 
 class TrialTimeoutError extends Error {
   constructor(timeoutMs: number) {
@@ -81,204 +78,183 @@ function classifySystemError(
   };
 }
 
-export interface TrialExecutionDeps {
-  resolveProvider: (
-    providerId: string,
-  ) => (ctx: TaskContext, params: Readonly<Record<string, unknown>>) => Promise<ExecutionResult>;
-  resolveGrader: (type: string) => Grader;
-}
-
 export interface TrialExecutionInput {
-  task: TaskDefinition;
-  params: Readonly<Record<string, unknown>>;
+  task: Task;
+  run: Run;
   trialIndex: number;
   runId: string;
-  runName: string;
   timeoutMs: number;
   parentSignal?: AbortSignal;
 }
 
-/**
- * 执行单次 trial：provider 执行 -> grading -> TrialResult。
- *
- * 通过 AbortSignal 处理超时，并将失败归类为 agent/system。
- * 无论成功或失败，都返回 TrialResult。
- */
-export async function executeTrial(
-  input: TrialExecutionInput,
-  deps: TrialExecutionDeps,
-): Promise<TrialResult> {
-  const startedAt = new Date().toISOString();
-  const startMs = performance.now();
+export class TrialExecutor {
+  private readonly aggregator: GraderAggregator;
 
-  const abortController = new AbortController();
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  let removeParentAbortListener: (() => void) | undefined;
-  let removeAbortListener: (() => void) | undefined;
-
-  // 将父级 signal 透传到当前 trial 的 abort controller
-  if (input.parentSignal) {
-    // 保存一个指针，对 TS 确保 signal 不会被 GC 回收
-    const parentSignal = input.parentSignal;
-    // 父级 abort 已经中止，终止当前 trial 并使用和父级相同的 reason
-    if (parentSignal.aborted) {
-      abortController.abort(parentSignal.reason);
-    } else {
-      // 父级暂未终止，监听父级 abort 事件，并使用和父级相同的 reason 中止当前 trial
-      const onParentAbort = () => abortController.abort(parentSignal.reason);
-      input.parentSignal.addEventListener('abort', onParentAbort, { once: true });
-      removeParentAbortListener = () =>
-        input.parentSignal?.removeEventListener('abort', onParentAbort);
-    }
+  constructor(
+    private readonly deps: {
+      providers: Providers;
+      graders: Graders;
+    },
+  ) {
+    this.aggregator = new GraderAggregator(deps.graders);
   }
 
-  const ctx: TaskContext = {
-    taskId: input.task.id,
-    trialIndex: input.trialIndex,
-    runName: input.runName,
-    runId: input.runId,
-    signal: abortController.signal,
-  };
+  async execute(input: TrialExecutionInput): Promise<Trial> {
+    const startedAt = new Date().toISOString();
+    const startMs = performance.now();
 
-  let execution: ExecutionResult;
+    const abortController = new AbortController();
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let removeParentAbortListener: (() => void) | undefined;
+    let removeAbortListener: (() => void) | undefined;
 
-  try {
-    const providerPromise = (async (): Promise<ExecutionResult> => {
-      const provider = deps.resolveProvider(input.task.provider.id);
-      return provider(ctx, input.params);
-    })();
-
-    const timeoutPromise = new Promise<never>((_resolve, reject) => {
-      timeoutId = setTimeout(() => {
-        abortController.abort(createTrialTimeoutAbortReason());
-        reject(new TrialTimeoutError(input.timeoutMs));
-      }, input.timeoutMs);
-    });
-
-    const abortPromise = new Promise<never>((_resolve, reject) => {
-      const rejectIfShortCircuitReason = () => {
-        if (shouldShortCircuitOnAbort(abortController.signal.reason)) {
-          reject(new TrialAbortedError());
-        }
-      };
-
-      if (abortController.signal.aborted) {
-        rejectIfShortCircuitReason();
-        return;
+    if (input.parentSignal) {
+      const parentSignal = input.parentSignal;
+      if (parentSignal.aborted) {
+        abortController.abort(parentSignal.reason);
+      } else {
+        const onParentAbort = () => abortController.abort(parentSignal.reason);
+        input.parentSignal.addEventListener('abort', onParentAbort, { once: true });
+        removeParentAbortListener = () =>
+          input.parentSignal?.removeEventListener('abort', onParentAbort);
       }
+    }
 
-      const onAbort = () => rejectIfShortCircuitReason();
-      abortController.signal.addEventListener('abort', onAbort, { once: true });
-      removeAbortListener = () => abortController.signal.removeEventListener('abort', onAbort);
-    });
+    const ctx: TaskContext = {
+      taskId: input.task.id,
+      trialIndex: input.trialIndex,
+      runName: input.run.name,
+      runId: input.runId,
+      signal: abortController.signal,
+    };
 
-    execution = await Promise.race([providerPromise, timeoutPromise, abortPromise]);
-  } catch (error: unknown) {
+    let execution: ExecutionResult;
+
+    try {
+      const providerPromise = (async (): Promise<ExecutionResult> => {
+        const provider = this.deps.providers.require(input.task.providerId);
+        return ExecutionResult.from(await provider.execute(ctx, input.run));
+      })();
+
+      const timeoutPromise = new Promise<never>((_resolve, reject) => {
+        timeoutId = setTimeout(() => {
+          abortController.abort(createTrialTimeoutAbortReason());
+          reject(new TrialTimeoutError(input.timeoutMs));
+        }, input.timeoutMs);
+      });
+
+      const abortPromise = new Promise<never>((_resolve, reject) => {
+        const rejectIfShortCircuitReason = () => {
+          if (shouldShortCircuitOnAbort(abortController.signal.reason)) {
+            reject(new TrialAbortedError());
+          }
+        };
+
+        if (abortController.signal.aborted) {
+          rejectIfShortCircuitReason();
+          return;
+        }
+
+        const onAbort = () => rejectIfShortCircuitReason();
+        abortController.signal.addEventListener('abort', onAbort, { once: true });
+        removeAbortListener = () => abortController.signal.removeEventListener('abort', onAbort);
+      });
+
+      execution = await Promise.race([providerPromise, timeoutPromise, abortPromise]);
+    } catch (error: unknown) {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+      removeParentAbortListener?.();
+      removeAbortListener?.();
+
+      return this.buildFailedTrial(
+        input,
+        startedAt,
+        startMs,
+        new ExecutionResult({
+          output: '',
+          error: {
+            type: 'system',
+            ...classifySystemError(error, input.timeoutMs, abortController.signal),
+          },
+        }),
+      );
+    }
+
     if (timeoutId !== undefined) {
       clearTimeout(timeoutId);
     }
     removeParentAbortListener?.();
     removeAbortListener?.();
+
+    if (execution.error) {
+      return this.buildFailedTrial(input, startedAt, startMs, execution);
+    }
+
+    try {
+      const { graderResults, aggregate } = await this.aggregator.grade(
+        execution,
+        input.task.graderLayers,
+        input.task.graderStrategy,
+        input.task.passThreshold,
+      );
+      const endedAt = new Date().toISOString();
+      const durationMs = Math.round(performance.now() - startMs);
+
+      return new Trial({
+        taskId: input.task.id,
+        runId: input.runId,
+        runName: input.run.name,
+        trialIndex: input.trialIndex,
+        execution,
+        graderResults,
+        aggregate,
+        timings: { startedAt, endedAt, durationMs },
+      });
+    } catch (error: unknown) {
+      const endedAt = new Date().toISOString();
+      const durationMs = Math.round(performance.now() - startMs);
+
+      return new Trial({
+        taskId: input.task.id,
+        runId: input.runId,
+        runName: input.run.name,
+        trialIndex: input.trialIndex,
+        execution: new ExecutionResult({
+          ...execution.toRecord(),
+          error: {
+            type: 'system',
+            code: SYSTEM_ERROR_CODES.GRADER_EXCEPTION,
+            message: error instanceof Error ? error.message : String(error),
+            retryable: true,
+          },
+        }),
+        graderResults: [],
+        aggregate: { pass: false },
+        timings: { startedAt, endedAt, durationMs },
+      });
+    }
+  }
+
+  private buildFailedTrial(
+    input: TrialExecutionInput,
+    startedAt: string,
+    startMs: number,
+    execution: ExecutionResult,
+  ): Trial {
     const endedAt = new Date().toISOString();
     const durationMs = Math.round(performance.now() - startMs);
 
-    const classified = classifySystemError(error, input.timeoutMs, abortController.signal);
-    execution = {
-      schemaVersion: SCHEMA_VERSIONS.EXECUTION_RESULT,
-      output: '',
-      error: {
-        type: 'system',
-        code: classified.code,
-        message: classified.message,
-        retryable: classified.retryable,
-      },
-    };
-
-    // 出错时跳过 grading，trial 直接判定为失败
-    return {
-      schemaVersion: SCHEMA_VERSIONS.TRIAL_RESULT,
+    return new Trial({
       taskId: input.task.id,
       runId: input.runId,
-      runName: input.runName,
+      runName: input.run.name,
       trialIndex: input.trialIndex,
       execution,
       graderResults: [],
       aggregate: { pass: false },
       timings: { startedAt, endedAt, durationMs },
-    };
-  }
-
-  if (timeoutId !== undefined) {
-    clearTimeout(timeoutId);
-  }
-  removeParentAbortListener?.();
-  removeAbortListener?.();
-
-  // provider 已返回 execution.error 时，跳过 grading
-  if (execution.error) {
-    const endedAt = new Date().toISOString();
-    const durationMs = Math.round(performance.now() - startMs);
-
-    return {
-      schemaVersion: SCHEMA_VERSIONS.TRIAL_RESULT,
-      taskId: input.task.id,
-      runId: input.runId,
-      runName: input.runName,
-      trialIndex: input.trialIndex,
-      execution,
-      graderResults: [],
-      aggregate: { pass: false },
-      timings: { startedAt, endedAt, durationMs },
-    };
-  }
-
-  // 对 execution 进行 grading
-  try {
-    const { graderResults, aggregate } = await aggregateGraders({
-      execution,
-      layers: input.task.graders.layers,
-      strategy: input.task.graders.strategy,
-      passThreshold:
-        'passThreshold' in input.task.graders ? input.task.graders.passThreshold : undefined,
-      resolveGrader: deps.resolveGrader,
     });
-
-    const endedAt = new Date().toISOString();
-    const durationMs = Math.round(performance.now() - startMs);
-
-    return {
-      schemaVersion: SCHEMA_VERSIONS.TRIAL_RESULT,
-      taskId: input.task.id,
-      runId: input.runId,
-      runName: input.runName,
-      trialIndex: input.trialIndex,
-      execution,
-      graderResults,
-      aggregate,
-      timings: { startedAt, endedAt, durationMs },
-    };
-  } catch (error: unknown) {
-    const endedAt = new Date().toISOString();
-    const durationMs = Math.round(performance.now() - startMs);
-
-    return {
-      schemaVersion: SCHEMA_VERSIONS.TRIAL_RESULT,
-      taskId: input.task.id,
-      runId: input.runId,
-      runName: input.runName,
-      trialIndex: input.trialIndex,
-      execution: {
-        ...execution,
-        error: {
-          type: 'system',
-          code: SYSTEM_ERROR_CODES.GRADER_EXCEPTION,
-          message: error instanceof Error ? error.message : String(error),
-          retryable: true,
-        },
-      },
-      graderResults: [],
-      aggregate: { pass: false },
-      timings: { startedAt, endedAt, durationMs },
-    };
   }
 }

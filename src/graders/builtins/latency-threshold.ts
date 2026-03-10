@@ -1,6 +1,7 @@
 import { z } from 'zod';
-import type { ExecutionResult } from '../../core/contracts/execution.js';
 import type { GraderResult } from '../../core/contracts/trial.js';
+import type { ExecutionResult } from '../../core/domain/execution-result.js';
+import { ConfiguredGrader } from '../base-grader.js';
 import {
   type GraderConfigValidationResult,
   parseGraderConfig,
@@ -21,7 +22,7 @@ type LatencyThresholdConfig = z.infer<typeof LatencyThresholdConfigSchema>;
  * Config:
  *   maxMs: number  — maximum allowed latency in milliseconds
  */
-export async function latencyThreshold(
+async function gradeLatencyThreshold(
   result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
@@ -49,9 +50,9 @@ export async function latencyThreshold(
   };
 }
 
-(
-  latencyThreshold as typeof latencyThreshold & {
-    validateConfig: (config: Record<string, unknown>) => GraderConfigValidationResult;
-  }
-).validateConfig = (config: Record<string, unknown>) =>
-  validateGraderConfig(LatencyThresholdConfigSchema, config);
+export const latencyThreshold = new ConfiguredGrader({
+  type: 'latency-threshold',
+  grade: (result, layer) => gradeLatencyThreshold(result, layer.config),
+  validate: (layer): GraderConfigValidationResult =>
+    validateGraderConfig(LatencyThresholdConfigSchema, layer.config),
+});

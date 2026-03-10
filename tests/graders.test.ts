@@ -1,31 +1,62 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { ExecutionResult } from '../src/core/contracts/execution.js';
-import { SCHEMA_VERSIONS } from '../src/core/contracts/schema-versions.js';
-import { InMemoryGraderRegistry } from '../src/core/runtime/grader-registry.js';
-import { contains } from '../src/graders/builtins/contains.js';
-import { exactMatch } from '../src/graders/builtins/exact-match.js';
-import { jsonSchema } from '../src/graders/builtins/json-schema.js';
-import { latencyThreshold } from '../src/graders/builtins/latency-threshold.js';
-import { lengthCheck } from '../src/graders/builtins/length-check.js';
-import { outcomeCheck } from '../src/graders/builtins/outcome-check.js';
-import { regex } from '../src/graders/builtins/regex.js';
+import type { Grader } from '../src/core/contracts/runtime.js';
+import { ExecutionResult } from '../src/core/domain/execution-result.js';
+import { GraderLayer } from '../src/core/domain/grader-layer.js';
+import { Graders } from '../src/core/runtime/grader-registry.js';
+import { contains as containsGrader } from '../src/graders/builtins/contains.js';
+import { exactMatch as exactMatchGrader } from '../src/graders/builtins/exact-match.js';
+import { jsonSchema as jsonSchemaGrader } from '../src/graders/builtins/json-schema.js';
+import { latencyThreshold as latencyThresholdGrader } from '../src/graders/builtins/latency-threshold.js';
+import { lengthCheck as lengthCheckGrader } from '../src/graders/builtins/length-check.js';
+import { outcomeCheck as outcomeCheckGrader } from '../src/graders/builtins/outcome-check.js';
+import { regex as regexGrader } from '../src/graders/builtins/regex.js';
 import { tokenBudget } from '../src/graders/builtins/token-budget.js';
-import { toolCalls } from '../src/graders/builtins/tool-calls.js';
-import { transcript } from '../src/graders/builtins/transcript.js';
-import { createBuiltinLlmJudgeConfigValidator } from '../src/graders/llm/builtin-llm-judge.js';
-import { createLlmJudgeGrader } from '../src/graders/llm/llm-judge.js';
+import { toolCalls as toolCallsGrader } from '../src/graders/builtins/tool-calls.js';
+import { transcript as transcriptGrader } from '../src/graders/builtins/transcript.js';
+import { BuiltinLlmJudgeConfigValidator } from '../src/graders/llm/builtin-llm-judge.js';
+import type { JudgeProvider, JudgeProviderResult } from '../src/graders/llm/judge-provider.js';
+import { LlmJudgeGrader } from '../src/graders/llm/llm-judge.js';
 import { registerBuiltinGraders } from '../src/graders/register-builtins.js';
 
 // --- Test helpers ---
 
 function makeResult(overrides: Partial<ExecutionResult> = {}): ExecutionResult {
-  return {
-    schemaVersion: SCHEMA_VERSIONS.EXECUTION_RESULT,
+  return new ExecutionResult({
     output: '',
     ...overrides,
-  };
+  });
 }
+
+async function grade(grader: Grader, result: ExecutionResult, config: Record<string, unknown>) {
+  return grader.grade(
+    result,
+    new GraderLayer({
+      name: grader.type,
+      type: grader.type,
+      config,
+    }),
+  );
+}
+
+const exactMatch = (result: ExecutionResult, config: Record<string, unknown>) =>
+  grade(exactMatchGrader, result, config);
+const contains = (result: ExecutionResult, config: Record<string, unknown>) =>
+  grade(containsGrader, result, config);
+const regex = (result: ExecutionResult, config: Record<string, unknown>) =>
+  grade(regexGrader, result, config);
+const jsonSchema = (result: ExecutionResult, config: Record<string, unknown>) =>
+  grade(jsonSchemaGrader, result, config);
+const lengthCheck = (result: ExecutionResult, config: Record<string, unknown>) =>
+  grade(lengthCheckGrader, result, config);
+const toolCalls = (result: ExecutionResult, config: Record<string, unknown>) =>
+  grade(toolCallsGrader, result, config);
+const transcript = (result: ExecutionResult, config: Record<string, unknown>) =>
+  grade(transcriptGrader, result, config);
+const outcomeCheck = (result: ExecutionResult, config: Record<string, unknown>) =>
+  grade(outcomeCheckGrader, result, config);
+const latencyThreshold = (result: ExecutionResult, config: Record<string, unknown>) =>
+  grade(latencyThresholdGrader, result, config);
 
 // ==================== exact-match ====================
 
@@ -578,7 +609,8 @@ test('latency-threshold: invalid config', async () => {
 // ==================== token-budget ====================
 
 test('token-budget: within budget', async () => {
-  const r = await tokenBudget(
+  const r = await grade(
+    tokenBudget,
     makeResult({ metrics: { tokenUsage: { input: 100, output: 50, total: 150 } } }),
     { maxTotal: 200 },
   );
@@ -586,7 +618,8 @@ test('token-budget: within budget', async () => {
 });
 
 test('token-budget: total exceeds budget', async () => {
-  const r = await tokenBudget(
+  const r = await grade(
+    tokenBudget,
     makeResult({ metrics: { tokenUsage: { input: 100, output: 200, total: 300 } } }),
     { maxTotal: 250 },
   );
@@ -594,7 +627,8 @@ test('token-budget: total exceeds budget', async () => {
 });
 
 test('token-budget: input exceeds budget', async () => {
-  const r = await tokenBudget(
+  const r = await grade(
+    tokenBudget,
     makeResult({ metrics: { tokenUsage: { input: 500, output: 50, total: 550 } } }),
     { maxInput: 200 },
   );
@@ -602,7 +636,8 @@ test('token-budget: input exceeds budget', async () => {
 });
 
 test('token-budget: output exceeds budget', async () => {
-  const r = await tokenBudget(
+  const r = await grade(
+    tokenBudget,
     makeResult({ metrics: { tokenUsage: { input: 50, output: 500, total: 550 } } }),
     { maxOutput: 200 },
   );
@@ -610,17 +645,18 @@ test('token-budget: output exceeds budget', async () => {
 });
 
 test('token-budget: no tokenUsage', async () => {
-  const r = await tokenBudget(makeResult({ metrics: {} }), { maxTotal: 200 });
+  const r = await grade(tokenBudget, makeResult({ metrics: {} }), { maxTotal: 200 });
   assert.equal(r.pass, false);
 });
 
 test('token-budget: no config', async () => {
-  const r = await tokenBudget(makeResult(), {});
+  const r = await grade(tokenBudget, makeResult(), {});
   assert.equal(r.pass, false);
 });
 
 test('token-budget: invalid maxTotal config type fails', async () => {
-  const r = await tokenBudget(
+  const r = await grade(
+    tokenBudget,
     makeResult({ metrics: { tokenUsage: { input: 100, output: 100, total: 200 } } }),
     { maxTotal: '200' },
   );
@@ -629,7 +665,8 @@ test('token-budget: invalid maxTotal config type fails', async () => {
 });
 
 test('token-budget: negative maxInput config fails', async () => {
-  const r = await tokenBudget(
+  const r = await grade(
+    tokenBudget,
     makeResult({ metrics: { tokenUsage: { input: 100, output: 100, total: 200 } } }),
     { maxInput: -1 },
   );
@@ -638,7 +675,8 @@ test('token-budget: negative maxInput config fails', async () => {
 });
 
 test('token-budget: maxTotal requires usage.total', async () => {
-  const r = await tokenBudget(
+  const r = await grade(
+    tokenBudget,
     makeResult({ metrics: { tokenUsage: { input: 100, output: 100 } } }),
     { maxTotal: 300 },
   );
@@ -647,7 +685,8 @@ test('token-budget: maxTotal requires usage.total', async () => {
 });
 
 test('token-budget: maxInput requires usage.input', async () => {
-  const r = await tokenBudget(
+  const r = await grade(
+    tokenBudget,
     makeResult({ metrics: { tokenUsage: { output: 100, total: 100 } } }),
     { maxInput: 300 },
   );
@@ -656,9 +695,13 @@ test('token-budget: maxInput requires usage.input', async () => {
 });
 
 test('token-budget: maxOutput requires usage.output', async () => {
-  const r = await tokenBudget(makeResult({ metrics: { tokenUsage: { input: 100, total: 100 } } }), {
-    maxOutput: 300,
-  });
+  const r = await grade(
+    tokenBudget,
+    makeResult({ metrics: { tokenUsage: { input: 100, total: 100 } } }),
+    {
+      maxOutput: 300,
+    },
+  );
   assert.equal(r.pass, false);
   assert.ok(r.reason.includes('tokenUsage.output'));
 });
@@ -682,17 +725,21 @@ test('llm-judge: passes with mock judge', async () => {
       model: 'gpt-4.1-mini',
     }),
   };
-  const grader = createLlmJudgeGrader(mockJudge);
-  const r = await grader(makeResult({ output: 'React Server Components reduce bundle size.' }), {
-    dimension: 'faithfulness',
-    rubric: 'PASS if grounded in context.',
-    assertions: ['The answer is grounded in context.'],
-    passThreshold: 1,
-    judge: {
-      provider: 'aihubmix',
-      model: 'gpt-4.1-mini',
+  const grader = new LlmJudgeGrader(mockJudge);
+  const r = await grade(
+    grader,
+    makeResult({ output: 'React Server Components reduce bundle size.' }),
+    {
+      dimension: 'faithfulness',
+      rubric: 'PASS if grounded in context.',
+      assertions: ['The answer is grounded in context.'],
+      passThreshold: 1,
+      judge: {
+        provider: 'aihubmix',
+        model: 'gpt-4.1-mini',
+      },
     },
-  });
+  );
   assert.equal(r.pass, true);
   assert.equal(r.score, 1);
   assert.equal(r.meta?.dimension, 'faithfulness');
@@ -722,8 +769,8 @@ test('llm-judge: uses passThreshold against averaged assertion score', async () 
       model: 'claude-3-7-sonnet-latest',
     }),
   };
-  const grader = createLlmJudgeGrader(mockJudge);
-  const r = await grader(makeResult({ output: 'made up facts' }), {
+  const grader = new LlmJudgeGrader(mockJudge);
+  const r = await grade(grader, makeResult({ output: 'made up facts' }), {
     dimension: 'faithfulness',
     rubric: 'PASS if grounded in context.',
     assertions: ['The answer addresses the request.', 'The answer is fully grounded.'],
@@ -772,8 +819,9 @@ test('llm-judge: resolves contextFrom path', async () => {
       };
     },
   };
-  const grader = createLlmJudgeGrader(mockJudge);
-  await grader(
+  const grader = new LlmJudgeGrader(mockJudge);
+  await grade(
+    grader,
     makeResult({
       output: 'answer',
       outcome: { boardContent: 'some board content' },
@@ -804,8 +852,8 @@ test('llm-judge: missing dimension fails', async () => {
       model: 'gpt-4.1-mini',
     }),
   };
-  const grader = createLlmJudgeGrader(mockJudge);
-  const r = await grader(makeResult(), {
+  const grader = new LlmJudgeGrader(mockJudge);
+  const r = await grade(grader, makeResult(), {
     rubric: 'some rubric',
     assertions: ['a'],
     passThreshold: 1,
@@ -829,8 +877,8 @@ test('llm-judge: missing rubric fails', async () => {
       model: 'gpt-4.1-mini',
     }),
   };
-  const grader = createLlmJudgeGrader(mockJudge);
-  const r = await grader(makeResult(), {
+  const grader = new LlmJudgeGrader(mockJudge);
+  const r = await grade(grader, makeResult(), {
     dimension: 'faithfulness',
     assertions: ['a'],
     passThreshold: 1,
@@ -844,7 +892,7 @@ test('llm-judge: missing rubric fails', async () => {
 });
 
 test('llm-judge: missing assertions fails', async () => {
-  const grader = createLlmJudgeGrader({
+  const grader = new LlmJudgeGrader({
     evaluate: async () => ({
       pass: true,
       score: 1,
@@ -855,7 +903,7 @@ test('llm-judge: missing assertions fails', async () => {
     }),
   });
 
-  const r = await grader(makeResult(), {
+  const r = await grade(grader, makeResult(), {
     dimension: 'faithfulness',
     rubric: 'PASS if grounded.',
     passThreshold: 1,
@@ -870,7 +918,7 @@ test('llm-judge: missing assertions fails', async () => {
 });
 
 test('llm-judge: empty assertions fail', async () => {
-  const grader = createLlmJudgeGrader({
+  const grader = new LlmJudgeGrader({
     evaluate: async () => ({
       pass: true,
       score: 1,
@@ -881,7 +929,7 @@ test('llm-judge: empty assertions fail', async () => {
     }),
   });
 
-  const r = await grader(makeResult(), {
+  const r = await grade(grader, makeResult(), {
     dimension: 'faithfulness',
     rubric: 'PASS if grounded.',
     assertions: [''],
@@ -897,7 +945,7 @@ test('llm-judge: empty assertions fail', async () => {
 });
 
 test('llm-judge: missing passThreshold fails', async () => {
-  const grader = createLlmJudgeGrader({
+  const grader = new LlmJudgeGrader({
     evaluate: async () => ({
       pass: true,
       score: 1,
@@ -908,7 +956,7 @@ test('llm-judge: missing passThreshold fails', async () => {
     }),
   });
 
-  const r = await grader(makeResult(), {
+  const r = await grade(grader, makeResult(), {
     dimension: 'faithfulness',
     rubric: 'PASS if grounded.',
     assertions: ['The answer is grounded.'],
@@ -923,7 +971,7 @@ test('llm-judge: missing passThreshold fails', async () => {
 });
 
 test('llm-judge: invalid passThreshold fails', async () => {
-  const grader = createLlmJudgeGrader({
+  const grader = new LlmJudgeGrader({
     evaluate: async () => ({
       pass: true,
       score: 1,
@@ -934,7 +982,7 @@ test('llm-judge: invalid passThreshold fails', async () => {
     }),
   });
 
-  const r = await grader(makeResult(), {
+  const r = await grade(grader, makeResult(), {
     dimension: 'faithfulness',
     rubric: 'PASS if grounded.',
     assertions: ['The answer is grounded.'],
@@ -952,7 +1000,7 @@ test('llm-judge: invalid passThreshold fails', async () => {
 // ==================== registerBuiltinGraders ====================
 
 test('registerBuiltinGraders: registers all 10 non-llm built-in graders', () => {
-  const registry = new InMemoryGraderRegistry();
+  const registry = new Graders();
   registerBuiltinGraders(registry);
   const list = registry.list();
   const expected = [
@@ -974,34 +1022,33 @@ test('registerBuiltinGraders: registers all 10 non-llm built-in graders', () => 
 });
 
 test('llm-judge is registered explicitly on the GraderRegistry', () => {
-  const registry = new InMemoryGraderRegistry();
-  const mockJudge = {
-    evaluate: async () => ({
-      pass: true,
-      score: 1,
-      reason: 'ok',
-      assertions: [],
-      provider: 'aihubmix',
-      model: 'gpt-4.1-mini',
-    }),
+  const registry = new Graders();
+  const judgeResult: JudgeProviderResult = {
+    pass: true,
+    score: 1,
+    reason: 'ok',
+    assertions: [],
+    provider: 'aihubmix',
+    model: 'gpt-4.1-mini',
+  };
+  const mockJudge: JudgeProvider = {
+    evaluate: async () => judgeResult,
   };
   registerBuiltinGraders(registry);
-  registry.register('llm-judge', createLlmJudgeGrader(mockJudge));
-  registry.register('my-judge', createLlmJudgeGrader(mockJudge));
+  registry.register(new LlmJudgeGrader(mockJudge));
+  registry.register({
+    type: 'my-judge',
+    grade: (result, layer) => new LlmJudgeGrader(mockJudge).grade(result, layer),
+  });
   assert.ok(registry.has('llm-judge'));
   assert.ok(registry.has('my-judge'));
   assert.equal(registry.list().length, 12);
 });
 
-test('createBuiltinLlmJudgeConfigValidator: checks provider-specific api key availability', () => {
-  const validation = createBuiltinLlmJudgeConfigValidator({})({
-    dimension: 'correctness',
-    rubric: 'Pass if correct.',
-    assertions: ['The answer is correct.'],
-    passThreshold: 1,
+test('BuiltinLlmJudgeConfigValidator checks provider-specific api key availability', () => {
+  const validation = new BuiltinLlmJudgeConfigValidator({}).validate({
     judge: {
       provider: 'aihubmix',
-      model: 'gpt-4.1-mini',
     },
   });
 
@@ -1012,13 +1059,18 @@ test('createBuiltinLlmJudgeConfigValidator: checks provider-specific api key ava
 });
 
 test('custom graders work via GraderRegistry.register()', () => {
-  const registry = new InMemoryGraderRegistry();
+  const registry = new Graders();
   registerBuiltinGraders(registry);
   // Custom grader registration
-  registry.register('my-custom', async (result) => ({
-    pass: result.output.includes('success'),
-    reason: 'custom check',
-  }));
+  registry.register({
+    type: 'my-custom',
+    async grade(result) {
+      return {
+        pass: result.output.includes('success'),
+        reason: 'custom check',
+      };
+    },
+  });
   assert.ok(registry.has('my-custom'));
   assert.equal(registry.list().length, 11); // 10 builtins + 1 custom
 });

@@ -8,13 +8,13 @@ Status: completed in the current codebase.
 - [x] Redefine `task.v1` provider shape to `id + runs[]`.
 - [x] Add `task.execution.maxConcurrency`.
 
-## 2. Task Source and Loading
+## 2. Tasks and Loading
 
-- [x] Redefine `TaskSourceAdapter` as `listSuites/resolveSuite/resolveTask`.
-- [x] Make local task source adapter scan `rootDir` for suite YAML files.
+- [x] Redefine `Tasks` as `listSuites/resolveSuite/resolveTask`.
+- [x] Make `LocalTask` scan `rootDir` for suite YAML files.
 - [x] Resolve `suite.discover[]` relative to `rootDir`.
 - [x] Return `TaskIndex[]` from `resolveSuite`.
-- [x] Return `ResolvedTask` with source metadata; compute canonical `taskHash` in Core.
+- [x] Return `Task` with source metadata; compute canonical `taskHash` in Core.
 
 ## 3. Runtime and Orchestration
 
@@ -28,7 +28,7 @@ Status: completed in the current codebase.
 ## 4. Core API and TUI
 
 - [x] Expose `listSuites/loadSuite/loadSuites` from Core.
-- [x] Expose `LoadedSuite.runTask/streamTask` for task execution.
+- [x] Expose `Suite.runTask/streamTask` for task execution.
 - [x] Update TUI flow to `suite -> task -> execute all runs`.
 - [x] Update results views to group by suite, task, and run.
 

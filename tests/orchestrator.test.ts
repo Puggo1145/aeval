@@ -4,46 +4,44 @@ import test from 'node:test';
 import type {
   BaselineRecord,
   ClearedResultEntry,
-  ResultStoreAdapter,
+  Stores,
 } from '../src/core/adapters/result-store-adapter.js';
-import type { ResolvedTask } from '../src/core/adapters/task-source-adapter.js';
-import type { ExecutionResult } from '../src/core/contracts/execution.js';
 import { SCHEMA_VERSIONS } from '../src/core/contracts/index.js';
-import type { RunManifest } from '../src/core/contracts/run-manifest.js';
+import type { RunManifestRecord } from '../src/core/contracts/run-manifest.js';
 import type { RunSummaryRecord } from '../src/core/contracts/run-summary.js';
-import type { RunEvent, SuiteDefinition } from '../src/core/contracts/runtime.js';
-import type { TaskDefinition } from '../src/core/contracts/task.js';
-import type { TrialResultRecord } from '../src/core/contracts/trial.js';
-import {
-  orchestrateTaskRun,
-} from '../src/core/orchestrator/run-orchestrator.js';
-import { getEffectiveExecution } from '../src/core/runtime/effective-execution.js';
-import { InMemoryGraderRegistry, InMemoryProviderRegistry } from '../src/core/runtime/index.js';
+import { ExecutionResult } from '../src/core/domain/execution-result.js';
+import type { RunEvent } from '../src/core/domain/run-event.js';
+import { Suite } from '../src/core/domain/suite.js';
+import { Task } from '../src/core/domain/task.js';
+import type { Trial } from '../src/core/domain/trial.js';
+import { TaskRunOrchestrator } from '../src/core/orchestrator/run-orchestrator.js';
+import { Graders, Providers } from '../src/core/runtime/index.js';
+import { resolveExecutionPolicy } from '../src/core/runtime/task-execution.js';
 import { computeSha256 } from '../src/core/utils/hash.js';
 
-class InMemoryResultStoreAdapter implements ResultStoreAdapter {
-  readonly runManifests = new Map<string, RunManifest>();
+class InMemoryStore implements Stores {
+  readonly runManifests = new Map<string, RunManifestRecord>();
   readonly runSummaries = new Map<string, RunSummaryRecord>();
-  readonly trialRecords = new Map<string, TrialResultRecord[]>();
+  readonly trialRecords = new Map<string, { runId: string; trial: Trial['trial'] }[]>();
 
-  async saveRunManifest(input: RunManifest): Promise<void> {
+  async saveRunManifest(input: RunManifestRecord): Promise<void> {
     this.runManifests.set(input.runId, input);
   }
   async saveRunSummary(input: RunSummaryRecord): Promise<void> {
     this.runSummaries.set(input.runId, input);
   }
-  async saveTrial(input: TrialResultRecord): Promise<void> {
+  async saveTrial(input: { runId: string; trial: Trial['trial'] }): Promise<void> {
     const current = this.trialRecords.get(input.runId) ?? [];
     current.push(input);
     this.trialRecords.set(input.runId, current);
   }
-  async getRunManifest(runId: string): Promise<RunManifest | null> {
+  async getRunManifest(runId: string): Promise<RunManifestRecord | null> {
     return this.runManifests.get(runId) ?? null;
   }
   async getRunSummary(runId: string): Promise<RunSummaryRecord | null> {
     return this.runSummaries.get(runId) ?? null;
   }
-  async listTrials(runId: string): Promise<TrialResultRecord[]> {
+  async listTrials(runId: string): Promise<{ runId: string; trial: Trial['trial'] }[]> {
     return this.trialRecords.get(runId) ?? [];
   }
   async saveBaseline(_input: BaselineRecord): Promise<void> {}
@@ -61,74 +59,76 @@ class InMemoryResultStoreAdapter implements ResultStoreAdapter {
   }
 }
 
-function createSuite(): SuiteDefinition {
-  return {
+function createSuite(): Suite {
+  return Suite.fromDocument({
     schemaVersion: SCHEMA_VERSIONS.SUITE,
     id: 'basic-llm',
     name: 'Basic LLM',
     discover: ['datasets/**/*.yaml'],
-  };
+  });
 }
 
-function createTask(overrides: Partial<TaskDefinition> = {}): TaskDefinition {
-  return {
-    schemaVersion: SCHEMA_VERSIONS.TASK,
-    id: 'basic-llm/task-001',
-    provider: {
-      id: 'mock-provider',
-      runs: [
-        {
-          name: 'mini',
-          params: {
-            prompt: 'hello',
-            nested: { flag: true },
+function createTask(overrides: Partial<ReturnType<Task['toDocument']>> = {}): Task {
+  return Task.fromDocument(
+    {
+      schemaVersion: SCHEMA_VERSIONS.TASK,
+      id: 'basic-llm/task-001',
+      provider: {
+        id: 'mock-provider',
+        runs: [
+          {
+            name: 'mini',
+            params: {
+              prompt: 'hello',
+              nested: { flag: true },
+            },
           },
-        },
-      ],
-    },
-    graders: {
-      strategy: 'ALL',
-      layers: [{ name: 'always-pass', type: 'always-pass' }],
-    },
-    execution: {
-      timeoutMs: 1000,
-      retryOnError: 0,
-      trialsPerTask: 2,
-      maxConcurrency: 2,
-    },
-    ...overrides,
-  };
-}
-
-function createResolvedTask(task: TaskDefinition): ResolvedTask {
-  return {
-    source: {
+        ],
+      },
+      graders: {
+        strategy: 'ALL',
+        layers: [{ name: 'always-pass', type: 'always-pass' }],
+      },
+      execution: {
+        timeoutMs: 1000,
+        retryOnError: 0,
+        trialsPerTask: 2,
+        maxConcurrency: 2,
+      },
+      ...overrides,
+    } as ReturnType<Task['toDocument']>,
+    {
       adapter: 'memory',
       ref: 'datasets/task-001.yaml',
       revision: 'sha256-task-001',
       fetchedAt: '2026-03-05T00:00:00.000Z',
     },
-    task,
-  };
+  );
 }
 
-function createDeps(resultStore = new InMemoryResultStoreAdapter()) {
-  const providerRegistry = new InMemoryProviderRegistry();
-  const graderRegistry = new InMemoryGraderRegistry();
-  graderRegistry.register('always-pass', async () => ({ pass: true, reason: 'ok' }));
+function createDeps(stores = new InMemoryStore()) {
+  const providers = new Providers();
+  const graders = new Graders();
+  graders.register({
+    type: 'always-pass',
+    async grade() {
+      return { pass: true, reason: 'ok' };
+    },
+  });
 
   return {
     deps: {
-      resultStoreAdapter: resultStore,
-      observerAdapters: [],
-      providerRegistry,
-      graderRegistry,
-      runtimeDefaults: {
-        maxConcurrency: 5,
-      },
+      stores,
+      observers: [],
+      providers,
+      graders,
     },
-    providerRegistry,
-    resultStore,
+    providers,
+    graders,
+    stores,
+    runtimeDefaults: {
+      maxConcurrency: 5,
+    },
   };
 }
 
@@ -142,30 +142,24 @@ async function collectEvents(events: AsyncIterable<RunEvent>): Promise<RunEvent[
 
 test('configHash is deterministic and changes on run params/execution changes', () => {
   const baseTask = createTask();
-  const run = baseTask.provider.runs[0]!;
-  const execution = getEffectiveExecution(baseTask, { maxConcurrency: 5 });
+  const run = baseTask.runs[0]!;
+  const execution = resolveExecutionPolicy(baseTask, { maxConcurrency: 5 });
 
   const hash1 = computeSha256({
     taskId: baseTask.id,
-    providerId: baseTask.provider.id,
-    run: {
-      name: run.name,
-      params: run.params,
-    },
+    providerId: baseTask.providerId,
+    run: run.toDocument(),
     execution,
   });
   const hash2 = computeSha256({
     taskId: baseTask.id,
-    providerId: baseTask.provider.id,
-    run: {
-      name: run.name,
-      params: run.params,
-    },
+    providerId: baseTask.providerId,
+    run: run.toDocument(),
     execution,
   });
   const hashWithDifferentParams = computeSha256({
     taskId: baseTask.id,
-    providerId: baseTask.provider.id,
+    providerId: baseTask.providerId,
     run: {
       name: run.name,
       params: {
@@ -179,63 +173,68 @@ test('configHash is deterministic and changes on run params/execution changes', 
   assert.notEqual(hash1, hashWithDifferentParams);
 });
 
-test('orchestrateTaskRun persists manifest, trials, and summary for one task run', async () => {
-  const { deps, providerRegistry, resultStore } = createDeps();
-  providerRegistry.register('mock-provider', async (_ctx, params) => ({
-    schemaVersion: SCHEMA_VERSIONS.EXECUTION_RESULT,
-    output: String(params.prompt ?? ''),
-    metrics: { latencyMs: 50 },
-  }));
+test('TaskRunOrchestrator persists manifest, trials, and summary for one task run', async () => {
+  const { deps, providers, stores, runtimeDefaults } = createDeps();
+  providers.register({
+    id: 'mock-provider',
+    async execute(_ctx, run) {
+      return new ExecutionResult({
+        output: String(run.params.prompt ?? ''),
+        metrics: { latencyMs: 50 },
+      });
+    },
+  });
 
   const task = createTask();
-  const run = task.provider.runs[0]!;
+  const run = task.runs[0]!;
   const events = await collectEvents(
-    orchestrateTaskRun(
+    new TaskRunOrchestrator(
       {
         suite: createSuite(),
-        resolvedTask: createResolvedTask(task),
+        task,
         run,
-        execution: getEffectiveExecution(task, deps.runtimeDefaults),
+        execution: resolveExecutionPolicy(task, runtimeDefaults),
       },
       deps,
-    ),
+    ).run(),
   );
 
   assert.equal(events[0]?.type, 'run:started');
   assert.equal(events.at(-1)?.type, 'run:completed');
 
-  const [manifest] = [...resultStore.runManifests.values()];
-  const [summaryRecord] = [...resultStore.runSummaries.values()];
+  const [manifest] = [...stores.runManifests.values()];
+  const [summaryRecord] = [...stores.runSummaries.values()];
 
   assert.equal(manifest?.suiteId, 'basic-llm');
   assert.equal(manifest?.taskId, 'basic-llm/task-001');
   assert.equal(manifest?.runName, 'mini');
-  assert.equal(manifest?.taskHash, computeSha256(task));
+  assert.equal(manifest?.taskHash, computeSha256(task.toDocument()));
   assert.equal(
     manifest?.configHash,
     computeSha256({
       taskId: task.id,
-      providerId: task.provider.id,
-      run: {
-        name: run.name,
-        params: run.params,
-      },
-      execution: getEffectiveExecution(task, deps.runtimeDefaults),
+      providerId: task.providerId,
+      run: run.toDocument(),
+      execution: resolveExecutionPolicy(task, runtimeDefaults),
     }),
   );
   assert.equal(summaryRecord?.summary.taskId, 'basic-llm/task-001');
   assert.equal(summaryRecord?.summary.totalTrials, 2);
   assert.equal(summaryRecord?.summary.passRate, 1);
-  assert.equal(resultStore.trialRecords.size, 1);
+  assert.equal(stores.trialRecords.size, 1);
 });
 
-test('orchestrateTaskRun computes passRate as passedTrials divided by totalTrials', async () => {
-  const { deps, providerRegistry, resultStore } = createDeps();
+test('TaskRunOrchestrator computes passRate as passedTrials divided by totalTrials', async () => {
+  const { deps, providers, graders, stores, runtimeDefaults } = createDeps();
 
-  providerRegistry.register('mock-provider', async (ctx) => ({
-    schemaVersion: SCHEMA_VERSIONS.EXECUTION_RESULT,
-    output: ctx.trialIndex === 0 ? 'ok' : 'fail',
-  }));
+  providers.register({
+    id: 'mock-provider',
+    async execute(ctx) {
+      return new ExecutionResult({
+        output: ctx.trialIndex === 0 ? 'ok' : 'fail',
+      });
+    },
+  });
 
   const task = createTask({
     execution: {
@@ -255,42 +254,50 @@ test('orchestrateTaskRun computes passRate as passedTrials divided by totalTrial
     },
   });
 
-  deps.graderRegistry.register('pass-when-ok', async (execution) => ({
-    pass: execution.output === 'ok',
-  }));
+  graders.register({
+    type: 'pass-when-ok',
+    async grade(execution) {
+      return {
+        pass: execution.output === 'ok',
+        reason: execution.output,
+      };
+    },
+  });
 
   await collectEvents(
-    orchestrateTaskRun(
+    new TaskRunOrchestrator(
       {
         suite: createSuite(),
-        resolvedTask: createResolvedTask(task),
-        run: task.provider.runs[0]!,
-        execution: getEffectiveExecution(task, deps.runtimeDefaults),
+        task,
+        run: task.runs[0]!,
+        execution: resolveExecutionPolicy(task, runtimeDefaults),
       },
       deps,
-    ),
+    ).run(),
   );
 
-  const [summaryRecord] = [...resultStore.runSummaries.values()];
+  const [summaryRecord] = [...stores.runSummaries.values()];
   assert.equal(summaryRecord?.summary.passRate, 0.5);
   assert.equal(summaryRecord?.summary.passAtK, 1);
   assert.equal(summaryRecord?.summary.passHatK, 0);
 });
 
-test('orchestrateTaskRun respects task.execution.maxConcurrency for trials', async () => {
-  const { deps, providerRegistry } = createDeps();
+test('TaskRunOrchestrator respects task.execution.maxConcurrency for trials', async () => {
+  const { deps, providers, runtimeDefaults } = createDeps();
   let active = 0;
   let peak = 0;
 
-  providerRegistry.register('mock-provider', async (_ctx, _params): Promise<ExecutionResult> => {
-    active += 1;
-    peak = Math.max(peak, active);
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    active -= 1;
-    return {
-      schemaVersion: SCHEMA_VERSIONS.EXECUTION_RESULT,
-      output: 'ok',
-    };
+  providers.register({
+    id: 'mock-provider',
+    async execute(): Promise<ExecutionResult> {
+      active += 1;
+      peak = Math.max(peak, active);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      active -= 1;
+      return new ExecutionResult({
+        output: 'ok',
+      });
+    },
   });
 
   const task = createTask({
@@ -303,49 +310,51 @@ test('orchestrateTaskRun respects task.execution.maxConcurrency for trials', asy
   });
 
   await collectEvents(
-    orchestrateTaskRun(
+    new TaskRunOrchestrator(
       {
         suite: createSuite(),
-        resolvedTask: createResolvedTask(task),
-        run: task.provider.runs[0]!,
-        execution: getEffectiveExecution(task, deps.runtimeDefaults),
+        task,
+        run: task.runs[0]!,
+        execution: resolveExecutionPolicy(task, runtimeDefaults),
       },
       deps,
-    ),
+    ).run(),
   );
 
   assert.equal(peak, 2);
 });
 
-test('orchestrateTaskRun deep-freezes selected run params before provider execution', async () => {
-  const { deps, providerRegistry } = createDeps();
+test('Run params stay frozen before provider execution', async () => {
+  const { deps, providers, runtimeDefaults } = createDeps();
   let seenTopFrozen = false;
   let seenNestedFrozen = false;
 
-  providerRegistry.register('mock-provider', async (_ctx, params) => {
-    seenTopFrozen = Object.isFrozen(params);
-    seenNestedFrozen = Object.isFrozen(params.nested as Record<string, unknown>);
-    assert.throws(() => {
-      (params as Record<string, unknown>).newField = 'mutated';
-    });
+  providers.register({
+    id: 'mock-provider',
+    async execute(_ctx, run) {
+      seenTopFrozen = Object.isFrozen(run.params);
+      seenNestedFrozen = Object.isFrozen(run.params.nested as Record<string, unknown>);
+      assert.throws(() => {
+        (run.params as Record<string, unknown>).newField = 'mutated';
+      });
 
-    return {
-      schemaVersion: SCHEMA_VERSIONS.EXECUTION_RESULT,
-      output: 'ok',
-    };
+      return new ExecutionResult({
+        output: 'ok',
+      });
+    },
   });
 
   const task = createTask();
   await collectEvents(
-    orchestrateTaskRun(
+    new TaskRunOrchestrator(
       {
         suite: createSuite(),
-        resolvedTask: createResolvedTask(task),
-        run: task.provider.runs[0]!,
-        execution: getEffectiveExecution(task, deps.runtimeDefaults),
+        task,
+        run: task.runs[0]!,
+        execution: resolveExecutionPolicy(task, runtimeDefaults),
       },
       deps,
-    ),
+    ).run(),
   );
 
   assert.equal(seenTopFrozen, true);

@@ -1,6 +1,7 @@
 import { z } from 'zod';
-import type { ExecutionResult } from '../../core/contracts/execution.js';
 import type { GraderResult } from '../../core/contracts/trial.js';
+import type { ExecutionResult } from '../../core/domain/execution-result.js';
+import { ConfiguredGrader } from '../base-grader.js';
 import {
   type GraderConfigValidationResult,
   parseGraderConfig,
@@ -25,7 +26,7 @@ type ExactMatchConfig = z.infer<typeof ExactMatchConfigSchema>;
  *   caseSensitive?: boolean   — default true
  *   trim?: boolean            — trim whitespace before comparison, default false
  */
-export async function exactMatch(
+async function gradeExactMatch(
   result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
@@ -63,9 +64,9 @@ export async function exactMatch(
   };
 }
 
-(
-  exactMatch as typeof exactMatch & {
-    validateConfig: (config: Record<string, unknown>) => GraderConfigValidationResult;
-  }
-).validateConfig = (config: Record<string, unknown>) =>
-  validateGraderConfig(ExactMatchConfigSchema, config);
+export const exactMatch = new ConfiguredGrader({
+  type: 'exact-match',
+  grade: (result, layer) => gradeExactMatch(result, layer.config),
+  validate: (layer): GraderConfigValidationResult =>
+    validateGraderConfig(ExactMatchConfigSchema, layer.config),
+});

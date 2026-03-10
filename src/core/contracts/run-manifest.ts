@@ -1,21 +1,19 @@
-// 一次评测运行（run）的元数据记录
-
 import type { RunManifestSchemaVersion } from './schema-versions.js';
 
-export interface RunManifestTaskSourceRecord {
+export interface RunManifestSourceRecord {
   adapter: string;
   ref: string;
   revision: string;
 }
 
-export interface RunManifest {
+export interface RunManifestRecord {
   schemaVersion: RunManifestSchemaVersion;
   runId: string;
   suiteId: string;
   suiteName: string;
   taskId: string;
   runName: string;
-  taskSource: RunManifestTaskSourceRecord;
+  taskSource: RunManifestSourceRecord;
   taskHash: string;
   configHash: string;
   startedAt: string;

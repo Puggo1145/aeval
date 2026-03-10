@@ -4,12 +4,13 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 
-import { createLocalResultStoreAdapter } from '../src/adapters/result-store/local-result-store-adapter.js';
-import { createLocalTaskSourceAdapter } from '../src/adapters/task-source/local-task-source-adapter.js';
-import { createCore } from '../src/core/api/index.js';
-import type { RunEvent } from '../src/core/contracts/runtime.js';
-import { InMemoryGraderRegistry, InMemoryProviderRegistry } from '../src/core/runtime/index.js';
-import { createLlmJudgeGrader } from '../src/graders/llm/llm-judge.js';
+import { LocalStore } from '../src/adapters/result-store/local-result-store-adapter.js';
+import { LocalTask } from '../src/adapters/task-source/local-task-source-adapter.js';
+import { Core } from '../src/core/api/index.js';
+import type { RunEvent } from '../src/core/domain/run-event.js';
+import { ExecutionResult } from '../src/core/domain/execution-result.js';
+import { Graders, Providers } from '../src/core/runtime/index.js';
+import { LlmJudgeGrader } from '../src/graders/llm/llm-judge.js';
 import { registerBuiltinGraders } from '../src/graders/register-builtins.js';
 
 async function createWorkspace(): Promise<string> {
@@ -88,23 +89,27 @@ test('E2E smoke: full chain from suite discovery to result-store readback', asyn
     await writeYaml(workspace, 'suites/basic.yaml', SUITE_YAML);
     await writeYaml(workspace, 'datasets/task-001.yaml', TASK_YAML);
 
-    const providerRegistry = new InMemoryProviderRegistry();
-    providerRegistry.register('reference', async (_ctx, params) => ({
-      schemaVersion: 'execution-result.v1',
-      output: String(params.output ?? ''),
-      metrics: { latencyMs: 25 },
-    }));
+    const providers = new Providers();
+    providers.register({
+      id: 'reference',
+      async execute(_ctx, run) {
+        return new ExecutionResult({
+          output: String(run.params.output ?? ''),
+          metrics: { latencyMs: 25 },
+        });
+      },
+    });
 
-    const graderRegistry = new InMemoryGraderRegistry();
-    registerBuiltinGraders(graderRegistry);
+    const graders = new Graders();
+    registerBuiltinGraders(graders);
 
-    const core = createCore({
-      taskSourceAdapter: createLocalTaskSourceAdapter({ rootDir: workspace }),
-      resultStoreAdapter: createLocalResultStoreAdapter({
+    const core = new Core({
+      tasks: new LocalTask({ rootDir: workspace }),
+      stores: new LocalStore({
         rootDir: join(workspace, 'results'),
       }),
-      providerRegistry,
-      graderRegistry,
+      providers,
+      graders,
     });
 
     const suite = await core.loadSuite('basic-llm');
@@ -145,16 +150,19 @@ test('E2E smoke: llm-judge protocol chain with mock JudgeProvider', async () => 
     await writeYaml(workspace, 'suites/basic.yaml', SUITE_YAML);
     await writeYaml(workspace, 'datasets/task-judge.yaml', JUDGE_TASK_YAML);
 
-    const providerRegistry = new InMemoryProviderRegistry();
-    providerRegistry.register('reference', async (_ctx, params) => ({
-      schemaVersion: 'execution-result.v1',
-      output: String(params.output ?? ''),
-    }));
+    const providers = new Providers();
+    providers.register({
+      id: 'reference',
+      async execute(_ctx, run) {
+        return new ExecutionResult({
+          output: String(run.params.output ?? ''),
+        });
+      },
+    });
 
-    const graderRegistry = new InMemoryGraderRegistry();
-    graderRegistry.register(
-      'llm-judge',
-      createLlmJudgeGrader({
+    const graders = new Graders();
+    graders.register(
+      new LlmJudgeGrader({
         async evaluate(input) {
           assert.match(input.output, /Paris/);
           assert.equal(input.judge.provider, 'aihubmix');
@@ -174,13 +182,13 @@ test('E2E smoke: llm-judge protocol chain with mock JudgeProvider', async () => 
       }),
     );
 
-    const core = createCore({
-      taskSourceAdapter: createLocalTaskSourceAdapter({ rootDir: workspace }),
-      resultStoreAdapter: createLocalResultStoreAdapter({
+    const core = new Core({
+      tasks: new LocalTask({ rootDir: workspace }),
+      stores: new LocalStore({
         rootDir: join(workspace, 'results'),
       }),
-      providerRegistry,
-      graderRegistry,
+      providers,
+      graders,
     });
 
     const suite = await core.loadSuite('basic-llm');
@@ -191,7 +199,7 @@ test('E2E smoke: llm-judge protocol chain with mock JudgeProvider', async () => 
 
     const runs = await core.listRuns();
     const trials = await core.listTrials(runs[0]!.runId);
-    assert.equal(trials[0]?.trial.graderResults[0]?.result.meta?.provider, 'aihubmix');
+    assert.equal(trials[0]?.graderResults[0]?.result.meta?.provider, 'aihubmix');
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }

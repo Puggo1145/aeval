@@ -1,11 +1,12 @@
 import { z } from 'zod';
-import type { ExecutionResult } from '../../core/contracts/execution.js';
+import type { ExecutionResult } from '../../core/domain/execution-result.js';
 import type { GraderResult } from '../../core/contracts/trial.js';
 import {
   type GraderConfigValidationResult,
   parseGraderConfig,
   validateGraderConfig,
 } from '../config-validation.js';
+import { ConfiguredGrader } from '../base-grader.js';
 
 const LengthCheckConfigSchema = z
   .object({
@@ -41,7 +42,7 @@ type LengthCheckConfig = z.infer<typeof LengthCheckConfigSchema>;
  *
  * At least one of min or max must be provided.
  */
-export async function lengthCheck(
+async function gradeLengthCheck(
   result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
@@ -72,9 +73,9 @@ export async function lengthCheck(
   return { pass: true, reason: `Output length ${length} is within bounds.` };
 }
 
-(
-  lengthCheck as typeof lengthCheck & {
-    validateConfig: (config: Record<string, unknown>) => GraderConfigValidationResult;
-  }
-).validateConfig = (config: Record<string, unknown>) =>
-  validateGraderConfig(LengthCheckConfigSchema, config);
+export const lengthCheck = new ConfiguredGrader({
+  type: 'length-check',
+  grade: (result, layer) => gradeLengthCheck(result, layer.config),
+  validate: (layer): GraderConfigValidationResult =>
+    validateGraderConfig(LengthCheckConfigSchema, layer.config),
+});

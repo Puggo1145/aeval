@@ -1,5 +1,5 @@
-import type { RunEvent } from '../contracts/runtime.js';
+import type { RunEvent } from '../domain/run-event.js';
 
-export interface ObserverAdapter {
+export interface Observer {
   onEvent(event: RunEvent): Promise<void> | void;
 }

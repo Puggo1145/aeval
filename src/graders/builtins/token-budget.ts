@@ -1,6 +1,7 @@
 import { z } from 'zod';
-import type { ExecutionResult } from '../../core/contracts/execution.js';
 import type { GraderResult } from '../../core/contracts/trial.js';
+import type { ExecutionResult } from '../../core/domain/execution-result.js';
+import { ConfiguredGrader } from '../base-grader.js';
 import {
   type GraderConfigValidationResult,
   parseGraderConfig,
@@ -39,7 +40,7 @@ type TokenBudgetConfig = z.infer<typeof TokenBudgetConfigSchema>;
  *
  * At least one budget must be provided.
  */
-export async function tokenBudget(
+async function gradeTokenBudget(
   result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
@@ -93,9 +94,9 @@ export async function tokenBudget(
   return { pass: true, reason: 'Token usage within budget.', meta: { tokenUsage: usage } };
 }
 
-(
-  tokenBudget as typeof tokenBudget & {
-    validateConfig: (config: Record<string, unknown>) => GraderConfigValidationResult;
-  }
-).validateConfig = (config: Record<string, unknown>) =>
-  validateGraderConfig(TokenBudgetConfigSchema, config);
+export const tokenBudget = new ConfiguredGrader({
+  type: 'token-budget',
+  grade: (result, layer) => gradeTokenBudget(result, layer.config),
+  validate: (layer): GraderConfigValidationResult =>
+    validateGraderConfig(TokenBudgetConfigSchema, layer.config),
+});

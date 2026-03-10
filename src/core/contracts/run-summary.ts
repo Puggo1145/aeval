@@ -1,8 +1,6 @@
-// 一次评测运行（run）的结论
-
 import type { RunSummarySchemaVersion } from './schema-versions.js';
 
-export interface RunSummary {
+export interface RunSummaryData {
   schemaVersion: RunSummarySchemaVersion;
   runId: string;
   taskId: string;
@@ -16,5 +14,5 @@ export interface RunSummary {
 
 export interface RunSummaryRecord {
   runId: string;
-  summary: RunSummary;
+  summary: RunSummaryData;
 }

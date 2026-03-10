@@ -1,4 +1,4 @@
-import type { ExecutionResult } from './execution.js';
+import type { ExecutionResultData } from './execution.js';
 import type { TrialResultSchemaVersion } from './schema-versions.js';
 
 export interface GraderResult {
@@ -8,22 +8,21 @@ export interface GraderResult {
   meta?: Record<string, unknown>;
 }
 
-export interface TrialGraderResult {
+export interface TrialGraderResultRecord {
   name: string;
   type: string;
   result: GraderResult;
   weight?: number;
 }
 
-export interface TrialResult {
+export interface TrialRecord {
   schemaVersion: TrialResultSchemaVersion;
   taskId: string;
   runId: string;
   runName: string;
   trialIndex: number;
-  execution: ExecutionResult;
-  graderResults: TrialGraderResult[];
-  // 根据 grader 配置给出的最终综合结果
+  execution: ExecutionResultData;
+  graderResults: TrialGraderResultRecord[];
   aggregate: {
     pass: boolean;
     score?: number;
@@ -37,5 +36,5 @@ export interface TrialResult {
 
 export interface TrialResultRecord {
   runId: string;
-  trial: TrialResult;
+  trial: TrialRecord;
 }

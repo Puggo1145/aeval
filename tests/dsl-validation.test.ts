@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { validateSuiteDefinition, validateTaskDefinition } from '../src/core/validation/index.js';
+import { parseSuiteDocument, parseTaskDocument } from '../src/core/contracts/index.js';
 
 function expectValidationField(error: unknown, field: string): boolean {
   assert.ok(error instanceof Error);
@@ -56,18 +56,18 @@ function createValidTaskInput() {
   };
 }
 
-test('validateSuiteDefinition accepts a valid suite document', () => {
-  const suite = validateSuiteDefinition(createValidSuiteInput());
+test('parseSuiteDocument accepts a valid suite document', () => {
+  const suite = parseSuiteDocument(createValidSuiteInput());
 
   assert.equal(suite.schemaVersion, 'suite.v1');
   assert.equal(suite.id, 'basic-llm');
   assert.deepEqual(suite.discover, ['datasets/**/*.yaml']);
 });
 
-test('validateSuiteDefinition rejects unknown fields', async () => {
+test('parseSuiteDocument rejects unknown fields', async () => {
   await assert.rejects(
     async () =>
-      validateSuiteDefinition({
+      parseSuiteDocument({
         ...createValidSuiteInput(),
         extra: true,
       }),
@@ -75,10 +75,10 @@ test('validateSuiteDefinition rejects unknown fields', async () => {
   );
 });
 
-test('validateSuiteDefinition rejects empty discover patterns', async () => {
+test('parseSuiteDocument rejects empty discover patterns', async () => {
   await assert.rejects(
     async () =>
-      validateSuiteDefinition({
+      parseSuiteDocument({
         ...createValidSuiteInput(),
         discover: [],
       }),
@@ -86,15 +86,15 @@ test('validateSuiteDefinition rejects empty discover patterns', async () => {
   );
 });
 
-test('validateTaskDefinition accepts provider runs and execution.maxConcurrency', () => {
-  const task = validateTaskDefinition(createValidTaskInput());
+test('parseTaskDocument accepts provider runs and execution.maxConcurrency', () => {
+  const task = parseTaskDocument(createValidTaskInput());
 
   assert.equal(task.provider.runs.length, 1);
   assert.equal(task.provider.runs[0]?.name, 'mini');
   assert.equal(task.execution.maxConcurrency, 3);
 });
 
-test('validateTaskDefinition rejects duplicate provider run names', async () => {
+test('parseTaskDocument rejects duplicate provider run names', async () => {
   const input = createValidTaskInput();
   input.provider.runs.push({
     name: 'mini',
@@ -104,12 +104,12 @@ test('validateTaskDefinition rejects duplicate provider run names', async () => 
   });
 
   await assert.rejects(
-    async () => validateTaskDefinition(input),
+    async () => parseTaskDocument(input),
     (error: unknown) => expectValidationField(error, 'task.provider.runs[1].name'),
   );
 });
 
-test('validateTaskDefinition rejects non-object run params', async () => {
+test('parseTaskDocument rejects non-object run params', async () => {
   const input = createValidTaskInput();
   input.provider.runs[0] = {
     name: 'mini',
@@ -117,17 +117,37 @@ test('validateTaskDefinition rejects non-object run params', async () => {
   };
 
   await assert.rejects(
-    async () => validateTaskDefinition(input),
+    async () => parseTaskDocument(input),
     (error: unknown) => expectValidationField(error, 'task.provider.runs[0].params'),
   );
 });
 
-test('validateTaskDefinition rejects invalid execution.maxConcurrency', async () => {
+test('parseTaskDocument rejects invalid execution.maxConcurrency', async () => {
   const input = createValidTaskInput();
   input.execution.maxConcurrency = 0;
 
   await assert.rejects(
-    async () => validateTaskDefinition(input),
+    async () => parseTaskDocument(input),
     (error: unknown) => expectValidationField(error, 'task.execution.maxConcurrency'),
+  );
+});
+
+test('parseTaskDocument rejects WEIGHTED passThreshold <= 0', async () => {
+  const input = createValidTaskInput();
+  input.graders = {
+    strategy: 'WEIGHTED',
+    passThreshold: 0,
+    layers: [
+      {
+        name: 'weighted layer',
+        type: 'contains',
+        weight: 1,
+      },
+    ],
+  };
+
+  await assert.rejects(
+    async () => parseTaskDocument(input),
+    (error: unknown) => expectValidationField(error, 'task.graders.passThreshold'),
   );
 });

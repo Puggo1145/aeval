@@ -1,4 +1,1 @@
-export {
-  createLocalResultStoreAdapter,
-  type LocalResultStoreAdapterOptions,
-} from './local-result-store-adapter.js';
+export { LocalStore, type LocalStoreOptions } from './local-result-store-adapter.js';

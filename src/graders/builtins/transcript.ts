@@ -1,6 +1,7 @@
 import { z } from 'zod';
-import type { ExecutionResult } from '../../core/contracts/execution.js';
 import type { GraderResult } from '../../core/contracts/trial.js';
+import type { ExecutionResult } from '../../core/domain/execution-result.js';
+import { ConfiguredGrader } from '../base-grader.js';
 import {
   type GraderConfigValidationResult,
   parseGraderConfig,
@@ -57,7 +58,7 @@ type TranscriptConfig = z.infer<typeof TranscriptConfigSchema>;
  *
  * At least one config field must be provided.
  */
-export async function transcript(
+async function gradeTranscript(
   result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
@@ -137,9 +138,9 @@ export async function transcript(
   };
 }
 
-(
-  transcript as typeof transcript & {
-    validateConfig: (config: Record<string, unknown>) => GraderConfigValidationResult;
-  }
-).validateConfig = (config: Record<string, unknown>) =>
-  validateGraderConfig(TranscriptConfigSchema, config);
+export const transcript = new ConfiguredGrader({
+  type: 'transcript',
+  grade: (result, layer) => gradeTranscript(result, layer.config),
+  validate: (layer): GraderConfigValidationResult =>
+    validateGraderConfig(TranscriptConfigSchema, layer.config),
+});

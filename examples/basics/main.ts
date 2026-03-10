@@ -2,18 +2,19 @@ import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  createBuiltinLlmJudgeProvider,
-  createConsoleObserverAdapter,
-  createCore,
-  createLlmJudgeGrader,
-  createLocalResultStoreAdapter,
-  createLocalTaskSourceAdapter,
-  InMemoryGraderRegistry,
-  InMemoryProviderRegistry,
+  BuiltinLlmJudgeConfigValidator,
+  BuiltinLlmJudgeProvider,
+  ConsoleObserver,
+  Core,
+  Graders,
+  LlmJudgeGrader,
+  LocalStore,
+  LocalTask,
+  Providers,
   registerBuiltinGraders,
   runTui,
 } from 'youeval';
-import { basicLlmProvider, fileEditAgentProvider } from './providers/index.ts';
+import { BasicLlmProvider, FileEditAgentProvider } from './providers/index.ts';
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
 
@@ -32,25 +33,29 @@ function tryLoadEnvFile(): void {
 async function main(): Promise<void> {
   tryLoadEnvFile();
 
-  const graderRegistry = new InMemoryGraderRegistry();
-  registerBuiltinGraders(graderRegistry);
-  const builtinLlmJudgeProvider = createBuiltinLlmJudgeProvider({ env: process.env });
-  graderRegistry.register('llm-judge', createLlmJudgeGrader(builtinLlmJudgeProvider));
+  const graders = new Graders();
+  registerBuiltinGraders(graders);
+  const builtinLlmJudgeProvider = new BuiltinLlmJudgeProvider({ env: process.env });
+  graders.register(
+    new LlmJudgeGrader(builtinLlmJudgeProvider, {
+      validateConfig: (config) => new BuiltinLlmJudgeConfigValidator(process.env).validate(config),
+    }),
+  );
 
-  const providerRegistry = new InMemoryProviderRegistry();
-  providerRegistry.register('file-edit-agent', fileEditAgentProvider);
-  providerRegistry.register('basic-llm', basicLlmProvider);
+  const providers = new Providers();
+  providers.register(new FileEditAgentProvider());
+  providers.register(new BasicLlmProvider());
 
-  const core = createCore({
-    taskSourceAdapter: createLocalTaskSourceAdapter({
+  const core = new Core({
+    tasks: new LocalTask({
       rootDir: currentDir,
     }),
-    resultStoreAdapter: createLocalResultStoreAdapter({
+    stores: new LocalStore({
       rootDir: resolve(currentDir, 'results'),
     }),
-    providerRegistry,
-    graderRegistry,
-    observerAdapters: [createConsoleObserverAdapter()],
+    providers,
+    graders,
+    observers: [new ConsoleObserver()],
   });
 
   await runTui(core);

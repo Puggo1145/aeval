@@ -1,6 +1,9 @@
 import { z } from 'zod';
+import { throwFirstZodValidationError } from '../validation/helpers.js';
 import { NonEmptyStringSchema, UnknownRecordSchema } from './schema-primitives.js';
 import { SCHEMA_VERSIONS } from './schema-versions.js';
+
+const documentInputSchema = z.object({}).catchall(z.unknown());
 
 export const GRADER_STRATEGIES = ['ALL', 'ANY', 'WEIGHTED'] as const;
 
@@ -17,13 +20,12 @@ const TaskTagsSchema = z
       });
     }
   })
-  // superRefine 已确保元素都是 string，这里做一次类型收窄供下游使用
   .transform((tags) => tags as string[]);
 
 export const TaskGraderStrategySchema = z.enum(GRADER_STRATEGIES);
 export type TaskGraderStrategy = z.infer<typeof TaskGraderStrategySchema>;
 
-export const TaskProviderConfigSchema = z
+export const TaskProviderDocumentSchema = z
   .object({
     id: NonEmptyStringSchema,
     runs: z
@@ -56,66 +58,64 @@ export const TaskProviderConfigSchema = z
       seenNames.add(run.name);
     });
   });
-export type TaskProviderConfig = z.infer<typeof TaskProviderConfigSchema>;
+export type TaskProviderDocument = z.infer<typeof TaskProviderDocumentSchema>;
+export type TaskProviderRunDocument = TaskProviderDocument['runs'][number];
 
-export const BaseGraderLayerSchema = z
+export const BaseGraderLayerDocumentSchema = z
   .object({
     name: NonEmptyStringSchema,
     type: NonEmptyStringSchema,
     config: UnknownRecordSchema.optional(),
   })
   .strict();
-export type TaskGraderLayer = z.infer<typeof BaseGraderLayerSchema>;
+export type TaskGraderLayerDocument = z.infer<typeof BaseGraderLayerDocumentSchema>;
 
-export const WeightedGraderLayerSchema = BaseGraderLayerSchema.extend({
+export const WeightedGraderLayerDocumentSchema = BaseGraderLayerDocumentSchema.extend({
   weight: z.number().finite().gt(0),
 }).strict();
-export type WeightedGraderLayer = z.infer<typeof WeightedGraderLayerSchema>;
+export type WeightedGraderLayerDocument = z.infer<typeof WeightedGraderLayerDocumentSchema>;
 
-const GradersLayersMinOne = {
+const gradersLayersMinOne = {
   message: "Field 'task.graders.layers' must contain at least one item.",
 };
 
-export const TaskGradersConfigSchema = z.discriminatedUnion('strategy', [
+export const TaskGradersDocumentSchema = z.discriminatedUnion('strategy', [
   z
     .object({
       strategy: z.literal('ALL'),
-      layers: z.array(BaseGraderLayerSchema).min(1, GradersLayersMinOne),
+      layers: z.array(BaseGraderLayerDocumentSchema).min(1, gradersLayersMinOne),
     })
     .strict(),
   z
     .object({
       strategy: z.literal('ANY'),
-      layers: z.array(BaseGraderLayerSchema).min(1, GradersLayersMinOne),
+      layers: z.array(BaseGraderLayerDocumentSchema).min(1, gradersLayersMinOne),
     })
     .strict(),
   z
     .object({
       strategy: z.literal('WEIGHTED'),
       passThreshold: z.number().finite().gt(0),
-      layers: z.array(WeightedGraderLayerSchema).min(1, GradersLayersMinOne),
+      layers: z.array(WeightedGraderLayerDocumentSchema).min(1, gradersLayersMinOne),
     })
     .strict(),
 ]);
-export type TaskGradersConfig = z.infer<typeof TaskGradersConfigSchema>;
+export type TaskGradersDocument = z.infer<typeof TaskGradersDocumentSchema>;
 
-export const TaskExecutionConfigSchema = z
+export const TaskExecutionDocumentSchema = z
   .object({
     timeoutMs: z.number().int().gt(0),
-    // 执行出错时的重试次数
     retryOnError: z.number().int().min(0).optional(),
-    // 每个 task 执行的 trial 次数
     trialsPerTask: z.number().int().gt(0).optional(),
     maxConcurrency: z.number().int().gt(0).optional(),
   })
   .strict();
-export type TaskExecutionConfig = z.infer<typeof TaskExecutionConfigSchema>;
+export type TaskExecutionDocument = z.infer<typeof TaskExecutionDocumentSchema>;
 
-export const TaskSchema = z
+export const TaskDocumentSchema = z
   .object({
     schemaVersion: z.literal(SCHEMA_VERSIONS.TASK),
     id: NonEmptyStringSchema,
-    // -- 描述性字段，不参与执行逻辑 --
     desc: OptionalMetadataStringSchema,
     category: OptionalMetadataStringSchema,
     capability: OptionalMetadataStringSchema,
@@ -123,13 +123,25 @@ export const TaskSchema = z
     difficulty: OptionalMetadataStringSchema,
     tags: TaskTagsSchema.optional(),
     lifecycle: UnknownRecordSchema.optional(),
-    // task 的真实执行逻辑：Agent Harness
-    provider: TaskProviderConfigSchema,
-    graders: TaskGradersConfigSchema,
-    // 自定义的指标，只用于 per task 统计和跟踪，由使用者自行提供和定义
+    provider: TaskProviderDocumentSchema,
+    graders: TaskGradersDocumentSchema,
     trackedMetrics: UnknownRecordSchema.optional(),
-    execution: TaskExecutionConfigSchema,
+    execution: TaskExecutionDocumentSchema,
   })
   .strict();
 
-export type TaskDefinition = z.infer<typeof TaskSchema>;
+export type TaskDocument = z.infer<typeof TaskDocumentSchema>;
+
+export function parseTaskDocument(input: unknown): TaskDocument {
+  const rawTaskResult = documentInputSchema.safeParse(input);
+  if (!rawTaskResult.success) {
+    throwFirstZodValidationError(rawTaskResult.error, 'task');
+  }
+
+  const taskResult = TaskDocumentSchema.safeParse(rawTaskResult.data);
+  if (!taskResult.success) {
+    throwFirstZodValidationError(taskResult.error, 'task');
+  }
+
+  return taskResult.data;
+}

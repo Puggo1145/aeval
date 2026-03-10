@@ -1,7 +1,8 @@
 import { Ajv } from 'ajv';
 import { z } from 'zod';
-import type { ExecutionResult } from '../../core/contracts/execution.js';
 import type { GraderResult } from '../../core/contracts/trial.js';
+import type { ExecutionResult } from '../../core/domain/execution-result.js';
+import { ConfiguredGrader } from '../base-grader.js';
 import { type GraderConfigValidationResult, parseGraderConfig } from '../config-validation.js';
 
 const ajv = new Ajv({
@@ -52,7 +53,7 @@ function compileJsonSchema(
  * Config:
  *   schema: object — JSON Schema object
  */
-export async function jsonSchema(
+async function gradeJsonSchema(
   result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
@@ -91,9 +92,7 @@ export async function jsonSchema(
   return { pass: true, reason: 'structuredOutput matches schema.' };
 }
 
-function validateJsonSchemaConfig(
-  config: Record<string, unknown>,
-): GraderConfigValidationResult {
+function validateJsonSchemaConfig(config: Record<string, unknown>): GraderConfigValidationResult {
   const parsed = parseGraderConfig(JsonSchemaConfigSchema, config);
   if (!parsed.ok) {
     return {
@@ -121,8 +120,8 @@ function validateJsonSchemaConfig(
   return { valid: true };
 }
 
-(
-  jsonSchema as typeof jsonSchema & {
-    validateConfig: (config: Record<string, unknown>) => GraderConfigValidationResult;
-  }
-).validateConfig = validateJsonSchemaConfig;
+export const jsonSchema = new ConfiguredGrader({
+  type: 'json-schema',
+  grade: (result, layer) => gradeJsonSchema(result, layer.config),
+  validate: (layer): GraderConfigValidationResult => validateJsonSchemaConfig(layer.config),
+});

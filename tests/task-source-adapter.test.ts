@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 
-import { createLocalTaskSourceAdapter } from '../src/adapters/task-source/local-task-source-adapter.js';
+import { LocalTask } from '../src/adapters/task-source/local-task-source-adapter.js';
 
 async function createTempRootDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), 'youeval-task-source-'));
@@ -103,7 +103,7 @@ test('listSuites returns suite descriptors discovered under rootDir', async () =
     await writeYaml(rootDir, 'suites/basic.yaml', SUITE_YAML);
     await writeYaml(rootDir, 'datasets/a-task.yaml', TASK_ONE_YAML);
 
-    const adapter = createLocalTaskSourceAdapter({ rootDir });
+    const adapter = new LocalTask({ rootDir });
     const suites = await adapter.listSuites();
 
     assert.deepEqual(suites, [
@@ -125,13 +125,14 @@ test('resolveSuite expands discover globs with deterministic task ordering', asy
     await writeYaml(rootDir, 'datasets/z-task.yaml', TASK_TWO_YAML);
     await writeYaml(rootDir, 'datasets/a-task.yaml', TASK_ONE_YAML);
 
-    const adapter = createLocalTaskSourceAdapter({ rootDir });
+    const adapter = new LocalTask({ rootDir });
     const resolvedSuite = await adapter.resolveSuite('basic-llm');
+    const tasks = await resolvedSuite.listTasks();
 
-    assert.equal(resolvedSuite.suite.id, 'basic-llm');
-    assert.equal(resolvedSuite.tasks.length, 2);
+    assert.equal(resolvedSuite.id, 'basic-llm');
+    assert.equal(tasks.length, 2);
     assert.deepEqual(
-      resolvedSuite.tasks.map((task) => ({
+      tasks.map((task) => ({
         id: task.id,
         runCount: task.runCount,
         ref: task.taskRef.ref,
@@ -162,11 +163,12 @@ discover:
     await writeYaml(rootDir, 'datasets/group-a/task-a.yaml', TASK_ONE_YAML);
     await writeYaml(rootDir, 'datasets/group-a/task-b.yaml', TASK_TWO_YAML);
 
-    const adapter = createLocalTaskSourceAdapter({ rootDir });
+    const adapter = new LocalTask({ rootDir });
     const resolvedSuite = await adapter.resolveSuite('basic-llm');
+    const tasks = await resolvedSuite.listTasks();
 
     assert.deepEqual(
-      resolvedSuite.tasks.map((task) => task.taskRef.ref),
+      tasks.map((task) => task.taskRef.ref),
       ['datasets/group-a/task-a.yaml', 'datasets/group-a/task-b.yaml'],
     );
   } finally {
@@ -180,13 +182,13 @@ test('resolveTask returns validated task and stable source revision', async () =
     await writeYaml(rootDir, 'task-a.yaml', TASK_ONE_YAML);
     await writeYaml(rootDir, 'task-b.yaml', TASK_ONE_REFORMATTED_YAML);
 
-    const adapter = createLocalTaskSourceAdapter({ rootDir });
+    const adapter = new LocalTask({ rootDir });
     const taskA = await adapter.resolveTask({ suiteId: 'basic-llm', ref: 'task-a.yaml' });
     const taskB = await adapter.resolveTask({ suiteId: 'basic-llm', ref: 'task-b.yaml' });
 
-    assert.equal(taskA.task.id, 'basic-llm/task-001');
-    assert.equal(taskA.source.revision, taskB.source.revision);
-    assert.ok(taskA.source.revision.startsWith('sha256-'));
+    assert.equal(taskA.id, 'basic-llm/task-001');
+    assert.equal(taskA.source?.revision, taskB.source?.revision);
+    assert.ok(taskA.source?.revision.startsWith('sha256-'));
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
@@ -199,7 +201,7 @@ test('resolveSuite fails fast on duplicate task ids within one suite', async () 
     await writeYaml(rootDir, 'datasets/task-a.yaml', TASK_ONE_YAML);
     await writeYaml(rootDir, 'datasets/task-b.yaml', TASK_ONE_REFORMATTED_YAML);
 
-    const adapter = createLocalTaskSourceAdapter({ rootDir });
+    const adapter = new LocalTask({ rootDir });
 
     await assert.rejects(() => adapter.resolveSuite('basic-llm'), /must be unique within suite/);
   } finally {
@@ -216,7 +218,7 @@ test('listSuites fails fast when rootDir contains symlinked YAML paths', async (
     await mkdir(join(rootDir, 'datasets'), { recursive: true });
     await symlink(join(externalRoot, 'outside.yaml'), join(rootDir, 'datasets', 'linked.yaml'));
 
-    const adapter = createLocalTaskSourceAdapter({ rootDir });
+    const adapter = new LocalTask({ rootDir });
 
     await assert.rejects(() => adapter.listSuites(), /Symbolic links are not allowed/);
   } finally {
@@ -231,7 +233,7 @@ test('resolveSuite fails when matched files are not task YAML documents', async 
     await writeYaml(rootDir, 'suites/basic.yaml', SUITE_YAML);
     await writeYaml(rootDir, 'datasets/not-a-task.yaml', 'notTask:\n  id: "wrong"\n');
 
-    const adapter = createLocalTaskSourceAdapter({ rootDir });
+    const adapter = new LocalTask({ rootDir });
 
     await assert.rejects(() => adapter.resolveSuite('basic-llm'), /schemaVersion/);
   } finally {

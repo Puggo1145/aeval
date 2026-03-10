@@ -1,6 +1,7 @@
 import { z } from 'zod';
-import type { ExecutionResult } from '../../core/contracts/execution.js';
 import type { GraderResult } from '../../core/contracts/trial.js';
+import type { ExecutionResult } from '../../core/domain/execution-result.js';
+import { ConfiguredGrader } from '../base-grader.js';
 import {
   type GraderConfigValidationResult,
   parseGraderConfig,
@@ -52,7 +53,7 @@ type RegexConfig = z.infer<typeof RegexConfigSchema>;
  *
  * At least one of mustMatch or mustNotMatch must be provided.
  */
-export async function regex(
+async function gradeRegex(
   result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
@@ -95,9 +96,9 @@ export async function regex(
   return { pass: true, reason: 'All regex checks passed.' };
 }
 
-(
-  regex as typeof regex & {
-    validateConfig: (config: Record<string, unknown>) => GraderConfigValidationResult;
-  }
-).validateConfig = (config: Record<string, unknown>) =>
-  validateGraderConfig(RegexConfigSchema, config);
+export const regex = new ConfiguredGrader({
+  type: 'regex',
+  grade: (result, layer) => gradeRegex(result, layer.config),
+  validate: (layer): GraderConfigValidationResult =>
+    validateGraderConfig(RegexConfigSchema, layer.config),
+});

@@ -1,4 +1,4 @@
-import type { ProviderRegistry, TaskProvider } from '../contracts/runtime.js';
+import type { Provider, Providers as ProvidersContract } from '../contracts/runtime.js';
 import { ContractError, ValidationError } from '../errors/index.js';
 
 function normalizeProviderId(providerId: string): string {
@@ -7,34 +7,47 @@ function normalizeProviderId(providerId: string): string {
     return normalizedProviderId;
   }
 
-  throw new ValidationError(`Field 'providerId' must be a non-empty string.`, {
+  throw new ValidationError(`Field 'provider.id' must be a non-empty string.`, {
     details: {
-      field: 'providerId',
+      field: 'provider.id',
       value: providerId,
     },
   });
 }
 
-export class InMemoryProviderRegistry implements ProviderRegistry {
-  private readonly providers = new Map<string, TaskProvider>();
+export class Providers implements ProvidersContract {
+  private readonly registry = new Map<string, Provider>();
 
-  register(providerId: string, provider: TaskProvider): void {
-    const normalizedProviderId = normalizeProviderId(providerId);
+  register(provider: Provider): void {
+    const providerId = normalizeProviderId(provider.id);
 
-    if (this.providers.has(normalizedProviderId)) {
-      throw new ContractError(`Provider '${normalizedProviderId}' is already registered.`, {
+    if (this.registry.has(providerId)) {
+      throw new ContractError(`Provider '${providerId}' is already registered.`, {
         details: {
-          providerId: normalizedProviderId,
+          providerId,
         },
       });
     }
 
-    this.providers.set(normalizedProviderId, provider);
+    this.registry.set(providerId, provider);
   }
 
-  get(providerId: string): TaskProvider | undefined {
-    const normalizedProviderId = normalizeProviderId(providerId);
-    return this.providers.get(normalizedProviderId);
+  get(providerId: string): Provider | undefined {
+    return this.registry.get(normalizeProviderId(providerId));
+  }
+
+  require(providerId: string): Provider {
+    const provider = this.get(providerId);
+    if (!provider) {
+      throw new ContractError(`Provider '${providerId}' is not registered.`, {
+        details: {
+          providerId,
+          available: this.list(),
+        },
+      });
+    }
+
+    return provider;
   }
 
   has(providerId: string): boolean {
@@ -42,6 +55,6 @@ export class InMemoryProviderRegistry implements ProviderRegistry {
   }
 
   list(): string[] {
-    return [...this.providers.keys()];
+    return [...this.registry.keys()];
   }
 }

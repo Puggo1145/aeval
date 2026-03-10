@@ -1,6 +1,8 @@
 import { z } from 'zod';
-import type { ExecutionResult, ToolCallRecord } from '../../core/contracts/execution.js';
+import type { ToolCallRecord } from '../../core/contracts/execution.js';
 import type { GraderResult } from '../../core/contracts/trial.js';
+import type { ExecutionResult } from '../../core/domain/execution-result.js';
+import { ConfiguredGrader } from '../base-grader.js';
 import {
   type GraderConfigValidationResult,
   parseGraderConfig,
@@ -60,7 +62,7 @@ type ToolCallsConfig = z.infer<typeof ToolCallsConfigSchema>;
  *
  * At least one config field must be provided.
  */
-export async function toolCalls(
+async function gradeToolCalls(
   result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
@@ -129,9 +131,9 @@ export async function toolCalls(
   };
 }
 
-(
-  toolCalls as typeof toolCalls & {
-    validateConfig: (config: Record<string, unknown>) => GraderConfigValidationResult;
-  }
-).validateConfig = (config: Record<string, unknown>) =>
-  validateGraderConfig(ToolCallsConfigSchema, config);
+export const toolCalls = new ConfiguredGrader({
+  type: 'tool-calls',
+  grade: (result, layer) => gradeToolCalls(result, layer.config),
+  validate: (layer): GraderConfigValidationResult =>
+    validateGraderConfig(ToolCallsConfigSchema, layer.config),
+});

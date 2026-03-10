@@ -1,31 +1,25 @@
-import type { ObserverAdapter } from '../adapters/observer-adapter.js';
-import type { ClearedResultEntry, ResultStoreAdapter } from '../adapters/result-store-adapter.js';
-import type {
-  ResolvedSuite,
-  SuiteDescriptor,
-  TaskIndex,
-  TaskSourceAdapter,
-} from '../adapters/task-source-adapter.js';
-import type { RunManifest } from '../contracts/run-manifest.js';
+import type { Observer } from '../adapters/observer-adapter.js';
+import type { ClearedResultEntry, Stores } from '../adapters/result-store-adapter.js';
+import type { SuiteDescriptor, TaskIndex, Tasks } from '../adapters/task-source-adapter.js';
 import type { RunRecord } from '../contracts/run-record.js';
-import type { RunSummary } from '../contracts/run-summary.js';
 import type {
   BaselineComparison,
   BaselineThresholds,
-  GraderRegistry,
-  ProviderRegistry,
-  RunEvent,
+  Graders,
+  Providers,
   RuntimeDefaults,
 } from '../contracts/runtime.js';
-import type { SuiteDefinition } from '../contracts/suite.js';
-import type { TrialResultRecord } from '../contracts/trial.js';
+import type { SuiteDocument } from '../contracts/suite.js';
+import { RunCompletedEvent, type RunEvent } from '../domain/run-event.js';
+import { RunManifest } from '../domain/run-manifest.js';
+import { RunSummary } from '../domain/run-summary.js';
+import { Suite } from '../domain/suite.js';
+import { Trial } from '../domain/trial.js';
 import { ERROR_CODES, RuntimeError, ValidationError } from '../errors/index.js';
-import { orchestrateTaskRun } from '../orchestrator/run-orchestrator.js';
-import { getEffectiveExecution } from '../runtime/effective-execution.js';
-import { assertTaskExecutionReady } from '../runtime/task-execution.js';
+import { TaskRunOrchestrator } from '../orchestrator/run-orchestrator.js';
+import { resolveExecutionPolicy, validateTaskRuntime } from '../runtime/task-execution.js';
 import { ensureNonEmptyString } from '../validation/helpers.js';
 import { normalizeRuntimeDefaults } from '../validation/runtime-defaults.js';
-import { validateSuiteDefinition } from '../validation/suite-validator.js';
 import {
   computeRegressionDiff,
   computeVerdict,
@@ -33,23 +27,7 @@ import {
   validateComparableDelta,
 } from './baseline-utils.js';
 
-export type LoadSuiteInput = string | SuiteDefinition | Promise<SuiteDefinition>;
-
-export interface CoreDependencies {
-  taskSourceAdapter: TaskSourceAdapter;
-  resultStoreAdapter: ResultStoreAdapter;
-  observerAdapters?: ObserverAdapter[];
-  providerRegistry: ProviderRegistry;
-  graderRegistry: GraderRegistry;
-  runtimeDefaults?: RuntimeDefaults;
-}
-
-export interface LoadedSuite {
-  readonly definition: SuiteDefinition;
-  listTasks(): Promise<TaskIndex[]>;
-  runTask(taskId: string): Promise<RunSummary[]>;
-  streamTask(taskId: string, options?: { signal?: AbortSignal }): AsyncIterable<RunEvent>;
-}
+export type LoadSuiteInput = string | SuiteDocument | Promise<SuiteDocument>;
 
 export interface CompareBaselineOptions {
   baselineRunId?: string;
@@ -57,357 +35,339 @@ export interface CompareBaselineOptions {
   tokenBudgetBreached?: boolean;
 }
 
-export interface CoreApi {
-  listSuites(): Promise<SuiteDescriptor[]>;
-  loadSuite(input: string): Promise<LoadedSuite>;
-  loadSuite(input: SuiteDefinition): Promise<LoadedSuite>;
-  loadSuite(input: Promise<SuiteDefinition>): Promise<LoadedSuite>;
-  loadSuites(...inputs: LoadSuiteInput[]): Promise<LoadedSuite[]>;
-  getRunManifest(runId: string): Promise<RunManifest | null>;
-  getRunSummary(runId: string): Promise<RunSummary | null>;
-  listTrials(runId: string): Promise<TrialResultRecord[]>;
-  setBaseline(runId: string): Promise<void>;
-  compareBaseline(
-    currentRunId: string,
-    options?: CompareBaselineOptions,
-  ): Promise<BaselineComparison>;
-  listRuns(): Promise<RunRecord[]>;
-  clearResultsByRunIds(runIds: string[]): Promise<ClearedResultEntry[]>;
-  clearResults(): Promise<ClearedResultEntry[]>;
+export interface CoreDependencies {
+  tasks: Tasks;
+  stores: Stores;
+  providers: Providers;
+  graders: Graders;
+  observers?: Observer[];
+  runtimeDefaults?: RuntimeDefaults;
 }
+
+export type CoreApi = Core;
 
 async function resolveBaselineRunIdInput(
   baselineRunId: string | undefined,
   currentRunId: string,
-  resultStore: ResultStoreAdapter,
+  stores: Stores,
 ): Promise<string> {
   if (baselineRunId !== undefined) {
     return Promise.resolve(ensureNonEmptyString(baselineRunId, 'baselineRunId'));
   }
 
-  return resultStore.getBaselineRunId().then((resolvedBaselineRunId) => {
-    if (resolvedBaselineRunId && resolvedBaselineRunId.trim().length > 0) {
-      return resolvedBaselineRunId.trim();
-    }
+  const resolvedBaselineRunId = await stores.getBaselineRunId();
+  if (resolvedBaselineRunId && resolvedBaselineRunId.trim().length > 0) {
+    return resolvedBaselineRunId.trim();
+  }
 
-    throw new ValidationError('No baseline run is set in result store.', {
-      details: {
-        field: 'baselineRunId',
-        currentRunId,
-      },
-    });
+  throw new ValidationError('No baseline run is set in result store.', {
+    details: {
+      field: 'baselineRunId',
+      currentRunId,
+    },
   });
 }
 
-export function createCore({
-  taskSourceAdapter,
-  resultStoreAdapter,
-  observerAdapters = [],
-  providerRegistry,
-  graderRegistry,
-  runtimeDefaults,
-}: CoreDependencies): CoreApi {
-  const orchDeps = {
-    resultStoreAdapter,
-    observerAdapters,
-    providerRegistry,
-    graderRegistry,
-    runtimeDefaults: normalizeRuntimeDefaults(runtimeDefaults),
-  };
+export class Core {
+  readonly tasks: Tasks;
+  readonly stores: Stores;
+  readonly providers: Providers;
+  readonly graders: Graders;
+  readonly observers: readonly Observer[];
+  readonly runtimeDefaults: Required<RuntimeDefaults>;
 
-  function buildLoadedSuite(
-    definition: SuiteDefinition,
-    preloadedResolvedSuite?: ResolvedSuite,
-  ): LoadedSuite {
-    let resolvedSuitePromise: Promise<ResolvedSuite> | undefined;
-
-    async function resolveSuiteData(): Promise<ResolvedSuite> {
-      if (preloadedResolvedSuite) {
-        return preloadedResolvedSuite;
-      }
-
-      if (!resolvedSuitePromise) {
-        resolvedSuitePromise = taskSourceAdapter.resolveSuite(definition.id);
-      }
-
-      return resolvedSuitePromise;
-    }
-
-    async function resolveTaskById(taskId: string) {
-      const normalizedTaskId = ensureNonEmptyString(taskId, 'taskId');
-      const resolvedSuite = await resolveSuiteData();
-      const taskIndex = resolvedSuite.tasks.find((task) => task.id === normalizedTaskId);
-      if (!taskIndex) {
-        throw new ValidationError(
-          `Task '${normalizedTaskId}' is not defined in suite '${definition.id}'.`,
-          {
-            details: {
-              field: 'taskId',
-              suiteId: definition.id,
-              taskId: normalizedTaskId,
-              knownTaskIds: resolvedSuite.tasks.map((task) => task.id),
-            },
-          },
-        );
-      }
-
-      const resolvedTask = await taskSourceAdapter.resolveTask(taskIndex.taskRef);
-      if (resolvedTask.task.id !== normalizedTaskId) {
-        throw new RuntimeError(
-          `Task source adapter resolved '${resolvedTask.task.id}' for requested task '${normalizedTaskId}'.`,
-          {
-            code: ERROR_CODES.RUNTIME_UNEXPECTED,
-            details: {
-              requestedTaskId: normalizedTaskId,
-              resolvedTaskId: resolvedTask.task.id,
-              suiteId: definition.id,
-            },
-          },
-        );
-      }
-
-      return {
-        resolvedTask,
-        taskIndex,
-      };
-    }
-
-    return {
-      definition,
-
-      async listTasks(): Promise<TaskIndex[]> {
-        const resolvedSuite = await resolveSuiteData();
-        return resolvedSuite.tasks;
-      },
-
-      async runTask(taskId: string): Promise<RunSummary[]> {
-        const summaries: RunSummary[] = [];
-        for await (const event of this.streamTask(taskId)) {
-          if (event.type === 'run:completed') {
-            summaries.push(event.summary);
-          }
-        }
-        return summaries;
-      },
-
-      async *streamTask(
-        taskId: string,
-        options?: { signal?: AbortSignal },
-      ): AsyncIterable<RunEvent> {
-        const { resolvedTask } = await resolveTaskById(taskId);
-        assertTaskExecutionReady(resolvedTask.task, orchDeps);
-        const execution = getEffectiveExecution(resolvedTask.task, orchDeps.runtimeDefaults);
-
-        for (const run of resolvedTask.task.provider.runs) {
-          if (options?.signal?.aborted) {
-            return;
-          }
-
-          yield* orchestrateTaskRun(
-            {
-              suite: definition,
-              resolvedTask,
-              run,
-              execution,
-              signal: options?.signal,
-            },
-            orchDeps,
-          );
-        }
-      },
-    };
+  constructor(input: CoreDependencies) {
+    this.tasks = input.tasks;
+    this.stores = input.stores;
+    this.providers = input.providers;
+    this.graders = input.graders;
+    this.observers = Object.freeze([...(input.observers ?? [])]);
+    this.runtimeDefaults = normalizeRuntimeDefaults(input.runtimeDefaults);
   }
 
-  async function loadSuiteInternal(input: string): Promise<LoadedSuite>;
-  async function loadSuiteInternal(input: SuiteDefinition): Promise<LoadedSuite>;
-  async function loadSuiteInternal(input: Promise<SuiteDefinition>): Promise<LoadedSuite>;
-  async function loadSuiteInternal(input: LoadSuiteInput): Promise<LoadedSuite>;
-  async function loadSuiteInternal(input: LoadSuiteInput): Promise<LoadedSuite> {
+  async listSuites(): Promise<SuiteDescriptor[]> {
+    return this.tasks.listSuites();
+  }
+
+  async loadSuite(input: LoadSuiteInput): Promise<Suite> {
     if (typeof input === 'string') {
       const suiteId = ensureNonEmptyString(input, 'suiteId');
-      const resolvedSuite = await taskSourceAdapter.resolveSuite(suiteId);
-      return buildLoadedSuite(resolvedSuite.suite, resolvedSuite);
+      const suite = await this.tasks.resolveSuite(suiteId);
+      return this.bindSuite(suite);
     }
 
     const raw = await input;
-    const definition = validateSuiteDefinition(raw);
-    return buildLoadedSuite(definition);
+    return this.bindSuite(Suite.fromDocument(raw, { tasks: this.tasks }), false);
   }
 
-  async function loadSuite(input: string): Promise<LoadedSuite>;
-  async function loadSuite(input: SuiteDefinition): Promise<LoadedSuite>;
-  async function loadSuite(input: Promise<SuiteDefinition>): Promise<LoadedSuite>;
-  async function loadSuite(input: LoadSuiteInput): Promise<LoadedSuite>;
-  async function loadSuite(input: LoadSuiteInput): Promise<LoadedSuite> {
-    return loadSuiteInternal(input);
-  }
-
-  async function loadSuites(...inputs: LoadSuiteInput[]): Promise<LoadedSuite[]> {
+  async loadSuites(...inputs: LoadSuiteInput[]): Promise<Suite[]> {
     if (inputs.length === 0) {
       throw new ValidationError('At least one suite input is required.', {
         details: { field: 'inputs' },
       });
     }
 
-    const loaded: LoadedSuite[] = [];
+    const suites: Suite[] = [];
     for (const input of inputs) {
-      loaded.push(await loadSuiteInternal(input));
+      suites.push(await this.loadSuite(input));
     }
-    return loaded;
+    return suites;
   }
 
-  return {
-    async listSuites(): Promise<SuiteDescriptor[]> {
-      return taskSourceAdapter.listSuites();
-    },
-    loadSuite,
-    loadSuites,
+  async getRunManifest(runId: string): Promise<RunManifest | null> {
+    const normalizedRunId = ensureNonEmptyString(runId, 'runId');
+    const record = await this.stores.getRunManifest(normalizedRunId);
+    return record ? RunManifest.fromRecord(record) : null;
+  }
 
-    async getRunSummary(runId): Promise<RunSummary | null> {
-      const normalizedRunId = ensureNonEmptyString(runId, 'runId');
-      const record = await resultStoreAdapter.getRunSummary(normalizedRunId);
-      return record?.summary ?? null;
-    },
+  async getRunSummary(runId: string): Promise<RunSummary | null> {
+    const normalizedRunId = ensureNonEmptyString(runId, 'runId');
+    const record = await this.stores.getRunSummary(normalizedRunId);
+    return record ? RunSummary.fromRecord(record.summary) : null;
+  }
 
-    async getRunManifest(runId): Promise<RunManifest | null> {
-      const normalizedRunId = ensureNonEmptyString(runId, 'runId');
-      return resultStoreAdapter.getRunManifest(normalizedRunId);
-    },
+  async listTrials(runId: string): Promise<Trial[]> {
+    const normalizedRunId = ensureNonEmptyString(runId, 'runId');
+    const records = await this.stores.listTrials(normalizedRunId);
+    return records.map((record) => Trial.fromRecord(record.trial));
+  }
 
-    async listTrials(runId): Promise<TrialResultRecord[]> {
-      const normalizedRunId = ensureNonEmptyString(runId, 'runId');
-      return resultStoreAdapter.listTrials(normalizedRunId);
-    },
-
-    async setBaseline(runId): Promise<void> {
-      const normalizedRunId = ensureNonEmptyString(runId, 'runId');
-      const record = await resultStoreAdapter.getRunSummary(normalizedRunId);
-      if (!record) {
-        throw new ValidationError(`Run summary for '${normalizedRunId}' was not found.`, {
-          details: { field: 'runId', runId: normalizedRunId },
-        });
-      }
-
-      await resultStoreAdapter.saveBaseline({
-        runId: normalizedRunId,
-        updatedAt: new Date().toISOString(),
+  async setBaseline(runId: string): Promise<void> {
+    const normalizedRunId = ensureNonEmptyString(runId, 'runId');
+    const record = await this.stores.getRunSummary(normalizedRunId);
+    if (!record) {
+      throw new ValidationError(`Run summary for '${normalizedRunId}' was not found.`, {
+        details: { field: 'runId', runId: normalizedRunId },
       });
-    },
+    }
 
-    async compareBaseline(
-      currentRunId,
-      options: CompareBaselineOptions = {},
-    ): Promise<BaselineComparison> {
-      const normalizedCurrentRunId = ensureNonEmptyString(currentRunId, 'currentRunId');
-      validateBaselineThresholds(options.thresholds);
+    await this.stores.saveBaseline({
+      runId: normalizedRunId,
+      updatedAt: new Date().toISOString(),
+    });
+  }
 
-      const currentRecord = await resultStoreAdapter.getRunSummary(normalizedCurrentRunId);
-      if (!currentRecord) {
-        throw new ValidationError(`Run summary for '${normalizedCurrentRunId}' was not found.`, {
-          details: { field: 'currentRunId', runId: normalizedCurrentRunId },
-        });
+  async compareBaseline(
+    currentRunId: string,
+    options: CompareBaselineOptions = {},
+  ): Promise<BaselineComparison> {
+    const normalizedCurrentRunId = ensureNonEmptyString(currentRunId, 'currentRunId');
+    validateBaselineThresholds(options.thresholds);
+
+    const currentRecord = await this.stores.getRunSummary(normalizedCurrentRunId);
+    if (!currentRecord) {
+      throw new ValidationError(`Run summary for '${normalizedCurrentRunId}' was not found.`, {
+        details: { field: 'currentRunId', runId: normalizedCurrentRunId },
+      });
+    }
+    const currentSummary = RunSummary.fromRecord(currentRecord.summary);
+
+    const baselineRunId = await resolveBaselineRunIdInput(
+      options.baselineRunId,
+      normalizedCurrentRunId,
+      this.stores,
+    );
+
+    const baselineRecord = await this.stores.getRunSummary(baselineRunId);
+    if (!baselineRecord) {
+      throw new ValidationError(`Run summary for '${baselineRunId}' was not found.`, {
+        details: { field: 'baselineRunId', runId: baselineRunId },
+      });
+    }
+    const baselineSummary = RunSummary.fromRecord(baselineRecord.summary);
+
+    const passRateDelta = currentSummary.passRate - baselineSummary.passRate;
+    const passHatKDelta =
+      baselineSummary.passHatK !== undefined && currentSummary.passHatK !== undefined
+        ? currentSummary.passHatK - baselineSummary.passHatK
+        : undefined;
+    const avgLatencyDelta =
+      baselineSummary.avgLatencyMs !== undefined && currentSummary.avgLatencyMs !== undefined
+        ? currentSummary.avgLatencyMs - baselineSummary.avgLatencyMs
+        : undefined;
+
+    validateComparableDelta(options.thresholds?.passHatKDrop, passHatKDelta, 'runSummary.passHatK');
+    validateComparableDelta(
+      options.thresholds?.avgLatencyIncrease,
+      avgLatencyDelta,
+      'runSummary.avgLatencyMs',
+    );
+
+    const baselineTrials = (await this.stores.listTrials(baselineRunId)).map((record) =>
+      Trial.fromRecord(record.trial),
+    );
+    const currentTrials = (await this.stores.listTrials(normalizedCurrentRunId)).map((record) =>
+      Trial.fromRecord(record.trial),
+    );
+    const { regressions, improvements } = computeRegressionDiff(baselineTrials, currentTrials);
+
+    const comparison: BaselineComparison = {
+      baselineRunId,
+      currentRunId: normalizedCurrentRunId,
+      passRateDelta,
+      regressions,
+      improvements,
+      verdict: 'pass',
+    };
+
+    if (passHatKDelta !== undefined) {
+      comparison.passHatKDelta = passHatKDelta;
+    }
+    if (avgLatencyDelta !== undefined) {
+      comparison.avgLatencyDelta = avgLatencyDelta;
+    }
+    if (options.tokenBudgetBreached !== undefined) {
+      comparison.tokenBudgetBreached = options.tokenBudgetBreached;
+    }
+
+    comparison.verdict = computeVerdict(
+      {
+        passRateDelta: comparison.passRateDelta,
+        passHatKDelta: comparison.passHatKDelta,
+        avgLatencyDelta: comparison.avgLatencyDelta,
+        tokenBudgetBreached: comparison.tokenBudgetBreached,
+        improvements: comparison.improvements,
+      },
+      options.thresholds,
+    );
+
+    return comparison;
+  }
+
+  async listRuns(): Promise<RunRecord[]> {
+    const runIds = await this.stores.listRunIds();
+    const records: RunRecord[] = [];
+
+    for (const runId of runIds) {
+      const [manifestRecord, summaryRecord] = await Promise.all([
+        this.stores.getRunManifest(runId),
+        this.stores.getRunSummary(runId),
+      ]);
+
+      records.push({
+        runId,
+        status: summaryRecord ? 'completed' : 'interrupted',
+        manifest: manifestRecord ? RunManifest.fromRecord(manifestRecord) : null,
+        summary: summaryRecord ? RunSummary.fromRecord(summaryRecord.summary) : null,
+      });
+    }
+
+    return records.sort((a, b) => a.runId.localeCompare(b.runId));
+  }
+
+  async clearResults(): Promise<ClearedResultEntry[]> {
+    return this.stores.clearAllResults();
+  }
+
+  async clearResultsByRunIds(runIds: string[]): Promise<ClearedResultEntry[]> {
+    return this.stores.clearResultsByRunIds(runIds);
+  }
+
+  private bindSuite(suite: Suite, preloaded = true): Suite {
+    const suiteCore = this;
+    let suitePromise: Promise<Suite> | undefined = preloaded ? Promise.resolve(suite) : undefined;
+
+    const resolveSuiteData = async (): Promise<Suite> => {
+      if (!suitePromise) {
+        suitePromise = this.tasks.resolveSuite(suite.id);
       }
-      const currentSummary = currentRecord.summary;
 
-      const baselineRunId = await resolveBaselineRunIdInput(
-        options.baselineRunId,
-        normalizedCurrentRunId,
-        resultStoreAdapter,
-      );
+      return suitePromise;
+    };
 
-      const baselineRecord = await resultStoreAdapter.getRunSummary(baselineRunId);
-      if (!baselineRecord) {
-        throw new ValidationError(`Run summary for '${baselineRunId}' was not found.`, {
-          details: { field: 'baselineRunId', runId: baselineRunId },
-        });
-      }
-      const baselineSummary = baselineRecord.summary;
-
-      const passRateDelta = currentSummary.passRate - baselineSummary.passRate;
-      const passHatKDelta =
-        baselineSummary.passHatK !== undefined && currentSummary.passHatK !== undefined
-          ? currentSummary.passHatK - baselineSummary.passHatK
-          : undefined;
-      const avgLatencyDelta =
-        baselineSummary.avgLatencyMs !== undefined && currentSummary.avgLatencyMs !== undefined
-          ? currentSummary.avgLatencyMs - baselineSummary.avgLatencyMs
-          : undefined;
-
-      validateComparableDelta(
-        options.thresholds?.passHatKDrop,
-        passHatKDelta,
-        'runSummary.passHatK',
-      );
-      validateComparableDelta(
-        options.thresholds?.avgLatencyIncrease,
-        avgLatencyDelta,
-        'runSummary.avgLatencyMs',
-      );
-
-      const baselineTrials = await resultStoreAdapter.listTrials(baselineRunId);
-      const currentTrials = await resultStoreAdapter.listTrials(normalizedCurrentRunId);
-      const { regressions, improvements } = computeRegressionDiff(baselineTrials, currentTrials);
-
-      const comparison: BaselineComparison = {
-        baselineRunId,
-        currentRunId: normalizedCurrentRunId,
-        passRateDelta,
-        regressions,
-        improvements,
-        verdict: 'pass',
-      };
-
-      if (passHatKDelta !== undefined) {
-        comparison.passHatKDelta = passHatKDelta;
-      }
-      if (avgLatencyDelta !== undefined) {
-        comparison.avgLatencyDelta = avgLatencyDelta;
-      }
-      if (options.tokenBudgetBreached !== undefined) {
-        comparison.tokenBudgetBreached = options.tokenBudgetBreached;
+    const resolveTaskById = async (taskId: string) => {
+      const normalizedTaskId = ensureNonEmptyString(taskId, 'taskId');
+      const resolvedSuite = await resolveSuiteData();
+      const taskIndexes = await resolvedSuite.listTasks();
+      const taskIndex = taskIndexes.find((task) => task.id === normalizedTaskId);
+      if (!taskIndex) {
+        throw new ValidationError(
+          `Task '${normalizedTaskId}' is not defined in suite '${suite.id}'.`,
+          {
+            details: {
+              field: 'taskId',
+              suiteId: suite.id,
+              taskId: normalizedTaskId,
+              knownTaskIds: taskIndexes.map((task) => task.id),
+            },
+          },
+        );
       }
 
-      comparison.verdict = computeVerdict(
-        {
-          passRateDelta: comparison.passRateDelta,
-          passHatKDelta: comparison.passHatKDelta,
-          avgLatencyDelta: comparison.avgLatencyDelta,
-          tokenBudgetBreached: comparison.tokenBudgetBreached,
-          improvements: comparison.improvements,
+      const task = await this.tasks.resolveTask(taskIndex.taskRef);
+      if (task.id !== normalizedTaskId) {
+        throw new RuntimeError(
+          `Task source resolved '${task.id}' for requested task '${normalizedTaskId}'.`,
+          {
+            code: ERROR_CODES.RUNTIME_UNEXPECTED,
+            details: {
+              requestedTaskId: normalizedTaskId,
+              resolvedTaskId: task.id,
+              suiteId: suite.id,
+            },
+          },
+        );
+      }
+
+      return task;
+    };
+
+    let suiteWithActions: Suite;
+
+    suiteWithActions = suite.withActions(
+      {
+        listTasks: async (): Promise<TaskIndex[]> => {
+          const resolvedSuite = await resolveSuiteData();
+          return resolvedSuite.listTasks();
         },
-        options.thresholds,
-      );
 
-      return comparison;
-    },
+        runTask: async (taskId: string): Promise<RunSummary[]> => {
+          const summaries: RunSummary[] = [];
+          for await (const event of suiteWithActions.streamTask(taskId)) {
+            if (event instanceof RunCompletedEvent) {
+              summaries.push(event.summary);
+            }
+          }
+          return summaries;
+        },
 
-    async listRuns(): Promise<RunRecord[]> {
-      const runIds = await resultStoreAdapter.listRunIds();
-      const records: RunRecord[] = [];
+        streamTask: async function* (
+          taskId: string,
+          options?: { signal?: AbortSignal },
+        ): AsyncIterable<RunEvent> {
+          const task = await resolveTaskById(taskId);
+          validateTaskRuntime(task, {
+            providers: suiteCore.providers,
+            graders: suiteCore.graders,
+          });
+          const execution = resolveExecutionPolicy(task, suiteCore.runtimeDefaults);
 
-      for (const runId of runIds) {
-        const [manifest, summaryRecord] = await Promise.all([
-          resultStoreAdapter.getRunManifest(runId),
-          resultStoreAdapter.getRunSummary(runId),
-        ]);
+          for (const run of task.runs) {
+            if (options?.signal?.aborted) {
+              return;
+            }
 
-        records.push({
-          runId,
-          status: summaryRecord ? 'completed' : 'interrupted',
-          manifest,
-          summary: summaryRecord?.summary ?? null,
-        });
-      }
+            yield* new TaskRunOrchestrator(
+              {
+                suite,
+                task,
+                run,
+                execution,
+                signal: options?.signal,
+              },
+              {
+                stores: suiteCore.stores,
+                observers: [...suiteCore.observers],
+                providers: suiteCore.providers,
+                graders: suiteCore.graders,
+              },
+            ).run();
+          }
+        },
+      },
+      this.tasks,
+    );
 
-      return records.sort((a, b) => a.runId.localeCompare(b.runId));
-    },
-
-    async clearResults(): Promise<ClearedResultEntry[]> {
-      return resultStoreAdapter.clearAllResults();
-    },
-
-    async clearResultsByRunIds(runIds: string[]): Promise<ClearedResultEntry[]> {
-      return resultStoreAdapter.clearResultsByRunIds(runIds);
-    },
-  };
+    return suiteWithActions;
+  }
 }

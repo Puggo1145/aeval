@@ -34,16 +34,17 @@ Execution rule:
 
 ```text
 Core
+  - domain
   - contracts
   - validation
   - orchestrator
-  - runtime registries
+  - provider/grader containers
   - query/baseline APIs
 
 Adapters
-  - task source
-  - result store
-  - observer
+  - tasks
+  - stores
+  - observers
 
 Interfaces
   - TUI
@@ -53,8 +54,9 @@ Interfaces
 
 1. Core owns evaluation semantics.
 2. Adapters implement IO boundaries only.
-3. Providers and graders are resolved through registries injected into Core.
-4. TUI consumes Core APIs only. It does not call adapters directly.
+3. Providers and graders are resolved through containers injected into Core.
+4. TUI consumes Core APIs only. It does not call infrastructure classes directly.
+5. `contracts` own structural document parsing/validation; `domain` enforces runtime invariants on construction.
 
 ## 4. DSL
 
@@ -74,7 +76,7 @@ Rules:
 
 1. `discover[]` is required.
 2. Unknown fields fail fast.
-3. `discover[]` is resolved relative to the local task source adapter `rootDir`.
+3. `discover[]` is resolved relative to `new LocalTask({ rootDir })`.
 
 ### 4.2 Task
 
@@ -128,22 +130,22 @@ credentials there.
 ### 5.1 Provider Contract
 
 ```ts
-type TaskProvider = (
-  ctx: TaskContext,
-  params: Readonly<Record<string, unknown>>
-) => Promise<ExecutionResult>;
+interface Provider {
+  readonly id: string;
+  execute(ctx: TaskContext, run: Run): Promise<ExecutionResult>;
+}
 ```
 
 `TaskContext` contains `taskId`, `trialIndex`, `runName`, `runId`, and `signal`.
 
-Providers receive only the selected run params and the execution context.
+Providers receive the selected `Run` object and the execution context.
 
 Built-in graders may depend on extra runtime wiring. `llm-judge` is wired
 explicitly by the caller: create the built-in AI SDK-backed judge provider,
-wrap it with `createLlmJudgeGrader(...)`, and register it on the grader
-registry. `registerBuiltinGraders(...)` only registers the pure built-in
+wrap it with `new LlmJudgeGrader(...)`, and register it on `graders`.
+`registerBuiltinGraders(...)` only registers the pure built-in
 graders that need no extra runtime dependencies. Custom judge providers are
-registered directly through the grader registry.
+registered directly through `graders`.
 
 ### 5.2 Concurrency and Timeout
 
@@ -166,15 +168,15 @@ Each task run is a first-class run record:
 `passAtK` is emitted only when `totalTrials > 1`; when emitted, it is `1` if any trial passes, otherwise `0`.
 `passHatK` is emitted only when `totalTrials > 1`; when emitted, it is `1` if all trials pass, otherwise `0`.
 
-## 6. Task Source Boundary
+## 6. Tasks Boundary
 
-`TaskSourceAdapter` is the discovery and resolution boundary:
+`Tasks` is the discovery and resolution boundary:
 
 ```ts
-interface TaskSourceAdapter {
+interface Tasks {
   listSuites(): Promise<SuiteDescriptor[]>;
-  resolveSuite(suiteId: string): Promise<ResolvedSuite>;
-  resolveTask(taskRef: TaskRef): Promise<ResolvedTask>;
+  resolveSuite(suiteId: string): Promise<Suite>;
+  resolveTask(taskRef: TaskRef): Promise<Task>;
 }
 ```
 
@@ -183,25 +185,27 @@ Responsibilities:
 1. discover suites
 2. resolve suite task indexes
 3. resolve one task with source metadata
-4. strict structural validation
+4. invoke strict contract parsing for external documents
 
 Provider and grader resolvability stays in Core, not in the adapter.
 
 ## 7. Core API
 
 ```ts
-core.listSuites(): Promise<SuiteDescriptor[]>
-core.loadSuite(input): Promise<LoadedSuite>
-core.loadSuites(...inputs): Promise<LoadedSuite[]>
+new Core({ tasks, stores, providers, graders, observers })
 
-loadedSuite.listTasks(): Promise<TaskIndex[]>
-loadedSuite.runTask(taskId): Promise<RunSummary[]>
-loadedSuite.streamTask(taskId): AsyncIterable<RunEvent>
+core.listSuites(): Promise<SuiteDescriptor[]>
+core.loadSuite(input): Promise<Suite>
+core.loadSuites(...inputs): Promise<Suite[]>
+
+suite.listTasks(): Promise<TaskIndex[]>
+suite.runTask(taskId): Promise<RunSummary[]>
+suite.streamTask(taskId): AsyncIterable<RunEvent>
 ```
 
 `loadSuite` accepts either:
 
-1. a suite id discovered through the task source adapter
+1. a suite id discovered through `tasks`
 2. a bare suite object or promise that resolves to one
 
 ## 8. TUI

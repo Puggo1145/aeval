@@ -1,4 +1,4 @@
-import { type ExecutionResult, SCHEMA_VERSIONS, type TaskContext } from 'youeval';
+import { ExecutionResult, type Provider, type Run, type TaskContext } from 'youeval';
 
 type TurnRecord = NonNullable<NonNullable<ExecutionResult['trace']>['turns']>[number];
 type ToolCallRecord = NonNullable<TurnRecord['toolCalls']>[number];
@@ -256,15 +256,14 @@ function getStringParam(
 }
 
 function toSystemError(message: string, code?: string): ExecutionResult {
-  return {
-    schemaVersion: SCHEMA_VERSIONS.EXECUTION_RESULT,
+  return new ExecutionResult({
     output: '',
     error: {
       type: 'system',
       message,
       ...(code ? { code } : {}),
     },
-  };
+  });
 }
 
 function getRequiredParam(
@@ -287,86 +286,89 @@ async function safeReadText(response: Response): Promise<string> {
   }
 }
 
-export async function youapiAgentProvider(
-  ctx: TaskContext,
-  params: Readonly<Record<string, unknown>>,
-): Promise<ExecutionResult> {
-  const baseUrl = process.env.YOUAPI_BASE_URL;
-  if (!baseUrl) {
-    return toSystemError('Missing YOUAPI_BASE_URL environment variable.');
-  }
+export class YouapiAgentProvider implements Provider {
+  readonly id = 'youapi-agent';
 
-  const evalApiSecret = process.env.EVAL_API_SECRET;
-  if (!evalApiSecret) {
-    return toSystemError('Missing EVAL_API_SECRET environment variable.');
-  }
-
-  const userId = getRequiredParam(params, 'userId');
-  if (typeof userId !== 'string') return userId;
-
-  const spaceId = getRequiredParam(params, 'spaceId');
-  if (typeof spaceId !== 'string') return spaceId;
-
-  const boardId = getRequiredParam(params, 'boardId');
-  if (typeof boardId !== 'string') return boardId;
-
-  const prompt = getRequiredParam(params, 'prompt');
-  if (typeof prompt !== 'string') return prompt;
-
-  const messageMode = getStringParam(params, 'messageMode');
-  const chatModel = getStringParam(params, 'chatModel');
-  const startedAt = Date.now();
-
-  try {
-    const response = await fetch(`${baseUrl.replace(/\/$/, '')}/api/v1/eval/agent/run`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-internal-secret': evalApiSecret,
-      },
-      body: JSON.stringify({
-        userId,
-        spaceId,
-        boardId,
-        prompt,
-        ...(messageMode ? { messageMode } : {}),
-        ...(chatModel ? { chatModel } : {}),
-      }),
-      signal: ctx.signal,
-    });
-
-    if (!response.ok) {
-      const errorBody = (await safeReadText(response)).trim();
-      return toSystemError(
-        `youapi eval request failed with status ${response.status}${
-          errorBody ? `: ${errorBody}` : ''
-        }`,
-      );
+  async execute(ctx: TaskContext, run: Run): Promise<ExecutionResult> {
+    const params = run.params;
+    const baseUrl = process.env.YOUAPI_BASE_URL;
+    if (!baseUrl) {
+      return toSystemError('Missing YOUAPI_BASE_URL environment variable.');
     }
 
-    const payload = (await response.json()) as YouapiEvalAgentResponse;
-    const output = typeof payload.output === 'string' ? payload.output : '';
-    const structuredOutput =
-      payload.structuredOutput !== undefined ? payload.structuredOutput : payload.structured_output;
-    const trace = normalizeTrace(payload.trace);
-    const metrics = normalizeMetrics(payload.metrics, Date.now() - startedAt);
-    const outcome = normalizeOutcome(payload.outcome, trace);
-
-    return {
-      schemaVersion: SCHEMA_VERSIONS.EXECUTION_RESULT,
-      output,
-      ...(structuredOutput !== undefined ? { structuredOutput } : {}),
-      ...(trace ? { trace } : {}),
-      metrics,
-      ...(outcome ? { outcome } : {}),
-      ...(payload.error ? { error: payload.error } : {}),
-    };
-  } catch (error) {
-    if (ctx.signal.aborted) {
-      return toSystemError('youapi eval request aborted by timeout/cancellation.', 'aborted');
+    const evalApiSecret = process.env.EVAL_API_SECRET;
+    if (!evalApiSecret) {
+      return toSystemError('Missing EVAL_API_SECRET environment variable.');
     }
 
-    const message = error instanceof Error ? error.message : 'Unknown request error.';
-    return toSystemError(`youapi eval request failed: ${message}`);
+    const userId = getRequiredParam(params, 'userId');
+    if (typeof userId !== 'string') return userId;
+
+    const spaceId = getRequiredParam(params, 'spaceId');
+    if (typeof spaceId !== 'string') return spaceId;
+
+    const boardId = getRequiredParam(params, 'boardId');
+    if (typeof boardId !== 'string') return boardId;
+
+    const prompt = getRequiredParam(params, 'prompt');
+    if (typeof prompt !== 'string') return prompt;
+
+    const messageMode = getStringParam(params, 'messageMode');
+    const chatModel = getStringParam(params, 'chatModel');
+    const startedAt = Date.now();
+
+    try {
+      const response = await fetch(`${baseUrl.replace(/\/$/, '')}/api/v1/eval/agent/run`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-internal-secret': evalApiSecret,
+        },
+        body: JSON.stringify({
+          userId,
+          spaceId,
+          boardId,
+          prompt,
+          ...(messageMode ? { messageMode } : {}),
+          ...(chatModel ? { chatModel } : {}),
+        }),
+        signal: ctx.signal,
+      });
+
+      if (!response.ok) {
+        const errorBody = (await safeReadText(response)).trim();
+        return toSystemError(
+          `youapi eval request failed with status ${response.status}${
+            errorBody ? `: ${errorBody}` : ''
+          }`,
+        );
+      }
+
+      const payload = (await response.json()) as YouapiEvalAgentResponse;
+      const output = typeof payload.output === 'string' ? payload.output : '';
+      const structuredOutput =
+        payload.structuredOutput !== undefined
+          ? payload.structuredOutput
+          : payload.structured_output;
+      const trace = normalizeTrace(payload.trace);
+      const metrics = normalizeMetrics(payload.metrics, Date.now() - startedAt);
+      const outcome = normalizeOutcome(payload.outcome, trace);
+
+      return new ExecutionResult({
+        output,
+        ...(structuredOutput !== undefined ? { structuredOutput } : {}),
+        ...(trace ? { trace } : {}),
+        metrics,
+        ...(outcome ? { outcome } : {}),
+        ...(payload.error ? { error: payload.error } : {}),
+      });
+    } catch (error) {
+      if (ctx.signal.aborted) {
+        return toSystemError('youapi eval request aborted by timeout/cancellation.', 'aborted');
+      }
+
+      const message = error instanceof Error ? error.message : 'Unknown request error.';
+      return toSystemError(`youapi eval request failed: ${message}`);
+    }
   }
 }

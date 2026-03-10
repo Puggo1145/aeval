@@ -139,7 +139,7 @@ discover:
 | `schemaVersion` | 必填 | 固定为 `"suite.v1"` | 当前 suite DSL 版本。 |
 | `id` | 必填 | 非空字符串 | suite 的稳定标识。 |
 | `name` | 必填 | 非空字符串 | TUI 里显示给用户看的名字。 |
-| `discover` | 必填 | 非空字符串数组 | 任务发现 glob。相对 `createLocalTaskSourceAdapter({ rootDir })` 的 `rootDir` 解析。 |
+| `discover` | 必填 | 非空字符串数组 | 任务发现 glob。相对 `new LocalTask({ rootDir })` 的 `rootDir` 解析。 |
 
 `discover` 在这个例子里表示：
 
@@ -205,7 +205,7 @@ execution:
 
 | 字段 | 是否必填 | 值类型 / 可选值 | 说明 |
 | --- | --- | --- | --- |
-| `provider.id` | 必填 | 非空字符串 | 必须和代码里注册到 `providerRegistry` 的 key 一致。这里对应 `providerRegistry.register('youapi-agent', youapiAgentProvider)`。 |
+| `provider.id` | 必填 | 非空字符串 | 必须和代码里注册到 `providers` 的 provider 实例 `id` 一致。这里对应 `providers.register(new YouapiAgentProvider())`，其 `id` 为 `youapi-agent`。 |
 | `provider.runs` | 必填 | 非空数组 | 一个 task 下要执行的参数组列表。 |
 | `provider.runs[].name` | 必填 | 非空字符串 | run 名称，task 内必须唯一，会显示在 TUI 和结果里。 |
 | `provider.runs[].params` | 必填 | object | 原样传给 provider 的参数对象。没有 provider 级默认值。每个 run 必须给完整参数。 |
@@ -379,11 +379,11 @@ config:
 要让 `llm-judge` 生效，代码里必须显式注册：
 
 ```ts
-const graderRegistry = new InMemoryGraderRegistry();
-registerBuiltinGraders(graderRegistry);
+const graders = new Graders();
+registerBuiltinGraders(graders);
 
-const builtinLlmJudgeProvider = createBuiltinLlmJudgeProvider({ env: process.env });
-graderRegistry.register('llm-judge', createLlmJudgeGrader(builtinLlmJudgeProvider));
+const builtinLlmJudgeProvider = new BuiltinLlmJudgeProvider({ env: process.env });
+graders.register(new LlmJudgeGrader(builtinLlmJudgeProvider));
 ```
 
 注意：
@@ -397,22 +397,26 @@ graderRegistry.register('llm-judge', createLlmJudgeGrader(builtinLlmJudgeProvide
 `examples/youapi-agent/main.ts` 是一个最小完整接线示例：
 
 ```ts
-const graderRegistry = new InMemoryGraderRegistry();
-registerBuiltinGraders(graderRegistry);
-const builtinLlmJudgeProvider = createBuiltinLlmJudgeProvider({ env: process.env });
-graderRegistry.register('llm-judge', createLlmJudgeGrader(builtinLlmJudgeProvider));
+const graders = new Graders();
+registerBuiltinGraders(graders);
+const builtinLlmJudgeProvider = new BuiltinLlmJudgeProvider({ env: process.env });
+graders.register(
+  new LlmJudgeGrader(builtinLlmJudgeProvider, {
+    validateConfig: (config) => new BuiltinLlmJudgeConfigValidator(process.env).validate(config),
+  }),
+);
 
-const providerRegistry = new InMemoryProviderRegistry();
-providerRegistry.register('youapi-agent', youapiAgentProvider);
+const providers = new Providers();
+providers.register(new YouapiAgentProvider());
 
-const core = createCore({
-  taskSourceAdapter: createLocalTaskSourceAdapter({ rootDir: currentDir }),
-  resultStoreAdapter: createLocalResultStoreAdapter({
+const core = new Core({
+  tasks: new LocalTask({ rootDir: currentDir }),
+  stores: new LocalStore({
     rootDir: resolve(currentDir, 'results'),
   }),
-  providerRegistry,
-  graderRegistry,
-  observerAdapters: [createConsoleObserverAdapter()],
+  providers,
+  graders,
+  observers: [new ConsoleObserver()],
 });
 
 await runTui(core);
@@ -499,15 +503,15 @@ execution:
 你的 provider 只需要实现这个签名：
 
 ```ts
-type TaskProvider = (
-  ctx: TaskContext,
-  params: Readonly<Record<string, unknown>>
-) => Promise<ExecutionResult>;
+interface Provider {
+  readonly id: string;
+  execute(ctx: TaskContext, run: Run): Promise<ExecutionResult>;
+}
 ```
 
 你需要做的事通常只有三步：
 
-1. 从 `params` 里取业务参数
+1. 从 `run.params` 里取业务参数
 2. 调用真实系统或 mock 系统
 3. 返回 `ExecutionResult`
 
@@ -527,27 +531,27 @@ type TaskProvider = (
 
 ```ts
 import {
-  createCore,
-  createLocalResultStoreAdapter,
-  createLocalTaskSourceAdapter,
-  InMemoryGraderRegistry,
-  InMemoryProviderRegistry,
+  Core,
+  Graders,
+  LocalStore,
+  LocalTask,
+  Providers,
   registerBuiltinGraders,
   runTui,
 } from 'youeval';
-import { myProvider } from './provider.ts';
+import { MyProvider } from './provider.ts';
 
-const graderRegistry = new InMemoryGraderRegistry();
-registerBuiltinGraders(graderRegistry);
+const graders = new Graders();
+registerBuiltinGraders(graders);
 
-const providerRegistry = new InMemoryProviderRegistry();
-providerRegistry.register('my-provider', myProvider);
+const providers = new Providers();
+providers.register(new MyProvider());
 
-const core = createCore({
-  taskSourceAdapter: createLocalTaskSourceAdapter({ rootDir: process.cwd() }),
-  resultStoreAdapter: createLocalResultStoreAdapter({ rootDir: './results' }),
-  providerRegistry,
-  graderRegistry,
+const core = new Core({
+  tasks: new LocalTask({ rootDir: process.cwd() }),
+  stores: new LocalStore({ rootDir: './results' }),
+  providers,
+  graders,
 });
 
 await runTui(core);
@@ -555,9 +559,9 @@ await runTui(core);
 
 关键对齐关系：
 
-- `task.provider.id` 必须等于 `providerRegistry.register('...')` 的 key
+- `task.provider.id` 必须等于 provider 实例的 `id`
 - `suite.discover[]` 必须真的能找到 task 文件
-- `grader.layers[].type` 必须已经注册到 `graderRegistry`
+- `grader.layers[].type` 必须已经注册到 `graders`
 
 ### 6. 运行 TUI
 
@@ -647,11 +651,12 @@ execution:
 ## Core API
 
 ```ts
-const core = createCore({
-  taskSourceAdapter,
-  resultStoreAdapter,
-  providerRegistry,
-  graderRegistry,
+const core = new Core({
+  tasks,
+  stores,
+  providers,
+  graders,
+  observers,
   runtimeDefaults: {
     maxConcurrency: 5,
   },
@@ -678,7 +683,7 @@ const summaries = await loadedSuite.runTask(tasks[0].id);
 
 ## 本地参考适配器
 
-### `createLocalTaskSourceAdapter({ rootDir })`
+### `new LocalTask({ rootDir })`
 
 作用：
 
@@ -686,7 +691,7 @@ const summaries = await loadedSuite.runTask(tasks[0].id);
 - 按 suite 的 `discover[]` 找 task YAML
 - 对 suite/task 做严格结构校验
 
-### `createLocalResultStoreAdapter({ rootDir })`
+### `new LocalStore({ rootDir })`
 
 作用：
 

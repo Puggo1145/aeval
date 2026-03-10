@@ -1,6 +1,7 @@
 import { z } from 'zod';
-import type { ExecutionResult } from '../../core/contracts/execution.js';
 import type { GraderResult } from '../../core/contracts/trial.js';
+import type { ExecutionResult } from '../../core/domain/execution-result.js';
+import { ConfiguredGrader } from '../base-grader.js';
 import {
   type GraderConfigValidationResult,
   parseGraderConfig,
@@ -40,7 +41,7 @@ type ContainsConfig = z.infer<typeof ContainsConfigSchema>;
  *
  * At least one of mustInclude or mustNotInclude must be provided.
  */
-export async function contains(
+async function gradeContains(
   result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
@@ -85,9 +86,9 @@ export async function contains(
   return { pass: true, reason: 'All contains checks passed.' };
 }
 
-(
-  contains as typeof contains & {
-    validateConfig: (config: Record<string, unknown>) => GraderConfigValidationResult;
-  }
-).validateConfig = (config: Record<string, unknown>) =>
-  validateGraderConfig(ContainsConfigSchema, config);
+export const contains = new ConfiguredGrader({
+  type: 'contains',
+  grade: (result, layer) => gradeContains(result, layer.config),
+  validate: (layer): GraderConfigValidationResult =>
+    validateGraderConfig(ContainsConfigSchema, layer.config),
+});

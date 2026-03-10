@@ -1,8 +1,9 @@
 import { z } from 'zod';
-import type { ExecutionResult } from '../../core/contracts/execution.js';
-import type { Grader } from '../../core/contracts/runtime.js';
+import type { Grader, GraderValidationResult } from '../../core/contracts/runtime.js';
 import type { GraderResult } from '../../core/contracts/trial.js';
-import { type GraderConfigValidationResult, parseGraderConfig } from '../config-validation.js';
+import type { ExecutionResult } from '../../core/domain/execution-result.js';
+import type { GraderLayer } from '../../core/domain/grader-layer.js';
+import { parseGraderConfig } from '../config-validation.js';
 import type { JudgeProvider } from './judge-provider.js';
 
 const NonEmptyTrimmedStringSchema = z
@@ -29,14 +30,10 @@ const LlmJudgeConfigSchema = z
 
 type LlmJudgeConfig = z.infer<typeof LlmJudgeConfigSchema>;
 
-interface CreateLlmJudgeGraderOptions {
-  validateConfig?: (config: LlmJudgeConfig) => GraderConfigValidationResult;
+export interface LlmJudgeGraderOptions {
+  validateConfig?: (config: LlmJudgeConfig) => GraderValidationResult;
 }
 
-/**
- * Resolves a dot-separated path against the ExecutionResult to extract context.
- * e.g., "outcome.boardContent" → result.outcome?.boardContent
- */
 function resolveContextPath(result: ExecutionResult, path: string): unknown {
   const parts = path.split('.');
   let current: unknown = result;
@@ -51,39 +48,25 @@ function resolveContextPath(result: ExecutionResult, path: string): unknown {
   return current;
 }
 
-/**
- * Creates an llm-judge grader bound to a specific JudgeProvider.
- *
- * Config (from Task DSL):
- *   dimension: string         — evaluation dimension
- *   rubric: string            — evaluation rubric text
- *   assertions: string[]      — binary assertions to evaluate
- *   passThreshold: number     — required threshold in (0, 1]
- *   contextFrom?: string      — dot-path into ExecutionResult for context
- *   judge.provider            — aihubmix
- *   judge.model               — concrete judge model id
- */
-export function createLlmJudgeGrader(
-  judgeProvider: JudgeProvider,
-  options: CreateLlmJudgeGraderOptions = {},
-): Grader {
-  function validateParsedConfig(config: LlmJudgeConfig): GraderConfigValidationResult {
-    return options.validateConfig?.(config) ?? { valid: true };
-  }
+export class LlmJudgeGrader implements Grader {
+  readonly type = 'llm-judge';
 
-  const grader: Grader = async (
-    result: ExecutionResult,
-    config: Record<string, unknown>,
-  ): Promise<GraderResult> => {
-    const parsed = parseGraderConfig(LlmJudgeConfigSchema, config);
+  constructor(
+    private readonly judgeProvider: JudgeProvider,
+    private readonly options: LlmJudgeGraderOptions = {},
+  ) {}
+
+  async grade(result: ExecutionResult, layer: GraderLayer): Promise<GraderResult> {
+    const parsed = parseGraderConfig(LlmJudgeConfigSchema, layer.config);
     if (!parsed.ok) {
       return {
         pass: false,
         reason: parsed.reason,
       };
     }
-    const parsedConfig: LlmJudgeConfig = parsed.config;
-    const configValidation = validateParsedConfig(parsedConfig);
+
+    const parsedConfig = parsed.config;
+    const configValidation = this.validateParsedConfig(parsedConfig);
     if (!configValidation.valid) {
       return {
         pass: false,
@@ -91,22 +74,17 @@ export function createLlmJudgeGrader(
       };
     }
 
-    const dimension = parsedConfig.dimension;
-    const rubric = parsedConfig.rubric;
-    const assertions = parsedConfig.assertions;
-
-    // Resolve optional context from ExecutionResult
     let context: unknown;
     if (parsedConfig.contextFrom !== undefined) {
       context = resolveContextPath(result, parsedConfig.contextFrom);
     }
 
-    const judgeResult = await judgeProvider.evaluate({
+    const judgeResult = await this.judgeProvider.evaluate({
       output: result.output,
-      rubric,
-      assertions,
+      rubric: parsedConfig.rubric,
+      assertions: parsedConfig.assertions,
       context,
-      dimension,
+      dimension: parsedConfig.dimension,
       judge: parsedConfig.judge,
     });
 
@@ -115,21 +93,17 @@ export function createLlmJudgeGrader(
       score: judgeResult.score,
       reason: judgeResult.reason,
       meta: {
-        dimension,
+        dimension: parsedConfig.dimension,
         passThreshold: parsedConfig.passThreshold,
         assertions: judgeResult.assertions,
         provider: judgeResult.provider,
         model: judgeResult.model,
       },
     };
-  };
+  }
 
-  (
-    grader as typeof grader & {
-      validateConfig: (config: Record<string, unknown>) => GraderConfigValidationResult;
-    }
-  ).validateConfig = (config: Record<string, unknown>) => {
-    const parsed = parseGraderConfig(LlmJudgeConfigSchema, config);
+  validate(layer: GraderLayer): GraderValidationResult {
+    const parsed = parseGraderConfig(LlmJudgeConfigSchema, layer.config);
     if (!parsed.ok) {
       return {
         valid: false,
@@ -137,8 +111,10 @@ export function createLlmJudgeGrader(
       };
     }
 
-    return validateParsedConfig(parsed.config);
-  };
+    return this.validateParsedConfig(parsed.config);
+  }
 
-  return grader;
+  private validateParsedConfig(config: LlmJudgeConfig): GraderValidationResult {
+    return this.options.validateConfig?.(config) ?? { valid: true };
+  }
 }

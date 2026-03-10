@@ -1,4 +1,4 @@
-import type { GraderRegistry } from '../core/contracts/runtime.js';
+import type { Graders } from '../core/contracts/runtime.js';
 import { contains } from './builtins/contains.js';
 import { exactMatch } from './builtins/exact-match.js';
 import { jsonSchema } from './builtins/json-schema.js';
@@ -19,17 +19,17 @@ import { transcript } from './builtins/transcript.js';
  *
  * Note: `llm-judge` is registered explicitly by the caller so the judge
  * provider wiring stays opt-in. `custom` graders are also registered
- * directly via `graderRegistry.register(...)`.
+ * directly via `graders.register(...)`.
  */
-export function registerBuiltinGraders(registry: GraderRegistry): void {
-  registry.register('exact-match', exactMatch);
-  registry.register('contains', contains);
-  registry.register('regex', regex);
-  registry.register('json-schema', jsonSchema);
-  registry.register('length-check', lengthCheck);
-  registry.register('tool-calls', toolCalls);
-  registry.register('transcript', transcript);
-  registry.register('outcome-check', outcomeCheck);
-  registry.register('latency-threshold', latencyThreshold);
-  registry.register('token-budget', tokenBudget);
+export function registerBuiltinGraders(graders: Graders): void {
+  graders.register(exactMatch);
+  graders.register(contains);
+  graders.register(regex);
+  graders.register(jsonSchema);
+  graders.register(lengthCheck);
+  graders.register(toolCalls);
+  graders.register(transcript);
+  graders.register(outcomeCheck);
+  graders.register(latencyThreshold);
+  graders.register(tokenBudget);
 }

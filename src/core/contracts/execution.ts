@@ -22,14 +22,12 @@ export interface TurnRecord {
   toolCalls?: ToolCallRecord[];
 }
 
-// 对应 Transcript/Trace
-export interface ExecutionResult {
+export interface ExecutionResultData {
   schemaVersion: ExecutionResultSchemaVersion;
   output: string;
   structuredOutput?: unknown;
   trace?: {
     turns?: TurnRecord[];
-    // 原始时间流，保证信息完整
     rawEvents?: unknown[];
   };
   metrics?: {
@@ -43,11 +41,8 @@ export interface ExecutionResult {
     };
     [key: string]: unknown;
   };
-  // 模型对真实环境的影响（不只看 Agent 的文本输出，还要看是否产生了实际环境变化）
   outcome?: Record<string, unknown>;
   error?: {
-    // agent：被测者错误
-    // system：youeval 框架错误
     type: 'agent' | 'system';
     message: string;
     code?: SystemErrorCode | string;

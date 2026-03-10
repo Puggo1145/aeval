@@ -1,11 +1,12 @@
 import { z } from 'zod';
-import type { ExecutionResult } from '../../core/contracts/execution.js';
+import type { ExecutionResult } from '../../core/domain/execution-result.js';
 import type { GraderResult } from '../../core/contracts/trial.js';
 import {
   type GraderConfigValidationResult,
   parseGraderConfig,
   validateGraderConfig,
 } from '../config-validation.js';
+import { ConfiguredGrader } from '../base-grader.js';
 
 const OutcomeCheckConfigSchema = z
   .object({
@@ -24,7 +25,7 @@ type OutcomeCheckConfig = z.infer<typeof OutcomeCheckConfigSchema>;
  * Each key in `expect` is checked against the corresponding key in `result.outcome`.
  * Values are compared using deep equality.
  */
-export async function outcomeCheck(
+async function gradeOutcomeCheck(
   result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
@@ -83,9 +84,9 @@ function deepEqual(a: unknown, b: unknown): boolean {
   return false;
 }
 
-(
-  outcomeCheck as typeof outcomeCheck & {
-    validateConfig: (config: Record<string, unknown>) => GraderConfigValidationResult;
-  }
-).validateConfig = (config: Record<string, unknown>) =>
-  validateGraderConfig(OutcomeCheckConfigSchema, config);
+export const outcomeCheck = new ConfiguredGrader({
+  type: 'outcome-check',
+  grade: (result, layer) => gradeOutcomeCheck(result, layer.config),
+  validate: (layer): GraderConfigValidationResult =>
+    validateGraderConfig(OutcomeCheckConfigSchema, layer.config),
+});

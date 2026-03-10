@@ -1,4 +1,4 @@
-import type { Grader, GraderRegistry } from '../contracts/runtime.js';
+import type { Grader, Graders as GradersContract } from '../contracts/runtime.js';
 import { ContractError, ValidationError } from '../errors/index.js';
 
 function normalizeGraderType(type: string): string {
@@ -7,42 +7,54 @@ function normalizeGraderType(type: string): string {
     return normalizedType;
   }
 
-  throw new ValidationError(`Field 'type' must be a non-empty string.`, {
+  throw new ValidationError(`Field 'grader.type' must be a non-empty string.`, {
     details: {
-      field: 'type',
+      field: 'grader.type',
       value: type,
     },
   });
 }
 
-export class InMemoryGraderRegistry implements GraderRegistry {
-  private readonly graders = new Map<string, Grader>();
+export class Graders implements GradersContract {
+  private readonly registry = new Map<string, Grader>();
 
-  register(type: string, grader: Grader): void {
-    const normalizedType = normalizeGraderType(type);
+  register(grader: Grader): void {
+    const type = normalizeGraderType(grader.type);
 
-    if (this.graders.has(normalizedType)) {
-      throw new ContractError(`Grader '${normalizedType}' is already registered.`, {
+    if (this.registry.has(type)) {
+      throw new ContractError(`Grader '${type}' is already registered.`, {
         details: {
-          type: normalizedType,
+          type,
         },
       });
     }
 
-    this.graders.set(normalizedType, grader);
+    this.registry.set(type, grader);
   }
 
   get(type: string): Grader | undefined {
-    const normalizedType = normalizeGraderType(type);
-    return this.graders.get(normalizedType);
+    return this.registry.get(normalizeGraderType(type));
+  }
+
+  require(type: string): Grader {
+    const grader = this.get(type);
+    if (!grader) {
+      throw new ContractError(`Grader '${type}' is not registered.`, {
+        details: {
+          type,
+          available: this.list(),
+        },
+      });
+    }
+
+    return grader;
   }
 
   has(type: string): boolean {
-    const normalizedType = normalizeGraderType(type);
-    return this.graders.has(normalizedType);
+    return this.get(type) !== undefined;
   }
 
   list(): string[] {
-    return [...this.graders.keys()];
+    return [...this.registry.keys()];
   }
 }

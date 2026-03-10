@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { createLocalResultStoreAdapter } from '../src/adapters/result-store/local-result-store-adapter.js';
+import { LocalStore } from '../src/adapters/result-store/local-result-store-adapter.js';
 import { SCHEMA_VERSIONS } from '../src/core/contracts/schema-versions.js';
 
 async function createTempResultsDir(): Promise<string> {
@@ -79,7 +79,7 @@ function createTrial(runId: string, trialIndex: number, pass = true) {
 test('local result store saves and reads back manifest, summary, and trials', async () => {
   const rootDir = await createTempResultsDir();
   try {
-    const adapter = createLocalResultStoreAdapter({ rootDir });
+    const adapter = new LocalStore({ rootDir });
     await adapter.saveRunManifest(createManifest('run-1'));
     await adapter.saveRunSummary(createSummary('run-1'));
     await adapter.saveTrial(createTrial('run-1', 0));
@@ -99,7 +99,7 @@ test('local result store saves and reads back manifest, summary, and trials', as
 test('local result store returns null when summary file is missing', async () => {
   const rootDir = await createTempResultsDir();
   try {
-    const adapter = createLocalResultStoreAdapter({ rootDir });
+    const adapter = new LocalStore({ rootDir });
     await adapter.saveRunManifest(createManifest('run-2'));
     await adapter.saveTrial(createTrial('run-2', 0, true));
     await adapter.saveTrial(createTrial('run-2', 1, false));
@@ -115,7 +115,7 @@ test('local result store returns null when summary file is missing', async () =>
 test('local result store does not synthesize manifest-only summaries', async () => {
   const rootDir = await createTempResultsDir();
   try {
-    const adapter = createLocalResultStoreAdapter({ rootDir });
+    const adapter = new LocalStore({ rootDir });
     await adapter.saveRunManifest(createManifest('run-3'));
 
     const recovered = await adapter.getRunSummary('run-3');
@@ -129,7 +129,7 @@ test('local result store does not synthesize manifest-only summaries', async () 
 test('local result store clears selected runs and baseline metadata', async () => {
   const rootDir = await createTempResultsDir();
   try {
-    const adapter = createLocalResultStoreAdapter({ rootDir });
+    const adapter = new LocalStore({ rootDir });
     await adapter.saveRunManifest(createManifest('run-4'));
     await adapter.saveRunSummary(createSummary('run-4'));
     await adapter.saveBaseline({
@@ -140,7 +140,9 @@ test('local result store clears selected runs and baseline metadata', async () =
     const deletedEntries = await adapter.clearResultsByRunIds(['run-4']);
 
     assert.ok(deletedEntries.some((entry) => entry.path === 'run-4' && entry.kind === 'dir'));
-    assert.ok(deletedEntries.some((entry) => entry.path === 'baseline.json' && entry.kind === 'file'));
+    assert.ok(
+      deletedEntries.some((entry) => entry.path === 'baseline.json' && entry.kind === 'file'),
+    );
     assert.equal(await adapter.getBaselineRunId(), null);
   } finally {
     await rm(rootDir, { recursive: true, force: true });

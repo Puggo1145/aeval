@@ -7,26 +7,32 @@ import {
 } from './ai-sdk-judge-provider.js';
 import type { JudgeModelProvider, JudgeProvider } from './judge-provider.js';
 
-export interface CreateBuiltinLlmJudgeProviderOptions {
+export interface BuiltinLlmJudgeProviderOptions {
   env?: AiSdkJudgeProviderEnvironment;
   promptOptions?: AiSdkJudgeProviderPromptOptions;
 }
 
-export function createBuiltinLlmJudgeProvider(
-  options: CreateBuiltinLlmJudgeProviderOptions = {},
-): JudgeProvider {
-  const env = options.env ?? process.env;
-  return createAiSdkJudgeProvider(
-    resolveAiSdkJudgeProviderOptionsFromEnv(env),
-    options.promptOptions,
-  );
+export class BuiltinLlmJudgeProvider implements JudgeProvider {
+  private readonly provider: JudgeProvider;
+
+  constructor(options: BuiltinLlmJudgeProviderOptions = {}) {
+    const env = options.env ?? process.env;
+    this.provider = createAiSdkJudgeProvider(
+      resolveAiSdkJudgeProviderOptionsFromEnv(env),
+      options.promptOptions,
+    );
+  }
+
+  async evaluate(input: Parameters<JudgeProvider['evaluate']>[0]) {
+    return this.provider.evaluate(input);
+  }
 }
 
-export function createBuiltinLlmJudgeConfigValidator(
-  env: AiSdkJudgeProviderEnvironment = process.env,
-): (config: { judge: { provider: JudgeModelProvider } }) => GraderConfigValidationResult {
-  return (config) => {
-    if (config.judge.provider === 'aihubmix' && !env.AIHUBMIX_API_KEY) {
+export class BuiltinLlmJudgeConfigValidator {
+  constructor(private readonly env: AiSdkJudgeProviderEnvironment = process.env) {}
+
+  validate(config: { judge: { provider: JudgeModelProvider } }): GraderConfigValidationResult {
+    if (config.judge.provider === 'aihubmix' && !this.env.AIHUBMIX_API_KEY) {
       return {
         valid: false,
         reason: "Judge provider 'aihubmix' requires process.env.AIHUBMIX_API_KEY.",
@@ -34,5 +40,5 @@ export function createBuiltinLlmJudgeConfigValidator(
     }
 
     return { valid: true };
-  };
+  }
 }

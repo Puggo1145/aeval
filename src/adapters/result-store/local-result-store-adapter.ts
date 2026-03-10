@@ -5,9 +5,9 @@ import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type {
   BaselineRecord,
   ClearedResultEntry,
-  ResultStoreAdapter,
+  Stores,
 } from '../../core/adapters/result-store-adapter.js';
-import type { RunManifest } from '../../core/contracts/run-manifest.js';
+import type { RunManifestRecord } from '../../core/contracts/run-manifest.js';
 import type { RunSummaryRecord } from '../../core/contracts/run-summary.js';
 import type { TrialResultRecord } from '../../core/contracts/trial.js';
 import { StoreError, ValidationError } from '../../core/errors/index.js';
@@ -18,12 +18,11 @@ const SUMMARY_FILE = 'summary.json';
 const TRIALS_DIR = 'trials';
 const BASELINE_FILE = 'baseline.json';
 
-export interface LocalResultStoreAdapterOptions {
+export interface LocalStoreOptions {
   rootDir: string;
 }
 
 function trialFileName(taskId: string, trialIndex: number): string {
-  // Encode taskId to avoid collisions between values like "a/b" and "a--b".
   const encodedTaskId = Buffer.from(taskId, 'utf-8').toString('base64url');
   return `${encodedTaskId}-${trialIndex}.json`;
 }
@@ -81,8 +80,7 @@ async function ensureDir(dirPath: string): Promise<void> {
 }
 
 async function writeJsonFile(filePath: string, data: unknown): Promise<void> {
-  const content = JSON.stringify(data, null, 2);
-  await writeFile(filePath, content, 'utf-8');
+  await writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
 }
 
 async function readJsonFileOrNull<T>(filePath: string): Promise<T | null> {
@@ -221,36 +219,60 @@ function assertTrialRunIdsMatch(input: TrialResultRecord): void {
   });
 }
 
-export function createLocalResultStoreAdapter(
-  options: LocalResultStoreAdapterOptions,
-): ResultStoreAdapter {
-  const rootDir = ensureNonEmptyString(options.rootDir, 'rootDir');
-  const rootDirPath = resolve(rootDir);
+export class LocalStore implements Stores {
+  private readonly rootDir: string;
+  private readonly rootDirPath: string;
 
-  function runDir(runId: string): string {
+  constructor(options: LocalStoreOptions) {
+    this.rootDir = ensureNonEmptyString(options.rootDir, 'rootDir');
+    this.rootDirPath = resolve(this.rootDir);
+  }
+
+  async saveRunManifest(input: RunManifestRecord): Promise<void> {
+    await this.writeStrict(async () => {
+      const dir = this.runDir(input.runId);
+      await rejectSymlinkPath(dir, 'runId');
+      await ensureDir(dir);
+      await assertResolvedPathInsideRoot(this.rootDirPath, dir, input.runId);
+      await writeJsonFile(join(dir, MANIFEST_FILE), input);
+    }, `saveRunManifest(${input.runId})`);
+  }
+
+  async saveRunSummary(input: RunSummaryRecord): Promise<void> {
+    await this.writeStrict(async () => {
+      const dir = this.runDir(input.runId);
+      await rejectSymlinkPath(dir, 'runId');
+      await ensureDir(dir);
+      await assertResolvedPathInsideRoot(this.rootDirPath, dir, input.runId);
+      await writeJsonFile(join(dir, SUMMARY_FILE), input);
+    }, `saveRunSummary(${input.runId})`);
+  }
+
+  async saveTrial(input: TrialResultRecord): Promise<void> {
+    await this.writeStrict(async () => {
+      assertTrialRunIdsMatch(input);
+      const trialsDir = join(this.runDir(input.runId), TRIALS_DIR);
+      await rejectSymlinkPath(this.runDir(input.runId), 'runId');
+      await rejectSymlinkPath(trialsDir, 'trialsDir');
+      await ensureDir(trialsDir);
+      await assertResolvedPathInsideRoot(this.rootDirPath, trialsDir, input.runId);
+      const fileName = trialFileName(input.trial.taskId, input.trial.trialIndex);
+      await writeJsonFile(join(trialsDir, fileName), input);
+    }, `saveTrial(${input.runId}, ${input.trial.taskId}, ${input.trial.trialIndex})`);
+  }
+
+  async getRunManifest(runId: string): Promise<RunManifestRecord | null> {
+    return readJsonFileOrNull<RunManifestRecord>(join(this.runDir(runId), MANIFEST_FILE));
+  }
+
+  async getRunSummary(runId: string): Promise<RunSummaryRecord | null> {
     const normalizedRunId = normalizeRunId(runId);
-    const dir = resolve(rootDirPath, normalizedRunId);
-    assertPathInsideRoot(rootDirPath, dir, normalizedRunId);
-    return dir;
+    const summaryPath = join(this.runDir(normalizedRunId), SUMMARY_FILE);
+    return readJsonFileOrNull<RunSummaryRecord>(summaryPath);
   }
 
-  async function writeStrict<T>(operation: () => Promise<T>, context: string): Promise<T> {
-    try {
-      return await operation();
-    } catch (cause) {
-      if (cause instanceof ValidationError) {
-        throw cause;
-      }
-
-      throw new StoreError(`Write failed (strict-only): ${context}`, {
-        details: { context, rootDir },
-        cause,
-      });
-    }
-  }
-
-  async function listTrialsByRunId(runId: string): Promise<TrialResultRecord[]> {
-    const trialsDir = join(runDir(runId), TRIALS_DIR);
+  async listTrials(runId: string): Promise<TrialResultRecord[]> {
+    const trialsDir = join(this.runDir(runId), TRIALS_DIR);
     let entries: string[];
     try {
       entries = await readdir(trialsDir);
@@ -266,7 +288,7 @@ export function createLocalResultStoreAdapter(
       });
     }
 
-    const jsonFiles = entries.filter((e) => e.endsWith('.json')).sort();
+    const jsonFiles = entries.filter((entry) => entry.endsWith('.json')).sort();
     const records: TrialResultRecord[] = [];
     for (const file of jsonFiles) {
       const filePath = join(trialsDir, file);
@@ -284,181 +306,150 @@ export function createLocalResultStoreAdapter(
     return records;
   }
 
-  async function getRunManifestByRunId(runId: string): Promise<RunManifest | null> {
-    return readJsonFileOrNull<RunManifest>(join(runDir(runId), MANIFEST_FILE));
+  async saveBaseline(input: BaselineRecord): Promise<void> {
+    await this.writeStrict(async () => {
+      await ensureDir(this.rootDirPath);
+      await writeJsonFile(join(this.rootDirPath, BASELINE_FILE), input);
+    }, 'saveBaseline');
   }
 
-  return {
-    async saveRunManifest(input: RunManifest): Promise<void> {
-      await writeStrict(async () => {
-        const dir = runDir(input.runId);
-        await rejectSymlinkPath(dir, 'runId');
-        await ensureDir(dir);
-        await assertResolvedPathInsideRoot(rootDirPath, dir, input.runId);
-        await writeJsonFile(join(dir, MANIFEST_FILE), input);
-      }, `saveRunManifest(${input.runId})`);
-    },
+  async getBaselineRunId(): Promise<string | null> {
+    const record = await readJsonFileOrNull<BaselineRecord>(join(this.rootDirPath, BASELINE_FILE));
+    return record?.runId ?? null;
+  }
 
-    async saveRunSummary(input: RunSummaryRecord): Promise<void> {
-      await writeStrict(async () => {
-        const dir = runDir(input.runId);
-        await rejectSymlinkPath(dir, 'runId');
-        await ensureDir(dir);
-        await assertResolvedPathInsideRoot(rootDirPath, dir, input.runId);
-        await writeJsonFile(join(dir, SUMMARY_FILE), input);
-      }, `saveRunSummary(${input.runId})`);
-    },
+  async listRunIds(): Promise<string[]> {
+    let entries: string[];
+    try {
+      entries = await readdir(this.rootDirPath, { withFileTypes: true }).then((dirents) =>
+        dirents.filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name),
+      );
+    } catch (cause) {
+      const errorCode = extractFsErrorCode(cause);
+      if (errorCode === 'ENOENT') {
+        return [];
+      }
 
-    async saveTrial(input: TrialResultRecord): Promise<void> {
-      await writeStrict(async () => {
-        assertTrialRunIdsMatch(input);
-        const trialsDir = join(runDir(input.runId), TRIALS_DIR);
-        await rejectSymlinkPath(runDir(input.runId), 'runId');
-        await rejectSymlinkPath(trialsDir, 'trialsDir');
-        await ensureDir(trialsDir);
-        await assertResolvedPathInsideRoot(rootDirPath, trialsDir, input.runId);
-        const fileName = trialFileName(input.trial.taskId, input.trial.trialIndex);
-        await writeJsonFile(join(trialsDir, fileName), input);
-      }, `saveTrial(${input.runId}, ${input.trial.taskId}, ${input.trial.trialIndex})`);
-    },
+      throw new StoreError(`Failed to list run directories in '${this.rootDirPath}'.`, {
+        details: { rootDir: this.rootDirPath },
+        cause,
+      });
+    }
 
-    async getRunManifest(runId: string): Promise<RunManifest | null> {
-      return getRunManifestByRunId(runId);
-    },
+    const runIds: string[] = [];
+    for (const dirName of entries) {
+      const summaryPath = join(this.rootDirPath, dirName, SUMMARY_FILE);
+      const summary = await readJsonFileOrNull(summaryPath);
+      if (summary !== null) {
+        runIds.push(dirName);
+        continue;
+      }
 
-    async getRunSummary(runId: string): Promise<RunSummaryRecord | null> {
-      const normalizedRunId = normalizeRunId(runId);
-      const summaryPath = join(runDir(normalizedRunId), SUMMARY_FILE);
-      return readJsonFileOrNull<RunSummaryRecord>(summaryPath);
-    },
-
-    async listTrials(runId: string): Promise<TrialResultRecord[]> {
-      return listTrialsByRunId(runId);
-    },
-
-    async saveBaseline(input: BaselineRecord): Promise<void> {
-      await writeStrict(async () => {
-        await ensureDir(rootDirPath);
-        await writeJsonFile(join(rootDirPath, BASELINE_FILE), input);
-      }, 'saveBaseline');
-    },
-
-    async getBaselineRunId(): Promise<string | null> {
-      const record = await readJsonFileOrNull<BaselineRecord>(join(rootDirPath, BASELINE_FILE));
-      return record?.runId ?? null;
-    },
-
-    async listRunIds(): Promise<string[]> {
-      let entries: string[];
-      try {
-        entries = await readdir(rootDirPath, { withFileTypes: true }).then((dirents) =>
-          dirents.filter((d) => d.isDirectory()).map((d) => d.name),
-        );
-      } catch (cause) {
+      const trialsDir = join(this.rootDirPath, dirName, TRIALS_DIR);
+      const trialEntries = await readdir(trialsDir).catch((cause) => {
         const errorCode = extractFsErrorCode(cause);
         if (errorCode === 'ENOENT') {
           return [];
         }
-
-        throw new StoreError(`Failed to list run directories in '${rootDirPath}'.`, {
-          details: { rootDir: rootDirPath },
+        throw new StoreError(`Failed to list trials directory '${trialsDir}'.`, {
+          details: { runId: dirName, trialsDir },
           cause,
         });
+      });
+      const hasTrialRecord = trialEntries.some((entry) => entry.endsWith('.json'));
+      if (hasTrialRecord) {
+        runIds.push(dirName);
+        continue;
       }
 
-      const runIds: string[] = [];
-      for (const dirName of entries) {
-        const summaryPath = join(rootDirPath, dirName, SUMMARY_FILE);
-        const summary = await readJsonFileOrNull(summaryPath);
-        if (summary !== null) {
-          runIds.push(dirName);
-          continue;
+      const manifestPath = join(this.rootDirPath, dirName, MANIFEST_FILE);
+      const manifest = await readJsonFileOrNull(manifestPath);
+      if (manifest !== null) {
+        runIds.push(dirName);
+      }
+    }
+
+    return runIds.sort();
+  }
+
+  async clearAllResults(): Promise<ClearedResultEntry[]> {
+    return this.writeStrict(async () => {
+      const deletedEntries = await collectEntriesForDeletion(this.rootDirPath);
+      await rm(this.rootDirPath, { recursive: true, force: true });
+      await ensureDir(this.rootDirPath);
+      return deletedEntries;
+    }, 'clearAllResults');
+  }
+
+  async clearResultsByRunIds(runIds: string[]): Promise<ClearedResultEntry[]> {
+    return this.writeStrict(async () => {
+      const normalizedRunIds = [...new Set(runIds.map((runId) => normalizeRunId(runId)))].sort();
+      if (normalizedRunIds.length === 0) {
+        return [];
+      }
+
+      const deletedEntries: ClearedResultEntry[] = [];
+      const deletedRunIdSet = new Set(normalizedRunIds);
+
+      for (const runId of normalizedRunIds) {
+        const dir = this.runDir(runId);
+        await rejectSymlinkPath(dir, 'runId');
+
+        let dirStat: Stats;
+        try {
+          dirStat = await lstat(dir);
+        } catch (cause) {
+          if (extractFsErrorCode(cause) === 'ENOENT') {
+            continue;
+          }
+          throw cause;
         }
 
-        const trialsDir = join(rootDirPath, dirName, TRIALS_DIR);
-        const trialEntries = await readdir(trialsDir).catch((cause) => {
-          const errorCode = extractFsErrorCode(cause);
-          if (errorCode === 'ENOENT') {
-            return [];
-          }
-          throw new StoreError(`Failed to list trials directory '${trialsDir}'.`, {
-            details: { runId: dirName, trialsDir },
-            cause,
+        if (!dirStat.isDirectory()) {
+          throw new StoreError(`Expected run path '${dir}' to be a directory.`, {
+            details: { runId, dir },
           });
-        });
-        const hasTrialRecord = trialEntries.some((entry) => entry.endsWith('.json'));
-        if (hasTrialRecord) {
-          runIds.push(dirName);
-          continue;
         }
 
-        const manifestPath = join(rootDirPath, dirName, MANIFEST_FILE);
-        const manifest = await readJsonFileOrNull(manifestPath);
-        if (manifest !== null) {
-          runIds.push(dirName);
-        }
+        const runEntries = await collectEntriesForDeletion(dir);
+        deletedEntries.push(...withPrefix(runEntries, runId));
+        await rm(dir, { recursive: true, force: true });
+        deletedEntries.push({ path: runId, kind: 'dir' });
       }
 
-      return runIds.sort();
-    },
+      const baselineRecord = await readJsonFileOrNull<BaselineRecord>(
+        join(this.rootDirPath, BASELINE_FILE),
+      );
+      const baselineRunId = baselineRecord?.runId ?? null;
+      if (baselineRunId && deletedRunIdSet.has(baselineRunId)) {
+        const baselinePath = join(this.rootDirPath, BASELINE_FILE);
+        await rm(baselinePath, { force: true });
+        deletedEntries.push({ path: BASELINE_FILE, kind: 'file' });
+      }
 
-    async clearAllResults(): Promise<ClearedResultEntry[]> {
-      return writeStrict(async () => {
-        const deletedEntries = await collectEntriesForDeletion(rootDirPath);
-        await rm(rootDirPath, { recursive: true, force: true });
-        await ensureDir(rootDirPath);
-        return deletedEntries;
-      }, 'clearAllResults');
-    },
+      return deletedEntries;
+    }, 'clearResultsByRunIds');
+  }
 
-    async clearResultsByRunIds(runIds: string[]): Promise<ClearedResultEntry[]> {
-      return writeStrict(async () => {
-        const normalizedRunIds = [...new Set(runIds.map((runId) => normalizeRunId(runId)))].sort();
-        if (normalizedRunIds.length === 0) {
-          return [];
-        }
+  private runDir(runId: string): string {
+    const normalizedRunId = normalizeRunId(runId);
+    const dir = resolve(this.rootDirPath, normalizedRunId);
+    assertPathInsideRoot(this.rootDirPath, dir, normalizedRunId);
+    return dir;
+  }
 
-        const deletedEntries: ClearedResultEntry[] = [];
-        const deletedRunIdSet = new Set(normalizedRunIds);
+  private async writeStrict<T>(operation: () => Promise<T>, context: string): Promise<T> {
+    try {
+      return await operation();
+    } catch (cause) {
+      if (cause instanceof ValidationError) {
+        throw cause;
+      }
 
-        for (const runId of normalizedRunIds) {
-          const dir = runDir(runId);
-          await rejectSymlinkPath(dir, 'runId');
-
-          let dirStat: Stats;
-          try {
-            dirStat = await lstat(dir);
-          } catch (cause) {
-            if (extractFsErrorCode(cause) === 'ENOENT') {
-              continue;
-            }
-            throw cause;
-          }
-
-          if (!dirStat.isDirectory()) {
-            throw new StoreError(`Expected run path '${dir}' to be a directory.`, {
-              details: { runId, dir },
-            });
-          }
-
-          const runEntries = await collectEntriesForDeletion(dir);
-          deletedEntries.push(...withPrefix(runEntries, runId));
-          await rm(dir, { recursive: true, force: true });
-          deletedEntries.push({ path: runId, kind: 'dir' });
-        }
-
-        const baselineRecord = await readJsonFileOrNull<BaselineRecord>(
-          join(rootDirPath, BASELINE_FILE),
-        );
-        const baselineRunId = baselineRecord?.runId ?? null;
-        if (baselineRunId && deletedRunIdSet.has(baselineRunId)) {
-          const baselinePath = join(rootDirPath, BASELINE_FILE);
-          await rm(baselinePath, { force: true });
-          deletedEntries.push({ path: BASELINE_FILE, kind: 'file' });
-        }
-
-        return deletedEntries;
-      }, 'clearResultsByRunIds');
-    },
-  };
+      throw new StoreError(`Write failed (strict-only): ${context}`, {
+        details: { context, rootDir: this.rootDir },
+        cause,
+      });
+    }
+  }
 }

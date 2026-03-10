@@ -1,10 +1,9 @@
-import type { ExecutionResult } from './execution.js';
-import type { RunSummary } from './run-summary.js';
+import type { ExecutionResult } from '../domain/execution-result.js';
+import type { GraderLayer } from '../domain/grader-layer.js';
+import type { Run } from '../domain/run.js';
+import type { RunEvent } from '../domain/run-event.js';
 import type { GraderResult } from './trial.js';
 
-/**
- * Provider 执行时收到的只读上下文
- */
 export interface TaskContext {
   taskId: string;
   trialIndex: number;
@@ -13,15 +12,15 @@ export interface TaskContext {
   signal: AbortSignal;
 }
 
-// Provider 执行函数
-export type TaskProvider = (
-  ctx: TaskContext,
-  params: Readonly<Record<string, unknown>>,
-) => Promise<ExecutionResult>;
+export interface Provider {
+  readonly id: string;
+  execute(ctx: TaskContext, run: Run): Promise<ExecutionResult>;
+}
 
-export interface ProviderRegistry {
-  register(providerId: string, provider: TaskProvider): void;
-  get(providerId: string): TaskProvider | undefined;
+export interface Providers {
+  register(provider: Provider): void;
+  get(providerId: string): Provider | undefined;
+  require(providerId: string): Provider;
   has(providerId: string): boolean;
   list(): string[];
 }
@@ -30,46 +29,29 @@ export interface RuntimeDefaults {
   maxConcurrency?: number;
 }
 
-// Grader 评分函数
-export type Grader = (
-  result: ExecutionResult,
-  config: Record<string, unknown>,
-) => Promise<GraderResult>;
+export interface GraderValidationResult {
+  valid: boolean;
+  reason?: string;
+}
 
-export interface GraderRegistry {
-  register(type: string, grader: Grader): void;
+export interface Grader {
+  readonly type: string;
+  grade(result: ExecutionResult, layer: GraderLayer): Promise<GraderResult>;
+  validate?(layer: GraderLayer): GraderValidationResult;
+}
+
+export interface Graders {
+  register(grader: Grader): void;
   get(type: string): Grader | undefined;
+  require(type: string): Grader;
   has(type: string): boolean;
   list(): string[];
 }
 
-export type RunEvent =
-  | { type: 'run:started'; runId: string; taskId: string; runName: string; totalTrials: number }
-  | { type: 'trial:started'; taskId: string; runId: string; runName: string; trialIndex: number }
-  | {
-      type: 'trial:completed';
-      taskId: string;
-      runId: string;
-      runName: string;
-      trialIndex: number;
-      pass: boolean;
-      durationMs: number;
-    }
-  | {
-      type: 'trial:error';
-      taskId: string;
-      runId: string;
-      runName: string;
-      trialIndex: number;
-      errorType: 'agent' | 'system';
-      message: string;
-    }
-  | { type: 'run:completed'; summary: RunSummary };
+export type TaskRunEvent = RunEvent;
 
 export interface BaselineThresholds {
   passRateDrop?: number;
-  // pass^K drop
-  // pass^k: k 次全部通过
   passHatKDrop?: number;
   avgLatencyIncrease?: number;
 }
@@ -82,7 +64,7 @@ export interface BaselineComparison {
   passHatKDelta?: number;
   avgLatencyDelta?: number;
   tokenBudgetBreached?: boolean;
-  regressions: TaskId[]; // 相比 baseline 变差的 task id 列表
-  improvements: TaskId[]; // 相比 baseline 变好的 task id 列表
+  regressions: TaskId[];
+  improvements: TaskId[];
   verdict: 'pass' | 'regressed' | 'improved';
 }

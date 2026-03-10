@@ -1,2 +1,2 @@
-export { fileEditAgentProvider } from './agent.ts';
-export { basicLlmProvider } from './llm-call.ts';
+export { FileEditAgentProvider } from './agent.ts';
+export { BasicLlmProvider } from './llm-call.ts';

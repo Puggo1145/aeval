@@ -4,31 +4,34 @@ import test from 'node:test';
 import type {
   BaselineRecord,
   ClearedResultEntry,
-  ResultStoreAdapter,
+  Stores,
 } from '../src/core/adapters/result-store-adapter.js';
-import type {
-  ResolvedSuite,
-  ResolvedTask,
-  SuiteDescriptor,
-  TaskRef,
-  TaskSourceAdapter,
-} from '../src/core/adapters/task-source-adapter.js';
-import { createCore } from '../src/core/api/index.js';
+import type { SuiteDescriptor, TaskRef, Tasks } from '../src/core/adapters/task-source-adapter.js';
+import { Core } from '../src/core/api/index.js';
 import { SCHEMA_VERSIONS } from '../src/core/contracts/index.js';
-import type { RunManifest } from '../src/core/contracts/run-manifest.js';
+import type { RunManifestRecord } from '../src/core/contracts/run-manifest.js';
 import type { RunRecord } from '../src/core/contracts/run-record.js';
 import type { RunSummaryRecord } from '../src/core/contracts/run-summary.js';
-import type { SuiteDefinition } from '../src/core/contracts/suite.js';
+import type { SuiteDocument } from '../src/core/contracts/suite.js';
+import type { TaskDocument } from '../src/core/contracts/task.js';
 import type { TrialResultRecord } from '../src/core/contracts/trial.js';
-import { InMemoryGraderRegistry, InMemoryProviderRegistry } from '../src/core/runtime/index.js';
+import { parseTaskDocument } from '../src/core/contracts/index.js';
+import { ExecutionResult } from '../src/core/domain/execution-result.js';
+import { Suite } from '../src/core/domain/suite.js';
+import { Task } from '../src/core/domain/task.js';
+import {
+  resolveExecutionPolicy,
+  validateTaskRuntime,
+} from '../src/core/runtime/task-execution.js';
+import { Graders, Providers } from '../src/core/runtime/index.js';
 
-class InMemoryResultStoreAdapter implements ResultStoreAdapter {
-  private readonly manifests = new Map<string, RunManifest>();
+class InMemoryStore implements Stores {
+  private readonly manifests = new Map<string, RunManifestRecord>();
   private readonly summaries = new Map<string, RunSummaryRecord>();
   private readonly trials = new Map<string, TrialResultRecord[]>();
   private baselineRunId: string | null = null;
 
-  async saveRunManifest(input: RunManifest): Promise<void> {
+  async saveRunManifest(input: RunManifestRecord): Promise<void> {
     this.manifests.set(input.runId, input);
   }
 
@@ -42,7 +45,7 @@ class InMemoryResultStoreAdapter implements ResultStoreAdapter {
     this.trials.set(input.runId, existing);
   }
 
-  async getRunManifest(runId: string): Promise<RunManifest | null> {
+  async getRunManifest(runId: string): Promise<RunManifestRecord | null> {
     return this.manifests.get(runId) ?? null;
   }
 
@@ -78,7 +81,9 @@ class InMemoryResultStoreAdapter implements ResultStoreAdapter {
   }
 
   async clearAllResults(): Promise<ClearedResultEntry[]> {
-    const entries = [...this.summaries.keys()].sort().map((runId) => ({ path: runId, kind: 'dir' as const }));
+    const entries = [...this.summaries.keys()]
+      .sort()
+      .map((runId) => ({ path: runId, kind: 'dir' as const }));
     this.manifests.clear();
     this.summaries.clear();
     this.trials.clear();
@@ -87,7 +92,7 @@ class InMemoryResultStoreAdapter implements ResultStoreAdapter {
   }
 }
 
-function createSuiteDefinition(): SuiteDefinition {
+function createSuiteDocument(): SuiteDocument {
   return {
     schemaVersion: 'suite.v1',
     id: 'basic-llm',
@@ -96,21 +101,74 @@ function createSuiteDefinition(): SuiteDefinition {
   };
 }
 
-function createTaskSourceAdapter(): TaskSourceAdapter {
+function createTaskDocument(): TaskDocument {
+  return {
+    schemaVersion: SCHEMA_VERSIONS.TASK,
+    id: 'basic-llm/task-001',
+    desc: 'hello task',
+    provider: {
+      id: 'mock-provider',
+      runs: [
+        {
+          name: 'mini',
+          params: { prompt: 'hello-mini' },
+        },
+        {
+          name: 'nano',
+          params: { prompt: 'hello-nano' },
+        },
+      ],
+    },
+    graders: {
+      strategy: 'ALL',
+      layers: [{ name: 'always-pass', type: 'always-pass' }],
+    },
+    execution: {
+      timeoutMs: 1000,
+      retryOnError: 0,
+      trialsPerTask: 2,
+    },
+  };
+}
+
+function createWeightedTaskDocument(): TaskDocument {
+  return {
+    schemaVersion: SCHEMA_VERSIONS.TASK,
+    id: 'basic-llm/task-weighted',
+    provider: {
+      id: 'mock-provider',
+      runs: [
+        {
+          name: 'mini',
+          params: { prompt: 'hello-mini' },
+        },
+      ],
+    },
+    graders: {
+      strategy: 'WEIGHTED',
+      passThreshold: 0.6,
+      layers: [{ name: 'always-pass', type: 'always-pass', weight: 1 }],
+    },
+    execution: {
+      timeoutMs: 1000,
+    },
+  };
+}
+
+function createTasks(): Tasks {
   const suiteDescriptor: SuiteDescriptor = {
     id: 'basic-llm',
     name: 'Basic LLM',
     ref: 'suites/basic.yaml',
   };
 
-  const resolvedSuite: ResolvedSuite = {
+  const suite = Suite.fromDocument(createSuiteDocument(), {
     source: {
       adapter: 'memory',
       ref: 'suites/basic.yaml',
       fetchedAt: '2026-03-05T00:00:00.000Z',
     },
-    suite: createSuiteDefinition(),
-    tasks: [
+    taskIndexes: [
       {
         id: 'basic-llm/task-001',
         desc: 'hello task',
@@ -121,80 +179,66 @@ function createTaskSourceAdapter(): TaskSourceAdapter {
         },
       },
     ],
-  };
+  });
 
-  const resolvedTask: ResolvedTask = {
-    source: {
-      adapter: 'memory',
-      ref: 'datasets/task-001.yaml',
-      revision: 'sha256-task-001',
-      fetchedAt: '2026-03-05T00:00:00.000Z',
-    },
-    task: {
-      schemaVersion: SCHEMA_VERSIONS.TASK,
-      id: 'basic-llm/task-001',
-      desc: 'hello task',
-      provider: {
-        id: 'mock-provider',
-        runs: [
-          {
-            name: 'mini',
-            params: { prompt: 'hello-mini' },
-          },
-          {
-            name: 'nano',
-            params: { prompt: 'hello-nano' },
-          },
-        ],
-      },
-      graders: {
-        strategy: 'ALL',
-        layers: [{ name: 'always-pass', type: 'always-pass' }],
-      },
-      execution: {
-        timeoutMs: 1000,
-        retryOnError: 0,
-        trialsPerTask: 2,
-      },
-    },
-  };
+  const task = Task.fromDocument(createTaskDocument(), {
+    adapter: 'memory',
+    ref: 'datasets/task-001.yaml',
+    revision: 'sha256-task-001',
+    fetchedAt: '2026-03-05T00:00:00.000Z',
+  });
 
   return {
     async listSuites(): Promise<SuiteDescriptor[]> {
       return [suiteDescriptor];
     },
-    async resolveSuite(suiteId: string): Promise<ResolvedSuite> {
+    async resolveSuite(suiteId: string): Promise<Suite> {
       assert.equal(suiteId, 'basic-llm');
-      return resolvedSuite;
+      return suite;
     },
-    async resolveTask(taskRef: TaskRef): Promise<ResolvedTask> {
+    async resolveTask(taskRef: TaskRef): Promise<Task> {
       assert.equal(taskRef.ref, 'datasets/task-001.yaml');
-      return resolvedTask;
+      return task;
     },
   };
 }
 
-function createTestCore() {
-  const providerRegistry = new InMemoryProviderRegistry();
-  providerRegistry.register('mock-provider', async (_ctx, params) => ({
-    schemaVersion: SCHEMA_VERSIONS.EXECUTION_RESULT,
-    output: String(params.prompt ?? ''),
-    metrics: {
-      latencyMs: 25,
-    },
-  }));
+class MockProvider {
+  readonly id = 'mock-provider';
 
-  const graderRegistry = new InMemoryGraderRegistry();
-  graderRegistry.register('always-pass', async () => ({
-    pass: true,
-    reason: 'ok',
-  }));
+  async execute(_ctx: unknown, run: { params: Readonly<Record<string, unknown>> }) {
+    return new ExecutionResult({
+      output: String(run.params.prompt ?? ''),
+      metrics: {
+        latencyMs: 25,
+      },
+    });
+  }
+}
 
-  return createCore({
-    taskSourceAdapter: createTaskSourceAdapter(),
-    resultStoreAdapter: new InMemoryResultStoreAdapter(),
-    providerRegistry,
-    graderRegistry,
+class AlwaysPassGrader {
+  readonly type = 'always-pass';
+
+  async grade() {
+    return {
+      pass: true,
+      reason: 'ok',
+    };
+  }
+}
+
+function createTestCore(stores: Stores = new InMemoryStore()) {
+  const providers = new Providers();
+  providers.register(new MockProvider());
+
+  const graders = new Graders();
+  graders.register(new AlwaysPassGrader());
+
+  return new Core({
+    tasks: createTasks(),
+    stores,
+    providers,
+    graders,
   });
 }
 
@@ -229,7 +273,7 @@ test('loadSuite by id and runTask executes all provider runs', async () => {
 
 test('loadSuite accepts bare suite definitions and listTasks returns task indexes', async () => {
   const core = createTestCore();
-  const suite = await core.loadSuite(createSuiteDefinition());
+  const suite = await core.loadSuite(createSuiteDocument());
 
   const tasks = await suite.listTasks();
 
@@ -244,6 +288,125 @@ test('loadSuite accepts bare suite definitions and listTasks returns task indexe
       },
     },
   ]);
+});
+
+test('Task.fromDocument rejects unknown fields without external validation', () => {
+  assert.throws(
+    () =>
+      Task.fromDocument({
+        ...createTaskDocument(),
+        extra: true,
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      const details =
+        'details' in error && typeof error.details === 'object'
+          ? (error.details as { field?: unknown })
+          : {};
+      assert.equal(details.field, 'task');
+      return true;
+    },
+  );
+});
+
+test('Task constructor rejects invalid weighted documents at runtime', () => {
+  const invalidWeightedDoc = {
+    ...createTaskDocument(),
+    graders: {
+      strategy: 'WEIGHTED',
+      layers: [{ name: 'always-pass', type: 'always-pass', weight: 1 }],
+    },
+  } as TaskDocument;
+
+  assert.throws(
+    () =>
+      new Task({
+        document: invalidWeightedDoc,
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      const details =
+        'details' in error && typeof error.details === 'object'
+          ? (error.details as { field?: unknown })
+          : {};
+      assert.equal(details.field, 'task.graders.passThreshold');
+      return true;
+    },
+  );
+});
+
+test('Suite.fromDocument rejects unknown fields without external validation', () => {
+  assert.throws(
+    () =>
+      Suite.fromDocument({
+        ...createSuiteDocument(),
+        extra: true,
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      const details =
+        'details' in error && typeof error.details === 'object'
+          ? (error.details as { field?: unknown })
+          : {};
+      assert.equal(details.field, 'suite');
+      return true;
+    },
+  );
+});
+
+test('Task weighted documents round-trip through toDocument and contract parsing', () => {
+  const task = Task.fromDocument(createWeightedTaskDocument());
+  const roundTripped = task.toDocument();
+
+  assert.equal(roundTripped.graders.strategy, 'WEIGHTED');
+  assert.equal(roundTripped.graders.passThreshold, 0.6);
+  assert.equal(parseTaskDocument(roundTripped).graders.strategy, 'WEIGHTED');
+});
+
+test('Task.toDocument does not emit invalid WEIGHTED passThreshold fallback values', () => {
+  const task = Task.fromDocument(createWeightedTaskDocument());
+  (task as unknown as { passThreshold?: number }).passThreshold = undefined;
+
+  assert.throws(
+    () => task.toDocument(),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      const details =
+        'details' in error && typeof error.details === 'object'
+          ? (error.details as { field?: unknown })
+          : {};
+      assert.equal(details.field, 'task.graders.passThreshold');
+      return true;
+    },
+  );
+});
+
+test('validateTaskRuntime and resolveExecutionPolicy cover task runtime prep', () => {
+  const providers = new Providers();
+  providers.register(new MockProvider());
+
+  const graders = new Graders();
+  graders.register(new AlwaysPassGrader());
+
+  const task = Task.fromDocument({
+    ...createTaskDocument(),
+    execution: {
+      timeoutMs: 1000,
+    },
+  });
+
+  validateTaskRuntime(task, {
+    providers,
+    graders,
+  });
+  const execution = resolveExecutionPolicy(task, {
+    maxConcurrency: 7,
+  });
+
+  assert.equal(execution.timeoutMs, 1000);
+  assert.equal(execution.retryOnError, 0);
+  assert.equal(execution.trialsPerTask, 1);
+  assert.equal(execution.maxConcurrency, 7);
 });
 
 test('streamTask emits run lifecycle events for each provider run', async () => {
@@ -265,9 +428,8 @@ test('streamTask emits run lifecycle events for each provider run', async () => 
 });
 
 test('listRuns includes interrupted runs without summaries', async () => {
-  const core = createTestCore();
-  const store = new InMemoryResultStoreAdapter();
-  const interruptedManifest: RunManifest = {
+  const stores = new InMemoryStore();
+  const interruptedManifest: RunManifestRecord = {
     schemaVersion: SCHEMA_VERSIONS.RUN_MANIFEST,
     runId: 'run-interrupted',
     suiteId: 'basic-llm',
@@ -283,8 +445,8 @@ test('listRuns includes interrupted runs without summaries', async () => {
     configHash: 'config-hash-001',
     startedAt: '2026-03-05T00:00:00.000Z',
   };
-  await store.saveRunManifest(interruptedManifest);
-  await store.saveTrial({
+  await stores.saveRunManifest(interruptedManifest);
+  await stores.saveTrial({
     runId: 'run-interrupted',
     trial: {
       schemaVersion: SCHEMA_VERSIONS.TRIAL_RESULT,
@@ -307,14 +469,9 @@ test('listRuns includes interrupted runs without summaries', async () => {
       },
     },
   });
-  const interruptedCore = createCore({
-    taskSourceAdapter: createTaskSourceAdapter(),
-    resultStoreAdapter: store,
-    providerRegistry: new InMemoryProviderRegistry(),
-    graderRegistry: new InMemoryGraderRegistry(),
-  });
+  const core = createTestCore(stores);
 
-  const runs = await interruptedCore.listRuns();
+  const runs = await core.listRuns();
   const interrupted = runs.find((run) => run.runId === 'run-interrupted');
 
   assert.equal(interrupted?.status, 'interrupted');
@@ -328,14 +485,14 @@ test('loadSuites rejects when called without inputs', async () => {
   await assert.rejects(() => core.loadSuites(), /At least one suite input is required/);
 });
 
-test('createCore rejects invalid runtimeDefaults.maxConcurrency', () => {
+test('Core rejects invalid runtimeDefaults.maxConcurrency', () => {
   assert.throws(
     () =>
-      createCore({
-        taskSourceAdapter: createTaskSourceAdapter(),
-        resultStoreAdapter: new InMemoryResultStoreAdapter(),
-        providerRegistry: new InMemoryProviderRegistry(),
-        graderRegistry: new InMemoryGraderRegistry(),
+      new Core({
+        tasks: createTasks(),
+        stores: new InMemoryStore(),
+        providers: new Providers(),
+        graders: new Graders(),
         runtimeDefaults: {
           maxConcurrency: 0,
         },

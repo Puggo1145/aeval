@@ -26,6 +26,7 @@ Validation rules:
 2. `discover.length >= 1`.
 3. `discover[]` contains only non-empty strings.
 4. Unknown fields fail fast.
+5. `parseSuiteDocument(input)` is the contract entrypoint for structural validation.
 
 ### 2.2 Task DSL
 
@@ -74,6 +75,7 @@ Grader rules:
 2. `WEIGHTED` requires `passThreshold`
 3. `WEIGHTED` requires every layer to define `weight`
 4. unknown fields fail fast
+5. `parseTaskDocument(input)` is the contract entrypoint for structural validation
 
 Built-in `llm-judge` layer config:
 
@@ -104,13 +106,13 @@ interface TaskContext {
 ### 3.2 Provider
 
 ```ts
-type TaskProvider = (
-  ctx: TaskContext,
-  params: Readonly<Record<string, unknown>>
-) => Promise<ExecutionResult>;
+interface Provider {
+  readonly id: string;
+  execute(ctx: TaskContext, run: Run): Promise<ExecutionResult>;
+}
 ```
 
-`params` is the selected run's `params`.
+`run.params` is the selected run's parameter set.
 
 Built-in `llm-judge` depends on a separate runtime contract:
 
@@ -134,56 +136,108 @@ and an overall `reason`. Core stores the structured assertion breakdown in
 
 ### 3.3 RunEvent
 
+Runtime emits class-backed events from `src/core/domain/run-event.ts`.
+Consumers may still branch on the stable `type` discriminant and fields below:
+
 ```ts
 type RunEvent =
-  | { type: "run:started"; runId: string; taskId: string; runName: string; totalTrials: number }
-  | { type: "trial:started"; taskId: string; runId: string; runName: string; trialIndex: number }
-  | { type: "trial:completed"; taskId: string; runId: string; runName: string; trialIndex: number; pass: boolean; durationMs: number }
-  | { type: "trial:error"; taskId: string; runId: string; runName: string; trialIndex: number; errorType: "agent" | "system"; message: string }
-  | { type: "run:completed"; summary: RunSummary };
+  | RunStartedEvent
+  | TrialStartedEvent
+  | TrialCompletedEvent
+  | TrialErrorEvent
+  | RunCompletedEvent;
+
+class RunStartedEvent {
+  readonly type = "run:started";
+  constructor(
+    readonly runId: string,
+    readonly taskId: string,
+    readonly runName: string,
+    readonly totalTrials: number,
+  );
+}
+
+class TrialStartedEvent {
+  readonly type = "trial:started";
+  constructor(
+    readonly taskId: string,
+    readonly runId: string,
+    readonly runName: string,
+    readonly trialIndex: number,
+  );
+}
+
+class TrialCompletedEvent {
+  readonly type = "trial:completed";
+  constructor(
+    readonly taskId: string,
+    readonly runId: string,
+    readonly runName: string,
+    readonly trialIndex: number,
+    readonly pass: boolean,
+    readonly durationMs: number,
+  );
+}
+
+class TrialErrorEvent {
+  readonly type = "trial:error";
+  constructor(
+    readonly taskId: string,
+    readonly runId: string,
+    readonly runName: string,
+    readonly trialIndex: number,
+    readonly errorType: "agent" | "system",
+    readonly message: string,
+  );
+}
+
+class RunCompletedEvent {
+  readonly type = "run:completed";
+  constructor(readonly summary: RunSummary);
+}
 ```
 
 Rules:
 
 1. events are emitted in time order
 2. `run:completed` is the last event for one run
-3. `loadedSuite.streamTask(taskId)` emits one run lifecycle for each `provider.runs[]` entry
+3. `suite.streamTask(taskId)` emits one run lifecycle for each `provider.runs[]` entry
 
-## 4. Task Source Adapter
+## 4. Tasks
 
 ```ts
-interface TaskSourceAdapter {
+interface Tasks {
   listSuites(): Promise<SuiteDescriptor[]>;
-  resolveSuite(suiteId: string): Promise<ResolvedSuite>;
-  resolveTask(taskRef: TaskRef): Promise<ResolvedTask>;
+  resolveSuite(suiteId: string): Promise<Suite>;
+  resolveTask(taskRef: TaskRef): Promise<Task>;
 }
 ```
 
-`ResolvedTask` must include:
+`Task` must include:
 
 1. `source.adapter`
 2. `source.ref`
 3. `source.revision`
 4. `source.fetchedAt`
-5. `task`
 
 Rules:
 
-1. adapters own suite/task discovery and structural validation
-2. adapters produce deterministic task ordering
+1. `tasks` owns suite/task discovery and structural validation
+2. `tasks` produces deterministic task ordering
 3. duplicate `task.id` inside one resolved suite fail fast
 4. provider/grader resolvability stays in Core
+5. `Task` and `Suite` constructors re-parse incoming documents and reject invalid runtime state immediately
 
 ## 5. Core API
 
 ```ts
 core.listSuites(): Promise<SuiteDescriptor[]>
-core.loadSuite(input): Promise<LoadedSuite>
-core.loadSuites(...inputs): Promise<LoadedSuite[]>
+core.loadSuite(input): Promise<Suite>
+core.loadSuites(...inputs): Promise<Suite[]>
 
-loadedSuite.listTasks(): Promise<TaskIndex[]>
-loadedSuite.runTask(taskId): Promise<RunSummary[]>
-loadedSuite.streamTask(taskId): AsyncIterable<RunEvent>
+suite.listTasks(): Promise<TaskIndex[]>
+suite.runTask(taskId): Promise<RunSummary[]>
+suite.streamTask(taskId): AsyncIterable<RunEvent>
 ```
 
 Rules:

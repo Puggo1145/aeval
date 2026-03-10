@@ -1,10 +1,12 @@
 import * as p from '@clack/prompts';
 
 import type { RunRecord } from '../../core/contracts/run-record.js';
-import type { RunSummary } from '../../core/contracts/run-summary.js';
 import type { BaselineComparison } from '../../core/contracts/runtime.js';
-import type { TrialResult, TrialResultRecord } from '../../core/contracts/trial.js';
+import type { RunSummary } from '../../core/domain/run-summary.js';
+import type { Trial } from '../../core/domain/trial.js';
 import type { RunMetadata } from './run-metadata.js';
+
+type TrialView = { runId: string; trial: Trial['trial'] };
 
 function formatPassRate(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`;
@@ -78,7 +80,7 @@ export function formatRunOptionStatsHint(record: RunRecord): string {
 export function formatSummaryNote(
   summary: RunSummary,
   metadata?: RunMetadata,
-  trials: TrialResultRecord[] = [],
+  trials: TrialView[] = [],
 ): void {
   p.note(formatRunSummaryDetails(summary, metadata, trials), 'Run Summary');
 }
@@ -151,7 +153,7 @@ function formatMetricsValue(metrics: Record<string, unknown> | undefined): strin
 export function formatRunSummaryDetails(
   summary: RunSummary,
   metadata?: RunMetadata,
-  trials: TrialResultRecord[] = [],
+  trials: TrialView[] = [],
 ): string {
   const lines: string[] = [
     `Run ID:       ${summary.runId}`,
@@ -284,7 +286,7 @@ export function formatRunsTable(
   return formatBoundedTable(header, rows, [20, 12, 18, 28, 18, 10, 8], [10, 6, 8, 12, 8, 9, 6]);
 }
 
-export function formatTrialsTable(records: TrialResultRecord[]): string {
+export function formatTrialsTable(records: { runId: string; trial: Trial['trial'] }[]): string {
   if (records.length === 0) {
     return 'No trials found.';
   }
@@ -311,7 +313,7 @@ function truncateText(text: string, maxLength: number): string {
   return `${text.slice(0, Math.max(0, maxLength - 3))}...`;
 }
 
-export function formatTrialGraderDetails(trial: TrialResult): string {
+export function formatTrialGraderDetails(trial: Trial['trial']): string {
   const score = trial.aggregate.score !== undefined ? trial.aggregate.score.toFixed(2) : '-';
   const error = trial.execution.error;
   const lines = [

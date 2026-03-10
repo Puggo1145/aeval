@@ -1,4 +1,4 @@
-import type { RunManifest } from '../contracts/run-manifest.js';
+import type { RunManifestRecord } from '../contracts/run-manifest.js';
 import type { RunSummaryRecord } from '../contracts/run-summary.js';
 import type { TrialResultRecord } from '../contracts/trial.js';
 
@@ -12,11 +12,11 @@ export interface ClearedResultEntry {
   kind: 'file' | 'dir';
 }
 
-export interface ResultStoreAdapter {
-  saveRunManifest(input: RunManifest): Promise<void>;
+export interface Stores {
+  saveRunManifest(input: RunManifestRecord): Promise<void>;
   saveRunSummary(input: RunSummaryRecord): Promise<void>;
   saveTrial(input: TrialResultRecord): Promise<void>;
-  getRunManifest(runId: string): Promise<RunManifest | null>;
+  getRunManifest(runId: string): Promise<RunManifestRecord | null>;
   getRunSummary(runId: string): Promise<RunSummaryRecord | null>;
   listTrials(runId: string): Promise<TrialResultRecord[]>;
   saveBaseline(input: BaselineRecord): Promise<void>;

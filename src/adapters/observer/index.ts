@@ -1,1 +1,1 @@
-export { createConsoleObserverAdapter } from './console-observer.js';
+export { ConsoleObserver } from './console-observer.js';

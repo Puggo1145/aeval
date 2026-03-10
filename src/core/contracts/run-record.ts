@@ -1,5 +1,5 @@
-import type { RunManifest } from './run-manifest.js';
-import type { RunSummary } from './run-summary.js';
+import type { RunManifest } from '../domain/run-manifest.js';
+import type { RunSummary } from '../domain/run-summary.js';
 
 export type RunStatus = 'completed' | 'interrupted';
 
