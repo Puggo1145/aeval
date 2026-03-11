@@ -10,7 +10,7 @@ export interface SuiteActions {
   streamTask(taskId: string, options?: { signal?: AbortSignal }): AsyncIterable<RunEvent>;
 }
 
-export interface SuiteInit {
+interface SuiteInit {
   document: unknown;
   source?: SuiteSource;
   taskIndexes?: TaskIndex[];
@@ -29,7 +29,7 @@ export class Suite {
   private readonly tasks?: Tasks;
   private readonly actions?: SuiteActions;
 
-  constructor(input: SuiteInit) {
+  private constructor(input: SuiteInit) {
     const document = parseSuiteDocument(input.document);
 
     this.schemaVersion = document.schemaVersion;
@@ -82,8 +82,7 @@ export class Suite {
       throw new Error(`Suite '${this.id}' is not bound to a tasks source.`);
     }
 
-    const resolved = await this.tasks.resolveSuite(this.id);
-    return [...resolved.taskIndexes];
+    throw new Error(`Suite '${this.id}' cannot project task indexes without Core actions.`);
   }
 
   async runTask(taskId: string): Promise<RunSummaryData[]> {

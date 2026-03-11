@@ -229,7 +229,7 @@ Exit criteria:
 
 ### Phase 3: Domain-Owned Validation
 
-Status: untoched
+Status: finished
 
 Primary goal:
 

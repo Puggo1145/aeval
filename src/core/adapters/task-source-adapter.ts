@@ -1,6 +1,3 @@
-import type { SuiteDocument } from '../contracts/suite.js';
-import type { TaskDocument } from '../contracts/task.js';
-
 export interface SuiteDescriptor {
   id: string;
   name: string;
@@ -37,14 +34,22 @@ export interface TaskIndex {
   taskRef: TaskRef;
 }
 
+// Adapters return raw deserialized suite input. Runtime validation happens when
+// Core constructs the Suite domain object.
+export type SuiteInput = unknown;
+
 export interface ResolvedSuite {
-  document: SuiteDocument;
+  document: SuiteInput;
   source?: SuiteSource;
-  taskIndexes: TaskIndex[];
+  taskRefs: TaskRef[];
 }
 
+// Adapters return raw deserialized task input. Runtime validation happens when
+// Core constructs the Task domain object.
+export type TaskInput = unknown;
+
 export interface ResolvedTask {
-  document: TaskDocument;
+  document: TaskInput;
   source: TaskSource;
 }
 
@@ -53,6 +58,3 @@ export interface Tasks {
   resolveSuite(suiteId: string): Promise<ResolvedSuite>;
   resolveTask(taskRef: TaskRef): Promise<ResolvedTask>;
 }
-
-export type SuiteInput = SuiteDocument;
-export type TaskInput = TaskDocument;

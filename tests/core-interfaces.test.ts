@@ -171,17 +171,6 @@ function createTasks(): Tasks {
       ref: 'suites/basic.yaml',
       fetchedAt: '2026-03-05T00:00:00.000Z',
     },
-    taskIndexes: [
-      {
-        id: 'basic-llm/task-001',
-        desc: 'hello task',
-        runCount: 2,
-        taskRef: {
-          suiteId: 'basic-llm',
-          ref: 'datasets/task-001.yaml',
-        },
-      },
-    ],
   });
 
   const task = Task.fromDocument(createTaskDocument(), {
@@ -200,7 +189,12 @@ function createTasks(): Tasks {
       return {
         document: suite.toDocument(),
         source: suite.source,
-        taskIndexes: [...suite.taskIndexes!],
+        taskRefs: [
+          {
+            suiteId,
+            ref: 'datasets/task-001.yaml',
+          },
+        ],
       };
     },
     async resolveTask(taskRef: TaskRef): Promise<ResolvedTask> {
@@ -362,6 +356,56 @@ test('loadSuite syncs LoadedSuite metadata after resolving a bare suite input', 
   assert.deepEqual(suite.taskIndexes, taskIndexes);
 });
 
+test('core projects task indexes and rejects duplicate task ids within one suite', async () => {
+  const duplicateTask = {
+    ...createTaskDocument(),
+    desc: 'duplicate task',
+  };
+
+  const tasks: Tasks = {
+    async listSuites(): Promise<SuiteDescriptor[]> {
+      return [
+        {
+          id: 'basic-llm',
+          name: 'Basic LLM',
+          ref: 'suites/basic.yaml',
+        },
+      ];
+    },
+    async resolveSuite(suiteId: string): Promise<ResolvedSuite> {
+      assert.equal(suiteId, 'basic-llm');
+      return {
+        document: createSuiteDocument(),
+        source: {
+          adapter: 'memory',
+          ref: 'suites/basic.yaml',
+          fetchedAt: '2026-03-05T00:00:00.000Z',
+        },
+        taskRefs: [
+          { suiteId, ref: 'datasets/task-001.yaml' },
+          { suiteId, ref: 'datasets/task-duplicate.yaml' },
+        ],
+      };
+    },
+    async resolveTask(taskRef: TaskRef): Promise<ResolvedTask> {
+      return {
+        document: taskRef.ref === 'datasets/task-001.yaml' ? createTaskDocument() : duplicateTask,
+        source: {
+          adapter: 'memory',
+          ref: taskRef.ref,
+          revision: `sha256-${taskRef.ref}`,
+          fetchedAt: '2026-03-05T00:00:00.000Z',
+        },
+      };
+    },
+  };
+
+  const core = createTestCoreWithTasks(tasks);
+  const suite = await core.suites.load('basic-llm');
+
+  await assert.rejects(() => suite.listTasks(), /must be unique within suite/);
+});
+
 test('loadSuite uses resolved suite metadata when persisting runs from a bare suite input', async () => {
   const store = new InMemoryStore();
   const bareSuiteDocument = createSuiteDocument();
@@ -390,15 +434,10 @@ test('loadSuite uses resolved suite metadata when persisting runs from a bare su
           ref: 'suites/basic.yaml',
           fetchedAt: '2026-03-05T00:00:00.000Z',
         },
-        taskIndexes: [
+        taskRefs: [
           {
-            id: taskDocument.id,
-            desc: taskDocument.desc,
-            runCount: taskDocument.provider.runs.length,
-            taskRef: {
-              suiteId,
-              ref: 'datasets/task-001.yaml',
-            },
+            suiteId,
+            ref: 'datasets/task-001.yaml',
           },
         ],
       };
@@ -447,7 +486,7 @@ test('Task.fromDocument rejects unknown fields without external validation', () 
   );
 });
 
-test('Task constructor rejects invalid weighted documents at runtime', () => {
+test('Task factory rejects invalid weighted documents at runtime', () => {
   const invalidWeightedDoc = {
     ...createTaskDocument(),
     graders: {
@@ -457,10 +496,7 @@ test('Task constructor rejects invalid weighted documents at runtime', () => {
   } as TaskDocument;
 
   assert.throws(
-    () =>
-      new Task({
-        document: invalidWeightedDoc,
-      }),
+    () => Task.fromDocument(invalidWeightedDoc),
     (error: unknown) => {
       assert.ok(error instanceof Error);
       const details =

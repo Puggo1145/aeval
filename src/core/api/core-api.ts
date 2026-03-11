@@ -4,7 +4,9 @@ import type {
   ResolvedSuite,
   ResolvedTask,
   SuiteDescriptor,
+  SuiteInput,
   TaskIndex,
+  TaskRef,
   Tasks,
 } from '../adapters/task-source-adapter.js';
 import type { RunManifestRecord } from '../contracts/run-manifest.js';
@@ -36,7 +38,7 @@ import {
   validateComparableDelta,
 } from './baseline-utils.js';
 
-export type LoadSuiteInput = string | SuiteDocument | Promise<SuiteDocument>;
+export type LoadSuiteInput = string | SuiteInput | Promise<SuiteInput>;
 
 export interface CompareBaselineOptions {
   baselineRunId?: string;
@@ -130,6 +132,20 @@ export class LoadedSuite {
   }
 }
 
+function taskIndexFromDomainTask(task: Task, taskRef: TaskRef): TaskIndex {
+  return {
+    id: task.id,
+    ...(task.desc !== undefined ? { desc: task.desc } : {}),
+    ...(task.category !== undefined ? { category: task.category } : {}),
+    ...(task.capability !== undefined ? { capability: task.capability } : {}),
+    ...(task.tier !== undefined ? { tier: task.tier } : {}),
+    ...(task.difficulty !== undefined ? { difficulty: task.difficulty } : {}),
+    ...(task.tags !== undefined ? { tags: [...task.tags] } : {}),
+    runCount: task.runs.length,
+    taskRef,
+  };
+}
+
 async function resolveBaselineRunIdInput(
   baselineRunId: string | undefined,
   currentRunId: string,
@@ -197,12 +213,13 @@ export class Core implements CoreApi {
   private async loadSuiteHandle(input: LoadSuiteInput): Promise<LoadedSuite> {
     if (typeof input === 'string') {
       const suiteId = ensureNonEmptyString(input, 'suiteId');
-      const suite = toInternalSuite(await this.tasks.resolveSuite(suiteId), this.tasks);
-      return this.bindSuite(suite, true);
+      const resolvedSuite = await this.tasks.resolveSuite(suiteId);
+      const suite = toInternalSuite(resolvedSuite, this.tasks);
+      return this.bindSuite(suite, resolvedSuite);
     }
 
     const raw = await input;
-    return this.bindSuite(Suite.fromDocument(raw, { tasks: this.tasks }), false);
+    return this.bindSuite(Suite.fromDocument(raw, { tasks: this.tasks }));
   }
 
   private async loadSuiteHandles(...inputs: LoadSuiteInput[]): Promise<LoadedSuite[]> {
@@ -367,27 +384,64 @@ export class Core implements CoreApi {
     return this.stores.clearResultsByRunIds(runIds);
   }
 
-  private bindSuite(suite: Suite, preloaded = true): LoadedSuite {
+  private bindSuite(suite: Suite, preloadedResolvedSuite?: ResolvedSuite): LoadedSuite {
     const suiteCore = this;
     let currentSuite = suite;
-    let suitePromise: Promise<Suite> | undefined = preloaded ? Promise.resolve(suite) : undefined;
+    let resolvedSuitePromise: Promise<ResolvedSuite> | undefined;
+    let taskIndexesPromise: Promise<TaskIndex[]> | undefined;
 
-    const resolveSuiteData = async (): Promise<Suite> => {
-      if (!suitePromise) {
-        suitePromise = this.tasks.resolveSuite(suite.id).then((resolved) => {
-          const resolvedSuite = toInternalSuite(resolved, this.tasks);
-          currentSuite = mergeSuiteMetadata(currentSuite, resolvedSuite);
-          return resolvedSuite;
+    if (preloadedResolvedSuite) {
+      resolvedSuitePromise = Promise.resolve(preloadedResolvedSuite);
+    }
+
+    const resolveSuiteData = async (): Promise<ResolvedSuite> => {
+      if (!resolvedSuitePromise) {
+        resolvedSuitePromise = this.tasks.resolveSuite(suite.id);
+      }
+
+      const resolved = await resolvedSuitePromise;
+      currentSuite = mergeSuiteMetadata(currentSuite, toInternalSuite(resolved, this.tasks));
+      return resolved;
+    };
+
+    const resolveTaskIndexes = async (): Promise<TaskIndex[]> => {
+      if (!taskIndexesPromise) {
+        taskIndexesPromise = resolveSuiteData().then(async (resolved) => {
+          const taskIndexes: TaskIndex[] = [];
+          const seenTaskIds = new Set<string>();
+
+          for (const taskRef of resolved.taskRefs) {
+            const task = toInternalTask(await this.tasks.resolveTask(taskRef));
+            if (seenTaskIds.has(task.id)) {
+              throw new RuntimeError(
+                `Task id '${task.id}' must be unique within suite '${suite.id}'.`,
+                {
+                  code: ERROR_CODES.RUNTIME_UNEXPECTED,
+                  details: {
+                    suiteId: suite.id,
+                    taskId: task.id,
+                    taskRef: taskRef.ref,
+                  },
+                },
+              );
+            }
+
+            seenTaskIds.add(task.id);
+            taskIndexes.push(taskIndexFromDomainTask(task, taskRef));
+          }
+
+          currentSuite = mergeSuiteMetadata(currentSuite, currentSuite, taskIndexes);
+          return taskIndexes;
         });
       }
 
-      return suitePromise;
+      return taskIndexesPromise;
     };
 
     const resolveTaskById = async (taskId: string): Promise<Task> => {
       const normalizedTaskId = ensureNonEmptyString(taskId, 'taskId');
-      const resolvedSuite = await resolveSuiteData();
-      const taskIndexes = await resolvedSuite.listTasks();
+      await resolveSuiteData();
+      const taskIndexes = await resolveTaskIndexes();
       const taskIndex = taskIndexes.find((task) => task.id === normalizedTaskId);
       if (!taskIndex) {
         throw new ValidationError(
@@ -426,10 +480,7 @@ export class Core implements CoreApi {
     suiteWithActions = suite.withActions(
       {
         listTasks: async (): Promise<TaskIndex[]> => {
-          const resolvedSuite = await resolveSuiteData();
-          const taskIndexes = await resolvedSuite.listTasks();
-          currentSuite = mergeSuiteMetadata(currentSuite, resolvedSuite, taskIndexes);
-          return taskIndexes;
+          return resolveTaskIndexes();
         },
 
         runTask: async (taskId: string): Promise<RunSummaryData[]> => {
@@ -494,7 +545,6 @@ export class Core implements CoreApi {
 function toInternalSuite(input: ResolvedSuite, tasks: Tasks): Suite {
   return Suite.fromDocument(input.document, {
     ...(input.source ? { source: input.source } : {}),
-    taskIndexes: input.taskIndexes,
     tasks,
   });
 }

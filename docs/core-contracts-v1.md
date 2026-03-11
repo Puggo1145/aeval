@@ -204,11 +204,13 @@ interface Tasks {
 
 Rules:
 
-1. `tasks` owns suite/task discovery and structural validation
+1. `tasks` owns suite/task discovery, source metadata, and raw document deserialization
 2. `tasks` produces deterministic task ordering
-3. duplicate `task.id` inside one resolved suite fail fast
+3. `ResolvedSuite.taskRefs[]` is the deterministic ordered task membership for one suite
 4. provider/grader resolvability stays in Core
-5. `Task` and `Suite` constructors re-parse incoming documents and reject invalid runtime state immediately
+5. `ResolvedSuite.document` and `ResolvedTask.document` are raw adapter inputs
+6. Core derives `TaskIndex` projections by resolving `taskRefs` into domain `Task` objects
+7. `Suite.fromDocument(...)` and `Task.fromDocument(...)` are the only legal runtime construction paths
 
 ## 5. Core API
 
@@ -234,7 +236,7 @@ loadedSuite.streamTask(taskId): AsyncIterable<RunEvent>
 
 Rules:
 
-1. `core.suites.load(input)` accepts a discovered suite id or a bare suite object/promise
+1. `core.suites.load(input)` accepts a discovered suite id or a bare suite input object/promise
 2. `runTask(taskId)` executes all runs defined by the task
 3. runs are serial across `provider.runs[]`
 4. trials may run concurrently within one run

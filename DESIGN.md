@@ -56,7 +56,7 @@ Interfaces
 2. Adapters implement IO boundaries only.
 3. Providers and graders are resolved through containers injected into Core.
 4. TUI consumes Core APIs only. It does not call infrastructure classes directly.
-5. `contracts` own structural document parsing/validation; `domain` enforces runtime invariants on construction.
+5. `contracts` own suite/task schemas; `Suite` and `Task` domain factories call those parsers internally and remain the only legal construction path for runtime suite/task objects.
 6. Built-in adapters, graders, and TUI are treated like external modules for boundary control.
 7. Public package surfaces are limited to `youeval`, `youeval/adapters`, `youeval/graders`, and `youeval/interfaces/tui`.
 8. `core/domain`, `core/runtime`, `core/orchestrator`, `core/utils`, and `core/validation` remain internal implementation layers.
@@ -202,9 +202,9 @@ interface Tasks {
 Responsibilities:
 
 1. discover suites
-2. resolve suite task indexes
-3. resolve one task with source metadata
-4. invoke strict contract parsing for external documents
+2. resolve suite task refs and source metadata
+3. resolve one raw task document with source metadata
+4. keep adapter work to IO and raw deserialization; Core derives `TaskIndex` views from resolved task documents
 
 Provider and grader resolvability stays in Core, not in the adapter.
 
@@ -235,7 +235,7 @@ loadedSuite.streamTask(taskId): AsyncIterable<RunEvent>
 `core.suites.load` accepts either:
 
 1. a suite id discovered through `tasks`
-2. a bare suite object or promise that resolves to one
+2. a bare suite input object or promise that resolves to one; `Suite.fromDocument(...)` validates it during load
 
 ## 8. TUI
 

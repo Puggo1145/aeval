@@ -5,6 +5,8 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 
 import { LocalTask } from '../src/adapters/task-source/local-task-source-adapter.js';
+import { Suite } from '../src/core/domain/suite.js';
+import { Task } from '../src/core/domain/task.js';
 
 async function createTempRootDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), 'youeval-task-source-'));
@@ -127,20 +129,14 @@ test('resolveSuite expands discover globs with deterministic task ordering', asy
 
     const adapter = new LocalTask({ rootDir });
     const resolvedSuite = await adapter.resolveSuite('basic-llm');
-    const tasks = resolvedSuite.taskIndexes;
+    const taskRefs = resolvedSuite.taskRefs;
+    const suite = Suite.fromDocument(resolvedSuite.document);
 
-    assert.equal(resolvedSuite.document.id, 'basic-llm');
-    assert.equal(tasks.length, 2);
+    assert.equal(suite.id, 'basic-llm');
+    assert.equal(taskRefs.length, 2);
     assert.deepEqual(
-      tasks.map((task) => ({
-        id: task.id,
-        runCount: task.runCount,
-        ref: task.taskRef.ref,
-      })),
-      [
-        { id: 'basic-llm/task-001', runCount: 2, ref: 'datasets/a-task.yaml' },
-        { id: 'basic-llm/task-002', runCount: 1, ref: 'datasets/z-task.yaml' },
-      ],
+      taskRefs.map((taskRef) => taskRef.ref),
+      ['datasets/a-task.yaml', 'datasets/z-task.yaml'],
     );
   } finally {
     await rm(rootDir, { recursive: true, force: true });
@@ -165,10 +161,10 @@ discover:
 
     const adapter = new LocalTask({ rootDir });
     const resolvedSuite = await adapter.resolveSuite('basic-llm');
-    const tasks = resolvedSuite.taskIndexes;
+    const taskRefs = resolvedSuite.taskRefs;
 
     assert.deepEqual(
-      tasks.map((task) => task.taskRef.ref),
+      taskRefs.map((taskRef) => taskRef.ref),
       ['datasets/group-a/task-a.yaml', 'datasets/group-a/task-b.yaml'],
     );
   } finally {
@@ -176,7 +172,7 @@ discover:
   }
 });
 
-test('resolveTask returns validated task and stable source revision', async () => {
+test('resolveTask returns raw task input and stable source revision', async () => {
   const rootDir = await createTempRootDir();
   try {
     await writeYaml(rootDir, 'task-a.yaml', TASK_ONE_YAML);
@@ -185,8 +181,9 @@ test('resolveTask returns validated task and stable source revision', async () =
     const adapter = new LocalTask({ rootDir });
     const taskA = await adapter.resolveTask({ suiteId: 'basic-llm', ref: 'task-a.yaml' });
     const taskB = await adapter.resolveTask({ suiteId: 'basic-llm', ref: 'task-b.yaml' });
+    const normalizedTask = Task.fromDocument(taskA.document);
 
-    assert.equal(taskA.document.id, 'basic-llm/task-001');
+    assert.equal(normalizedTask.id, 'basic-llm/task-001');
     assert.equal(taskA.source.revision, taskB.source.revision);
     assert.ok(taskA.source.revision.startsWith('sha256-'));
   } finally {
@@ -194,7 +191,39 @@ test('resolveTask returns validated task and stable source revision', async () =
   }
 });
 
-test('resolveSuite fails fast on duplicate task ids within one suite', async () => {
+test('resolveTask fails when ref points to a suite document', async () => {
+  const rootDir = await createTempRootDir();
+  try {
+    await writeYaml(rootDir, 'suites/basic.yaml', SUITE_YAML);
+
+    const adapter = new LocalTask({ rootDir });
+
+    await assert.rejects(
+      () => adapter.resolveTask({ suiteId: 'basic-llm', ref: 'suites/basic.yaml' }),
+      /resolves to a suite document/,
+    );
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('resolveTask fails when YAML document is not task.v1', async () => {
+  const rootDir = await createTempRootDir();
+  try {
+    await writeYaml(rootDir, 'not-a-task.yaml', 'notTask:\n  id: "wrong"\n');
+
+    const adapter = new LocalTask({ rootDir });
+
+    await assert.rejects(
+      () => adapter.resolveTask({ suiteId: 'basic-llm', ref: 'not-a-task.yaml' }),
+      /must declare schemaVersion 'task.v1'/,
+    );
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('resolveSuite returns task refs without projecting task ids', async () => {
   const rootDir = await createTempRootDir();
   try {
     await writeYaml(rootDir, 'suites/basic.yaml', SUITE_YAML);
@@ -202,8 +231,12 @@ test('resolveSuite fails fast on duplicate task ids within one suite', async () 
     await writeYaml(rootDir, 'datasets/task-b.yaml', TASK_ONE_REFORMATTED_YAML);
 
     const adapter = new LocalTask({ rootDir });
+    const resolvedSuite = await adapter.resolveSuite('basic-llm');
 
-    await assert.rejects(() => adapter.resolveSuite('basic-llm'), /must be unique within suite/);
+    assert.deepEqual(
+      resolvedSuite.taskRefs.map((taskRef) => taskRef.ref),
+      ['datasets/task-a.yaml', 'datasets/task-b.yaml'],
+    );
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }

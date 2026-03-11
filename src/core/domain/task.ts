@@ -12,7 +12,7 @@ import { cloneAndFreezeRecord } from '../utils/immutability.js';
 import { GraderLayer } from './grader-layer.js';
 import { Run } from './run.js';
 
-export interface TaskInit {
+interface TaskInit {
   document: unknown;
   source?: TaskSource;
 }
@@ -36,7 +36,7 @@ export class Task {
   readonly execution: Readonly<TaskExecutionDocument>;
   readonly source?: TaskSource;
 
-  constructor(input: TaskInit) {
+  private constructor(input: TaskInit) {
     const document = parseTaskDocument(input.document);
 
     this.schemaVersion = document.schemaVersion;
