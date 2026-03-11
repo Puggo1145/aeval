@@ -2,11 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { ConsoleObserver } from '../src/adapters/observer/console-observer.js';
-import {
-  RunCompletedEvent,
-  RunStartedEvent,
-  TrialErrorEvent,
-} from '../src/core/domain/run-event.js';
+import { RunEvents } from '../src/core/contracts/runtime.js';
 
 test('console observer logs run:started with task and trial counts', () => {
   const observer = new ConsoleObserver();
@@ -17,7 +13,7 @@ test('console observer logs run:started with task and trial counts', () => {
   };
 
   try {
-    observer.onEvent(new RunStartedEvent('run-1', 'task-001', 'mini', 3));
+    observer.onEvent(RunEvents.started('run-1', 'task-001', 'mini', 3));
   } finally {
     console.log = originalLog;
   }
@@ -35,7 +31,7 @@ test('console observer logs trial:error with runName', () => {
   };
 
   try {
-    observer.onEvent(new TrialErrorEvent('task-001', 'run-1', 'mini', 1, 'system', 'timeout'));
+    observer.onEvent(RunEvents.trialError('task-001', 'run-1', 'mini', 1, 'system', 'timeout'));
   } finally {
     console.error = originalError;
   }
@@ -54,7 +50,7 @@ test('console observer logs run:completed using task-run summary fields', () => 
 
   try {
     observer.onEvent(
-      new RunCompletedEvent({
+      RunEvents.completed({
         schemaVersion: 'run-summary.v1',
         runId: 'run-1',
         taskId: 'task-001',

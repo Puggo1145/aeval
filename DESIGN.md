@@ -61,6 +61,12 @@ Interfaces
 7. Public package surfaces are limited to `youeval`, `youeval/adapters`, `youeval/graders`, and `youeval/interfaces/tui`.
 8. `core/domain`, `core/runtime`, `core/orchestrator`, `core/utils`, and `core/validation` remain internal implementation layers.
 
+### 3.3 Object Taxonomy
+
+1. Boundary contracts are versioned shapes that cross IO or module boundaries, such as DSL documents, result records, and public provider/grader data types.
+2. Internal protocols are core-owned in-process payloads such as `TaskContext` and `RunEvent`; they stay as plain object types or discriminated unions.
+3. Domain objects remain classes only when they carry invariants, lifecycle transitions, or derived runtime behavior.
+
 ## 4. DSL
 
 ### 4.1 Suite
@@ -139,7 +145,7 @@ interface Provider {
 }
 ```
 
-`TaskContext` contains `taskId`, `trialIndex`, `runName`, `runId`, and `signal`.
+`TaskContext` is an internal protocol payload carried as a plain object. It contains `taskId`, `trialIndex`, `runName`, `runId`, and `signal`.
 
 Providers receive the selected `Run` object and the execution context.
 
@@ -148,6 +154,9 @@ explicitly by the caller: register `new BuiltinLlmJudgeGrader(...)` on
 `graders`. `registerBuiltinGraders(...)` only registers the pure built-in
 graders that need no extra runtime dependencies. Custom judge providers are
 still registered directly through `new LlmJudgeGrader(customJudgeProvider)`.
+
+`RunEvent` is also an internal protocol type. Runtime streams emit plain
+discriminated-union event objects rather than domain classes.
 
 ### 5.2 Concurrency and Timeout
 

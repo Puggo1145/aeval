@@ -3,13 +3,17 @@ import type { ExecutionResultData } from './execution.js';
 import type { RunSummaryData } from './run-summary.js';
 import type { GraderResult } from './trial.js';
 
-export interface TaskContext {
+/**
+ * Internal protocol: in-process execution context passed into one provider call.
+ * This stays a plain object rather than a domain class.
+ */
+export type TaskContext = Readonly<{
   taskId: string;
   trialIndex: number;
   runName: string;
   runId: string;
   signal: AbortSignal;
-}
+}>;
 
 export interface Run {
   readonly name: string;
@@ -59,23 +63,27 @@ export interface Graders {
   list(): string[];
 }
 
-export interface RunStartedEvent {
+/**
+ * Internal protocol: runtime event stream emitted by the orchestrator.
+ * Events are plain discriminated-union objects, not domain classes.
+ */
+export type RunStartedEvent = Readonly<{
   readonly type: 'run:started';
   readonly runId: string;
   readonly taskId: string;
   readonly runName: string;
   readonly totalTrials: number;
-}
+}>;
 
-export interface TrialStartedEvent {
+export type TrialStartedEvent = Readonly<{
   readonly type: 'trial:started';
   readonly taskId: string;
   readonly runId: string;
   readonly runName: string;
   readonly trialIndex: number;
-}
+}>;
 
-export interface TrialCompletedEvent {
+export type TrialCompletedEvent = Readonly<{
   readonly type: 'trial:completed';
   readonly taskId: string;
   readonly runId: string;
@@ -83,9 +91,9 @@ export interface TrialCompletedEvent {
   readonly trialIndex: number;
   readonly pass: boolean;
   readonly durationMs: number;
-}
+}>;
 
-export interface TrialErrorEvent {
+export type TrialErrorEvent = Readonly<{
   readonly type: 'trial:error';
   readonly taskId: string;
   readonly runId: string;
@@ -93,12 +101,12 @@ export interface TrialErrorEvent {
   readonly trialIndex: number;
   readonly errorType: 'agent' | 'system';
   readonly message: string;
-}
+}>;
 
-export interface RunCompletedEvent {
+export type RunCompletedEvent = Readonly<{
   readonly type: 'run:completed';
   readonly summary: RunSummaryData;
-}
+}>;
 
 export type RunEvent =
   | RunStartedEvent
@@ -108,6 +116,79 @@ export type RunEvent =
   | RunCompletedEvent;
 
 export type TaskRunEvent = RunEvent;
+
+// RunEvents 的工厂函数
+export const RunEvents = {
+  started(runId: string, taskId: string, runName: string, totalTrials: number): RunStartedEvent {
+    return {
+      type: 'run:started',
+      runId,
+      taskId,
+      runName,
+      totalTrials,
+    };
+  },
+
+  trialStarted(
+    taskId: string,
+    runId: string,
+    runName: string,
+    trialIndex: number,
+  ): TrialStartedEvent {
+    return {
+      type: 'trial:started',
+      taskId,
+      runId,
+      runName,
+      trialIndex,
+    };
+  },
+
+  trialCompleted(
+    taskId: string,
+    runId: string,
+    runName: string,
+    trialIndex: number,
+    pass: boolean,
+    durationMs: number,
+  ): TrialCompletedEvent {
+    return {
+      type: 'trial:completed',
+      taskId,
+      runId,
+      runName,
+      trialIndex,
+      pass,
+      durationMs,
+    };
+  },
+
+  trialError(
+    taskId: string,
+    runId: string,
+    runName: string,
+    trialIndex: number,
+    errorType: 'agent' | 'system',
+    message: string,
+  ): TrialErrorEvent {
+    return {
+      type: 'trial:error',
+      taskId,
+      runId,
+      runName,
+      trialIndex,
+      errorType,
+      message,
+    };
+  },
+
+  completed(summary: RunSummaryData): RunCompletedEvent {
+    return {
+      type: 'run:completed',
+      summary,
+    };
+  },
+} as const;
 
 export interface BaselineThresholds {
   passRateDrop?: number;

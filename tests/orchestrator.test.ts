@@ -8,9 +8,9 @@ import type {
 } from '../src/core/adapters/result-store-adapter.js';
 import { SCHEMA_VERSIONS } from '../src/core/contracts/index.js';
 import type { RunManifestRecord } from '../src/core/contracts/run-manifest.js';
+import type { RunEvent } from '../src/core/contracts/runtime.js';
 import type { RunSummaryRecord } from '../src/core/contracts/run-summary.js';
 import { ExecutionResult } from '../src/core/domain/execution-result.js';
-import type { RunEvent } from '../src/core/domain/run-event.js';
 import { Suite } from '../src/core/domain/suite.js';
 import { Task } from '../src/core/domain/task.js';
 import type { Trial } from '../src/core/domain/trial.js';

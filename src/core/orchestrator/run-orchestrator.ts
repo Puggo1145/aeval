@@ -3,15 +3,8 @@ import { randomUUID } from 'node:crypto';
 import type { Observer } from '../adapters/observer-adapter.js';
 import type { Stores } from '../adapters/result-store-adapter.js';
 import { SYSTEM_ERROR_CODES } from '../contracts/execution.js';
-import type { Graders, Providers, RunEvent } from '../contracts/runtime.js';
+import { type Graders, type Providers, type RunEvent, RunEvents } from '../contracts/runtime.js';
 import type { Run } from '../domain/run.js';
-import {
-  RunCompletedEvent,
-  RunStartedEvent,
-  TrialCompletedEvent,
-  TrialErrorEvent,
-  TrialStartedEvent,
-} from '../domain/run-event.js';
 import { RunManifest } from '../domain/run-manifest.js';
 import { RunSummary } from '../domain/run-summary.js';
 import type { Suite } from '../domain/suite.js';
@@ -55,7 +48,7 @@ export class TaskRunOrchestrator {
     await this.deps.stores.saveRunManifest(manifest.toRecord());
 
     const totalTrials = this.input.execution.trialsPerTask;
-    const runStartedEvent = new RunStartedEvent(
+    const runStartedEvent = RunEvents.started(
       runId,
       this.input.task.id,
       this.input.run.name,
@@ -121,7 +114,7 @@ export class TaskRunOrchestrator {
 
         try {
           await pushEvent(
-            new TrialStartedEvent(this.input.task.id, runId, this.input.run.name, trialIndex),
+            RunEvents.trialStarted(this.input.task.id, runId, this.input.run.name, trialIndex),
           );
 
           let result = await executor.execute({
@@ -158,7 +151,7 @@ export class TaskRunOrchestrator {
           await this.deps.stores.saveTrial({ runId, trial: result.toRecord() });
 
           if (result.execution.error) {
-            const event = new TrialErrorEvent(
+            const event = RunEvents.trialError(
               this.input.task.id,
               runId,
               this.input.run.name,
@@ -169,7 +162,7 @@ export class TaskRunOrchestrator {
             await pushEvent(event);
             await notifyObservers(this.deps.observers, event);
           } else {
-            const event = new TrialCompletedEvent(
+            const event = RunEvents.trialCompleted(
               this.input.task.id,
               runId,
               this.input.run.name,
@@ -224,7 +217,7 @@ export class TaskRunOrchestrator {
       manifest = manifest.complete();
       await this.deps.stores.saveRunManifest(manifest.toRecord());
 
-      const completedEvent = new RunCompletedEvent(summary.toRecord());
+      const completedEvent = RunEvents.completed(summary.toRecord());
       yield completedEvent;
       await notifyObservers(this.deps.observers, completedEvent);
     } finally {

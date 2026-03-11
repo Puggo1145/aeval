@@ -9,6 +9,12 @@ This document defines the frozen v1 contract after the task-run-first refactor.
 3. `Run`: one named provider parameter set inside a task.
 4. `Trial`: one execution attempt of a run.
 
+## 1.1 Object Taxonomy
+
+1. Boundary contracts are versioned shapes that cross IO or module boundaries.
+2. Internal protocols are core-owned in-process payloads such as `TaskContext` and `RunEvent`.
+3. Domain objects stay as classes only when they add invariants or runtime behavior.
+
 ## 2. DSL Contracts
 
 ### 2.1 Suite DSL
@@ -94,14 +100,16 @@ Built-in `llm-judge` layer config:
 ### 3.1 TaskContext
 
 ```ts
-interface TaskContext {
+type TaskContext = {
   taskId: string;
   trialIndex: number;
   runName: string;
   runId: string;
   signal: AbortSignal;
-}
+};
 ```
+
+`TaskContext` is an internal protocol payload and is passed as a plain object.
 
 ### 3.2 Provider
 
@@ -136,65 +144,32 @@ and an overall `reason`. Core stores the structured assertion breakdown in
 
 ### 3.3 RunEvent
 
-Runtime exposes `RunEvent` as a plain discriminated union.
-Consumers branch on the stable `type` discriminant and fields below:
+`RunEvent` is an internal protocol. Runtime exposes it as a plain
+discriminated union, and consumers branch on the stable `type` discriminant.
 
 ```ts
 type RunEvent =
-  | RunStartedEvent
-  | TrialStartedEvent
-  | TrialCompletedEvent
-  | TrialErrorEvent
-  | RunCompletedEvent;
-
-class RunStartedEvent {
-  readonly type = "run:started";
-  constructor(
-    readonly runId: string,
-    readonly taskId: string,
-    readonly runName: string,
-    readonly totalTrials: number,
-  );
-}
-
-class TrialStartedEvent {
-  readonly type = "trial:started";
-  constructor(
-    readonly taskId: string,
-    readonly runId: string,
-    readonly runName: string,
-    readonly trialIndex: number,
-  );
-}
-
-class TrialCompletedEvent {
-  readonly type = "trial:completed";
-  constructor(
-    readonly taskId: string,
-    readonly runId: string,
-    readonly runName: string,
-    readonly trialIndex: number,
-    readonly pass: boolean,
-    readonly durationMs: number,
-  );
-}
-
-class TrialErrorEvent {
-  readonly type = "trial:error";
-  constructor(
-    readonly taskId: string,
-    readonly runId: string,
-    readonly runName: string,
-    readonly trialIndex: number,
-    readonly errorType: "agent" | "system",
-    readonly message: string,
-  );
-}
-
-class RunCompletedEvent {
-  readonly type = "run:completed";
-  constructor(readonly summary: RunSummaryData);
-}
+  | { type: "run:started"; runId: string; taskId: string; runName: string; totalTrials: number }
+  | { type: "trial:started"; taskId: string; runId: string; runName: string; trialIndex: number }
+  | {
+      type: "trial:completed";
+      taskId: string;
+      runId: string;
+      runName: string;
+      trialIndex: number;
+      pass: boolean;
+      durationMs: number;
+    }
+  | {
+      type: "trial:error";
+      taskId: string;
+      runId: string;
+      runName: string;
+      trialIndex: number;
+      errorType: "agent" | "system";
+      message: string;
+    }
+  | { type: "run:completed"; summary: RunSummaryData };
 ```
 
 Rules:
