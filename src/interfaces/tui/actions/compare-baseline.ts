@@ -40,33 +40,38 @@ export async function compareBaseline(core: CoreApi): Promise<void> {
       })),
     }),
   );
+  const currentRecord = completedRuns.find((record) => record.runId === currentRunId);
+  const currentTaskId =
+    currentRecord?.summary?.taskId ?? metadataByRunId.get(currentRunId)?.taskId ?? undefined;
 
-  const useCustomBaseline = handleCancel(
-    await p.confirm({
-      message: 'Specify a custom baseline run? (No = use stored baseline)',
-      initialValue: false,
-    }),
-  );
-
-  let baselineRunId: string | undefined;
-  if (useCustomBaseline) {
-    const baselineOptions = completedRuns.filter((r) => r.runId !== currentRunId);
-    if (baselineOptions.length === 0) {
-      p.log.warn('No other runs available as baseline.');
-      return;
+  const baselineOptions = completedRuns.filter((record) => {
+    if (record.runId === currentRunId) {
+      return false;
     }
 
-    baselineRunId = handleCancel(
-      await p.select({
-        message: 'Select the baseline run:',
-        options: baselineOptions.map((r) => ({
-          value: r.runId,
-          label: formatRunOptionLabel(r),
-          hint: formatRunOptionHint(r, metadataByRunId.get(r.runId)),
-        })),
-      }),
-    );
+    if (!currentTaskId) {
+      return true;
+    }
+
+    const candidateTaskId =
+      record.summary?.taskId ?? metadataByRunId.get(record.runId)?.taskId ?? undefined;
+    return candidateTaskId === currentTaskId;
+  });
+  if (baselineOptions.length === 0) {
+    p.log.warn('No other completed runs for the same task are available as baseline.');
+    return;
   }
+
+  const baselineRunId = handleCancel(
+    await p.select({
+      message: 'Select the baseline run:',
+      options: baselineOptions.map((r) => ({
+        value: r.runId,
+        label: formatRunOptionLabel(r),
+        hint: formatRunOptionHint(r, metadataByRunId.get(r.runId)),
+      })),
+    }),
+  );
 
   const configureThresholds = handleCancel(
     await p.confirm({

@@ -301,7 +301,7 @@ Exit criteria:
 
 ### Phase 5: Baseline Compare Semantics
 
-Status: untoched
+Status: finished
 
 Primary goal:
 

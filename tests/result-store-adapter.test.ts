@@ -126,24 +126,16 @@ test('local result store does not synthesize manifest-only summaries', async () 
   }
 });
 
-test('local result store clears selected runs and baseline metadata', async () => {
+test('local result store clears selected runs', async () => {
   const rootDir = await createTempResultsDir();
   try {
     const adapter = new LocalStore({ rootDir });
     await adapter.saveRunManifest(createManifest('run-4'));
     await adapter.saveRunSummary(createSummary('run-4'));
-    await adapter.saveBaseline({
-      runId: 'run-4',
-      updatedAt: '2026-03-05T00:00:00.000Z',
-    });
 
     const deletedEntries = await adapter.clearResultsByRunIds(['run-4']);
 
     assert.ok(deletedEntries.some((entry) => entry.path === 'run-4' && entry.kind === 'dir'));
-    assert.ok(
-      deletedEntries.some((entry) => entry.path === 'baseline.json' && entry.kind === 'file'),
-    );
-    assert.equal(await adapter.getBaselineRunId(), null);
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }

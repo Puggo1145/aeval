@@ -195,15 +195,13 @@ export interface BaselineThresholds {
   avgLatencyIncrease?: number;
 }
 
-type TaskId = string;
 export interface BaselineComparison {
+  taskId: string;
   baselineRunId: string;
   currentRunId: string;
   passRateDelta: number;
   passHatKDelta?: number;
   avgLatencyDelta?: number;
   tokenBudgetBreached?: boolean;
-  regressions: TaskId[];
-  improvements: TaskId[];
   verdict: 'pass' | 'regressed' | 'improved';
 }

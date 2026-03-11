@@ -226,8 +226,7 @@ core.results.listTrials(runId): Promise<TrialRecord[]>
 core.results.clearAll(): Promise<ClearedResultEntry[]>
 core.results.clearByRunIds(runIds): Promise<ClearedResultEntry[]>
 
-core.baseline.set(runId): Promise<void>
-core.baseline.compare(currentRunId, options?): Promise<BaselineComparison>
+core.baseline.compare(currentRunId, options): Promise<BaselineComparison>
 
 loadedSuite.listTasks(): Promise<TaskIndex[]>
 loadedSuite.runTask(taskId): Promise<RunSummaryData[]>
@@ -243,6 +242,25 @@ Rules:
 2. `runTask(taskId)` executes all runs defined by the task
 3. runs are serial across `provider.runs[]`
 4. trials may run concurrently within one run
+
+Baseline rules:
+
+1. `core.baseline.compare(currentRunId, options)` requires `options.baselineRunId`
+2. Core must fail fast when the baseline run and current run belong to different tasks
+3. `BaselineComparison` is a same-task delta shape:
+
+```ts
+interface BaselineComparison {
+  taskId: string;
+  baselineRunId: string;
+  currentRunId: string;
+  passRateDelta: number;
+  passHatKDelta?: number;
+  avgLatencyDelta?: number;
+  tokenBudgetBreached?: boolean;
+  verdict: "pass" | "regressed" | "improved";
+}
+```
 
 ## 6. Result Contracts
 

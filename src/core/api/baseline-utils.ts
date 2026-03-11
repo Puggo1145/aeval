@@ -1,48 +1,5 @@
 import type { BaselineComparison, BaselineThresholds } from '../contracts/runtime.js';
-import type { Trial } from '../domain/trial.js';
 import { ValidationError } from '../errors/index.js';
-
-function buildTaskPassIndex(trials: Trial[]): Map<string, boolean> {
-  const index = new Map<string, boolean>();
-
-  for (const trial of trials) {
-    const current = index.get(trial.taskId) ?? false;
-    index.set(trial.taskId, current || trial.aggregate.pass);
-  }
-
-  return index;
-}
-
-export function computeRegressionDiff(
-  baselineTrials: Trial[],
-  currentTrials: Trial[],
-): { regressions: string[]; improvements: string[] } {
-  const baselinePassIndex = buildTaskPassIndex(baselineTrials);
-  const currentPassIndex = buildTaskPassIndex(currentTrials);
-  const allTaskIds = new Set<string>([...baselinePassIndex.keys(), ...currentPassIndex.keys()]);
-
-  const regressions: string[] = [];
-  const improvements: string[] = [];
-
-  for (const taskId of allTaskIds) {
-    const baselinePass = baselinePassIndex.get(taskId) ?? false;
-    const currentPass = currentPassIndex.get(taskId) ?? false;
-
-    if (baselinePass && !currentPass) {
-      regressions.push(taskId);
-      continue;
-    }
-
-    if (!baselinePass && currentPass) {
-      improvements.push(taskId);
-    }
-  }
-
-  regressions.sort();
-  improvements.sort();
-
-  return { regressions, improvements };
-}
 
 export function validateComparableDelta(
   threshold: number | undefined,
@@ -101,7 +58,6 @@ export function computeVerdict(
     passHatKDelta?: number;
     avgLatencyDelta?: number;
     tokenBudgetBreached?: boolean;
-    improvements: string[];
   },
   thresholds: BaselineThresholds | undefined,
 ): BaselineComparison['verdict'] {
@@ -127,7 +83,7 @@ export function computeVerdict(
     comparison.passRateDelta > 0 ||
     (comparison.passHatKDelta !== undefined && comparison.passHatKDelta > 0) ||
     (comparison.avgLatencyDelta !== undefined && comparison.avgLatencyDelta < 0);
-  if (hasMetricImprovement || comparison.improvements.length > 0) {
+  if (hasMetricImprovement) {
     return 'improved';
   }
 

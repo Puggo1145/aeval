@@ -1,11 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import type {
-  BaselineRecord,
-  ClearedResultEntry,
-  Stores,
-} from '../src/core/adapters/result-store-adapter.js';
+import type { ClearedResultEntry, Stores } from '../src/core/adapters/result-store-adapter.js';
 import type { ExecutionResult } from '../src/core/contracts/execution.js';
 import { SCHEMA_VERSIONS } from '../src/core/contracts/index.js';
 import type { RunManifestRecord } from '../src/core/contracts/run-manifest.js';
@@ -43,10 +39,6 @@ class InMemoryStore implements Stores {
   }
   async listTrials(runId: string): Promise<{ runId: string; trial: Trial['trial'] }[]> {
     return this.trialRecords.get(runId) ?? [];
-  }
-  async saveBaseline(_input: BaselineRecord): Promise<void> {}
-  async getBaselineRunId(): Promise<string | null> {
-    return null;
   }
   async listRunIds(): Promise<string[]> {
     return [...this.runSummaries.keys()].sort();

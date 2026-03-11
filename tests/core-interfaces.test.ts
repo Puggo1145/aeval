@@ -1,11 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import type {
-  BaselineRecord,
-  ClearedResultEntry,
-  Stores,
-} from '../src/core/adapters/result-store-adapter.js';
+import type { ClearedResultEntry, Stores } from '../src/core/adapters/result-store-adapter.js';
 import type {
   ResolvedSuite,
   ResolvedTask,
@@ -30,7 +26,6 @@ class InMemoryStore implements Stores {
   private readonly manifests = new Map<string, RunManifestRecord>();
   private readonly summaries = new Map<string, RunSummaryRecord>();
   private readonly trials = new Map<string, TrialResultRecord[]>();
-  private baselineRunId: string | null = null;
 
   async saveRunManifest(input: RunManifestRecord): Promise<void> {
     this.manifests.set(input.runId, input);
@@ -58,14 +53,6 @@ class InMemoryStore implements Stores {
     return this.trials.get(runId) ?? [];
   }
 
-  async saveBaseline(input: BaselineRecord): Promise<void> {
-    this.baselineRunId = input.runId;
-  }
-
-  async getBaselineRunId(): Promise<string | null> {
-    return this.baselineRunId;
-  }
-
   async listRunIds(): Promise<string[]> {
     return [
       ...new Set([...this.manifests.keys(), ...this.summaries.keys(), ...this.trials.keys()]),
@@ -90,7 +77,6 @@ class InMemoryStore implements Stores {
     this.manifests.clear();
     this.summaries.clear();
     this.trials.clear();
-    this.baselineRunId = null;
     return entries;
   }
 }
@@ -264,6 +250,19 @@ function createTestCoreWithTasks(tasks: Tasks, stores: Stores = new InMemoryStor
   });
 }
 
+async function saveRunSummary(
+  stores: Stores,
+  input: Omit<RunSummaryRecord['summary'], 'schemaVersion'>,
+): Promise<void> {
+  await stores.saveRunSummary({
+    runId: input.runId,
+    summary: {
+      schemaVersion: SCHEMA_VERSIONS.RUN_SUMMARY,
+      ...input,
+    },
+  });
+}
+
 test('listSuites exposes adapter-backed suite discovery', async () => {
   const core = createTestCore();
 
@@ -300,10 +299,110 @@ test('CoreApi groups adapter-backed methods by suites, results, and baseline', a
   const trials = await core.results.listTrials(runId);
   assert.equal(trials.length, 2);
 
-  await core.baseline.set(runId);
-  const comparison = await core.baseline.compare(runId);
+  const comparison = await core.baseline.compare(runId, {
+    baselineRunId: runId,
+  });
+  assert.equal(comparison.taskId, 'basic-llm/task-001');
   assert.equal(comparison.baselineRunId, runId);
   assert.equal(comparison.currentRunId, runId);
+  assert.ok(!('regressions' in comparison));
+  assert.ok(!('improvements' in comparison));
+});
+
+test('baseline comparison stays focused on same-task metric deltas', async () => {
+  const stores = new InMemoryStore();
+  await saveRunSummary(stores, {
+    runId: 'run-baseline',
+    taskId: 'basic-llm/task-001',
+    runName: 'mini',
+    totalTrials: 2,
+    passRate: 0.5,
+    passHatK: 0,
+    avgLatencyMs: 120,
+  });
+  await saveRunSummary(stores, {
+    runId: 'run-current',
+    taskId: 'basic-llm/task-001',
+    runName: 'mini',
+    totalTrials: 2,
+    passRate: 1,
+    passHatK: 1,
+    avgLatencyMs: 90,
+  });
+
+  const core = createTestCore(stores);
+  const comparison = await core.baseline.compare('run-current', {
+    baselineRunId: 'run-baseline',
+  });
+
+  assert.deepEqual(comparison, {
+    taskId: 'basic-llm/task-001',
+    baselineRunId: 'run-baseline',
+    currentRunId: 'run-current',
+    passRateDelta: 0.5,
+    passHatKDelta: 1,
+    avgLatencyDelta: -30,
+    verdict: 'improved',
+  });
+});
+
+test('baseline comparison rejects runs from different tasks', async () => {
+  const stores = new InMemoryStore();
+  await saveRunSummary(stores, {
+    runId: 'run-task-001',
+    taskId: 'basic-llm/task-001',
+    runName: 'mini',
+    totalTrials: 1,
+    passRate: 1,
+  });
+  await saveRunSummary(stores, {
+    runId: 'run-task-002',
+    taskId: 'basic-llm/task-002',
+    runName: 'mini',
+    totalTrials: 1,
+    passRate: 1,
+  });
+
+  const core = createTestCore(stores);
+  await assert.rejects(
+    () =>
+      core.baseline.compare('run-task-002', {
+        baselineRunId: 'run-task-001',
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /same task/);
+      const details =
+        'details' in error && typeof error.details === 'object'
+          ? (error.details as { currentTaskId?: unknown; baselineTaskId?: unknown })
+          : {};
+      assert.equal(details.currentTaskId, 'basic-llm/task-002');
+      assert.equal(details.baselineTaskId, 'basic-llm/task-001');
+      return true;
+    },
+  );
+});
+
+test('baseline comparison rejects missing options with validation error', async () => {
+  const stores = new InMemoryStore();
+  await saveRunSummary(stores, {
+    runId: 'run-current',
+    taskId: 'basic-llm/task-001',
+    runName: 'mini',
+    totalTrials: 1,
+    passRate: 1,
+  });
+
+  const core = createTestCore(stores);
+  await assert.rejects(
+    () => core.baseline.compare('run-current', undefined as never),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.equal(error.name, 'ValidationError');
+      assert.match(error.message, /Field 'options' must be an object/);
+      return true;
+    },
+  );
 });
 
 test('loadSuite by id and runTask executes all provider runs', async () => {

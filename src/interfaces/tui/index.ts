@@ -6,7 +6,6 @@ import { clearResults } from './actions/clear-results.js';
 import { compareBaseline } from './actions/compare-baseline.js';
 import { listRuns } from './actions/list-runs.js';
 import { runTask } from './actions/run-task.js';
-import { setBaseline } from './actions/set-baseline.js';
 import { viewReport } from './actions/view-report.js';
 import { viewTrials } from './actions/view-trials.js';
 import { CancelError } from './utils.js';
@@ -22,7 +21,6 @@ const ACTIONS: Record<string, Action> = {
   report: (core) => viewReport(core),
   runs: (core) => listRuns(core),
   trials: (core) => viewTrials(core),
-  'baseline-set': (core) => setBaseline(core),
   'baseline-compare': (core) => compareBaseline(core),
   'clear-selected-results': (core) => clearResults(core, 'selected'),
   'clear-all-results': (core) => clearResults(core, 'all'),
@@ -61,10 +59,7 @@ const ACTION_GROUPS: ActionGroup[] = [
   {
     id: 'baseline',
     label: 'Baseline',
-    actions: [
-      { value: 'baseline-set', label: 'Set baseline' },
-      { value: 'baseline-compare', label: 'Compare with baseline' },
-    ],
+    actions: [{ value: 'baseline-compare', label: 'Compare runs' }],
   },
   {
     id: 'manage',

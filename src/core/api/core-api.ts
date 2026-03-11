@@ -25,14 +25,12 @@ import type { TrialRecord } from '../contracts/trial.js';
 import { RunSummary } from '../domain/run-summary.js';
 import { Suite } from '../domain/suite.js';
 import { Task } from '../domain/task.js';
-import { Trial } from '../domain/trial.js';
 import { ERROR_CODES, RuntimeError, ValidationError } from '../errors/index.js';
 import { TaskRunOrchestrator } from '../orchestrator/run-orchestrator.js';
 import { resolveExecutionPolicy, validateTaskRuntime } from '../runtime/task-execution.js';
 import { ensureNonEmptyString } from '../validation/helpers.js';
 import { normalizeRuntimeDefaults } from '../validation/runtime-defaults.js';
 import {
-  computeRegressionDiff,
   computeVerdict,
   validateBaselineThresholds,
   validateComparableDelta,
@@ -41,7 +39,7 @@ import {
 export type LoadSuiteInput = string | SuiteInput | Promise<SuiteInput>;
 
 export interface CompareBaselineOptions {
-  baselineRunId?: string;
+  baselineRunId: string;
   thresholds?: BaselineThresholds;
   tokenBudgetBreached?: boolean;
 }
@@ -71,8 +69,7 @@ export interface CoreResultsApi {
 }
 
 export interface CoreBaselineApi {
-  set(runId: string): Promise<void>;
-  compare(currentRunId: string, options?: CompareBaselineOptions): Promise<BaselineComparison>;
+  compare(currentRunId: string, options: CompareBaselineOptions): Promise<BaselineComparison>;
 }
 
 export interface CoreApi {
@@ -146,26 +143,28 @@ function taskIndexFromDomainTask(task: Task, taskRef: TaskRef): TaskIndex {
   };
 }
 
-async function resolveBaselineRunIdInput(
-  baselineRunId: string | undefined,
-  currentRunId: string,
-  stores: Stores,
-): Promise<string> {
-  if (baselineRunId !== undefined) {
-    return Promise.resolve(ensureNonEmptyString(baselineRunId, 'baselineRunId'));
+function validateBaselineTaskMatch(input: {
+  currentRunId: string;
+  currentTaskId: string;
+  baselineRunId: string;
+  baselineTaskId: string;
+}): string {
+  if (input.currentTaskId === input.baselineTaskId) {
+    return input.currentTaskId;
   }
 
-  const resolvedBaselineRunId = await stores.getBaselineRunId();
-  if (resolvedBaselineRunId && resolvedBaselineRunId.trim().length > 0) {
-    return resolvedBaselineRunId.trim();
-  }
-
-  throw new ValidationError('No baseline run is set in result store.', {
-    details: {
-      field: 'baselineRunId',
-      currentRunId,
+  throw new ValidationError(
+    `Baseline compare requires runs from the same task. Current run '${input.currentRunId}' belongs to '${input.currentTaskId}' while baseline run '${input.baselineRunId}' belongs to '${input.baselineTaskId}'.`,
+    {
+      details: {
+        field: 'taskId',
+        currentRunId: input.currentRunId,
+        currentTaskId: input.currentTaskId,
+        baselineRunId: input.baselineRunId,
+        baselineTaskId: input.baselineTaskId,
+      },
     },
-  });
+  );
 }
 
 export class Core implements CoreApi {
@@ -200,8 +199,7 @@ export class Core implements CoreApi {
       clearByRunIds: (runIds: string[]) => this.clearRunResultsById(runIds),
     });
     this.baseline = Object.freeze({
-      set: (runId: string) => this.saveBaselineRun(runId),
-      compare: (currentRunId: string, options?: CompareBaselineOptions) =>
+      compare: (currentRunId: string, options: CompareBaselineOptions) =>
         this.compareAgainstBaseline(currentRunId, options),
     });
   }
@@ -253,26 +251,20 @@ export class Core implements CoreApi {
     return records.map((record) => record.trial);
   }
 
-  private async saveBaselineRun(runId: string): Promise<void> {
-    const normalizedRunId = ensureNonEmptyString(runId, 'runId');
-    const record = await this.stores.getRunSummary(normalizedRunId);
-    if (!record) {
-      throw new ValidationError(`Run summary for '${normalizedRunId}' was not found.`, {
-        details: { field: 'runId', runId: normalizedRunId },
-      });
-    }
-
-    await this.stores.saveBaseline({
-      runId: normalizedRunId,
-      updatedAt: new Date().toISOString(),
-    });
-  }
-
   private async compareAgainstBaseline(
     currentRunId: string,
-    options: CompareBaselineOptions = {},
+    options: CompareBaselineOptions,
   ): Promise<BaselineComparison> {
     const normalizedCurrentRunId = ensureNonEmptyString(currentRunId, 'currentRunId');
+    if (typeof options !== 'object' || options === null) {
+      throw new ValidationError("Field 'options' must be an object.", {
+        details: {
+          field: 'options',
+          currentRunId: normalizedCurrentRunId,
+        },
+      });
+    }
+    const baselineRunId = ensureNonEmptyString(options.baselineRunId, 'baselineRunId');
     validateBaselineThresholds(options.thresholds);
 
     const currentRecord = await this.stores.getRunSummary(normalizedCurrentRunId);
@@ -283,12 +275,6 @@ export class Core implements CoreApi {
     }
     const currentSummary = RunSummary.fromRecord(currentRecord.summary);
 
-    const baselineRunId = await resolveBaselineRunIdInput(
-      options.baselineRunId,
-      normalizedCurrentRunId,
-      this.stores,
-    );
-
     const baselineRecord = await this.stores.getRunSummary(baselineRunId);
     if (!baselineRecord) {
       throw new ValidationError(`Run summary for '${baselineRunId}' was not found.`, {
@@ -296,6 +282,12 @@ export class Core implements CoreApi {
       });
     }
     const baselineSummary = RunSummary.fromRecord(baselineRecord.summary);
+    const taskId = validateBaselineTaskMatch({
+      currentRunId: normalizedCurrentRunId,
+      currentTaskId: currentSummary.taskId,
+      baselineRunId,
+      baselineTaskId: baselineSummary.taskId,
+    });
 
     const passRateDelta = currentSummary.passRate - baselineSummary.passRate;
     const passHatKDelta =
@@ -314,20 +306,11 @@ export class Core implements CoreApi {
       'runSummary.avgLatencyMs',
     );
 
-    const baselineTrials = (await this.stores.listTrials(baselineRunId)).map((record) =>
-      Trial.fromRecord(record.trial),
-    );
-    const currentTrials = (await this.stores.listTrials(normalizedCurrentRunId)).map((record) =>
-      Trial.fromRecord(record.trial),
-    );
-    const { regressions, improvements } = computeRegressionDiff(baselineTrials, currentTrials);
-
     const comparison: BaselineComparison = {
+      taskId,
       baselineRunId,
       currentRunId: normalizedCurrentRunId,
       passRateDelta,
-      regressions,
-      improvements,
       verdict: 'pass',
     };
 
@@ -347,7 +330,6 @@ export class Core implements CoreApi {
         passHatKDelta: comparison.passHatKDelta,
         avgLatencyDelta: comparison.avgLatencyDelta,
         tokenBudgetBreached: comparison.tokenBudgetBreached,
-        improvements: comparison.improvements,
       },
       options.thresholds,
     );

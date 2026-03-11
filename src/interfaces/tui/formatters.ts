@@ -187,6 +187,7 @@ export function formatRunSummaryDetails(
 
 export function formatComparisonNote(comparison: BaselineComparison): void {
   const lines: string[] = [
+    `Task:            ${comparison.taskId}`,
     `Baseline:        ${comparison.baselineRunId}`,
     `Current:         ${comparison.currentRunId}`,
     `Verdict:         ${comparison.verdict}`,
@@ -200,12 +201,6 @@ export function formatComparisonNote(comparison: BaselineComparison): void {
     lines.push(
       `Latency Delta:   ${comparison.avgLatencyDelta >= 0 ? '+' : ''}${comparison.avgLatencyDelta.toFixed(0)}ms`,
     );
-  }
-  if (comparison.regressions.length > 0) {
-    lines.push(`Regressions:     ${comparison.regressions.join(', ')}`);
-  }
-  if (comparison.improvements.length > 0) {
-    lines.push(`Improvements:    ${comparison.improvements.join(', ')}`);
   }
 
   p.note(lines.join('\n'), 'Baseline Comparison');

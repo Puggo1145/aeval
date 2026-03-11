@@ -48,7 +48,7 @@ export async function clearResults(core: CoreApi, mode: ClearMode): Promise<void
 
     const confirmed = handleCancel(
       await p.confirm({
-        message: `Delete all results? This removes ${runCount} run(s), trial data, and baseline metadata.`,
+        message: `Delete all results? This removes ${runCount} run(s) and trial data.`,
         initialValue: false,
       }),
     );

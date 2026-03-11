@@ -224,8 +224,7 @@ core.results.listTrials(runId): Promise<TrialRecord[]>
 core.results.clearAll(): Promise<ClearedResultEntry[]>
 core.results.clearByRunIds(runIds): Promise<ClearedResultEntry[]>
 
-core.baseline.set(runId): Promise<void>
-core.baseline.compare(currentRunId, options?): Promise<BaselineComparison>
+core.baseline.compare(currentRunId, options): Promise<BaselineComparison>
 
 loadedSuite.listTasks(): Promise<TaskIndex[]>
 loadedSuite.runTask(taskId): Promise<RunSummaryData[]>
@@ -241,6 +240,12 @@ domain `Suite`.
 
 1. a suite id discovered through `tasks`
 2. a bare suite input object or promise that resolves to one; `Suite.fromDocument(...)` validates it during load
+
+Baseline comparison is run-to-run within one task only:
+
+1. `core.baseline.compare(...)` requires an explicit `baselineRunId`
+2. comparing runs from different tasks fails fast
+3. `BaselineComparison` reports same-task metric deltas and verdict only
 
 ## 8. TUI
 

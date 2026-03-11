@@ -3,7 +3,6 @@ import { lstat, mkdir, readdir, readFile, realpath, rm, writeFile } from 'node:f
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import type {
-  BaselineRecord,
   ClearedResultEntry,
   RunManifestRecord,
   RunSummaryRecord,
@@ -14,7 +13,6 @@ import type {
 const MANIFEST_FILE = 'manifest.json';
 const SUMMARY_FILE = 'summary.json';
 const TRIALS_DIR = 'trials';
-const BASELINE_FILE = 'baseline.json';
 
 export interface LocalStoreOptions {
   rootDir: string;
@@ -283,18 +281,6 @@ export class LocalStore implements Stores {
     return records;
   }
 
-  async saveBaseline(input: BaselineRecord): Promise<void> {
-    await this.writeStrict(async () => {
-      await ensureDir(this.rootDirPath);
-      await writeJsonFile(join(this.rootDirPath, BASELINE_FILE), input);
-    }, 'saveBaseline');
-  }
-
-  async getBaselineRunId(): Promise<string | null> {
-    const record = await readJsonFileOrNull<BaselineRecord>(join(this.rootDirPath, BASELINE_FILE));
-    return record?.runId ?? null;
-  }
-
   async listRunIds(): Promise<string[]> {
     let entries: string[];
     try {
@@ -360,8 +346,6 @@ export class LocalStore implements Stores {
       }
 
       const deletedEntries: ClearedResultEntry[] = [];
-      const deletedRunIdSet = new Set(normalizedRunIds);
-
       for (const runId of normalizedRunIds) {
         const dir = this.runDir(runId);
         await rejectSymlinkPath(dir, 'runId');
@@ -384,16 +368,6 @@ export class LocalStore implements Stores {
         deletedEntries.push(...withPrefix(runEntries, runId));
         await rm(dir, { recursive: true, force: true });
         deletedEntries.push({ path: runId, kind: 'dir' });
-      }
-
-      const baselineRecord = await readJsonFileOrNull<BaselineRecord>(
-        join(this.rootDirPath, BASELINE_FILE),
-      );
-      const baselineRunId = baselineRecord?.runId ?? null;
-      if (baselineRunId && deletedRunIdSet.has(baselineRunId)) {
-        const baselinePath = join(this.rootDirPath, BASELINE_FILE);
-        await rm(baselinePath, { force: true });
-        deletedEntries.push({ path: BASELINE_FILE, kind: 'file' });
       }
 
       return deletedEntries;

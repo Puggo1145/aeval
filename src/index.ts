@@ -1,9 +1,5 @@
 export type { Observer } from './core/adapters/observer-adapter.js';
-export type {
-  BaselineRecord,
-  ClearedResultEntry,
-  Stores,
-} from './core/adapters/result-store-adapter.js';
+export type { ClearedResultEntry, Stores } from './core/adapters/result-store-adapter.js';
 export type {
   ResolvedSuite,
   ResolvedTask,
