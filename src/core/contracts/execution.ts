@@ -31,6 +31,10 @@ export interface ExecutionTrace {
 }
 
 export interface ExecutionMetrics {
+  /**
+   * Provider-reported latency for the model/tool execution itself.
+   * This is distinct from core orchestration wall-clock duration.
+   */
   readonly latencyMs?: number;
   readonly timeToFirstTokenMs?: number;
   readonly model?: string;

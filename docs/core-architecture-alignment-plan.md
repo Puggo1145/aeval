@@ -331,7 +331,7 @@ Exit criteria:
 
 ### Phase 6: Latency Semantics Clarification
 
-Status: untoched
+Status: finished
 
 Primary goal:
 

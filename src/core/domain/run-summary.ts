@@ -35,6 +35,7 @@ export class RunSummary {
     const passedTrials = trials.filter((trial) => trial.aggregate.pass).length;
     const anyPass = trials.some((trial) => trial.aggregate.pass);
     const allPass = trials.every((trial) => trial.aggregate.pass);
+    // avgLatencyMs is derived only from provider-reported latency metrics.
     const latencyValues = trials
       .map((trial) => trial.execution.metrics?.latencyMs)
       .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));

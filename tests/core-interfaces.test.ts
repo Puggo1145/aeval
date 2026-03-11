@@ -17,8 +17,10 @@ import type { RunSummaryRecord } from '../src/core/contracts/run-summary.js';
 import type { SuiteDocument } from '../src/core/contracts/suite.js';
 import type { TaskDocument } from '../src/core/contracts/task.js';
 import type { TrialResultRecord } from '../src/core/contracts/trial.js';
+import { RunSummary } from '../src/core/domain/run-summary.js';
 import { Suite } from '../src/core/domain/suite.js';
 import { Task } from '../src/core/domain/task.js';
+import { Trial } from '../src/core/domain/trial.js';
 import { Graders, Providers } from '../src/core/runtime/index.js';
 import { resolveExecutionPolicy, validateTaskRuntime } from '../src/core/runtime/task-execution.js';
 
@@ -381,6 +383,51 @@ test('baseline comparison rejects runs from different tasks', async () => {
       return true;
     },
   );
+});
+
+test('run summary avgLatencyMs uses provider-reported latency rather than trial duration', () => {
+  const summary = RunSummary.fromTrials('run-1', 'basic-llm/task-001', 'mini', [
+    new Trial({
+      taskId: 'basic-llm/task-001',
+      runId: 'run-1',
+      runName: 'mini',
+      trialIndex: 0,
+      execution: {
+        output: 'ok',
+        metrics: {
+          latencyMs: 25,
+        },
+      },
+      graderResults: [],
+      aggregate: { pass: true },
+      timings: {
+        startedAt: '2026-03-05T00:00:00.000Z',
+        endedAt: '2026-03-05T00:00:01.000Z',
+        durationMs: 1000,
+      },
+    }),
+    new Trial({
+      taskId: 'basic-llm/task-001',
+      runId: 'run-1',
+      runName: 'mini',
+      trialIndex: 1,
+      execution: {
+        output: 'ok',
+        metrics: {
+          latencyMs: 75,
+        },
+      },
+      graderResults: [],
+      aggregate: { pass: true },
+      timings: {
+        startedAt: '2026-03-05T00:00:02.000Z',
+        endedAt: '2026-03-05T00:00:05.000Z',
+        durationMs: 3000,
+      },
+    }),
+  ]);
+
+  assert.equal(summary.avgLatencyMs, 50);
 });
 
 test('baseline comparison rejects missing options with validation error', async () => {

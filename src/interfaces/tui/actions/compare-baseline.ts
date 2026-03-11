@@ -98,7 +98,7 @@ export async function compareBaseline(core: CoreApi): Promise<void> {
 
     const avgLatencyIncreaseRaw = handleCancel(
       await p.text({
-        message: 'Max avg latency increase in ms (e.g. 500, empty to skip):',
+        message: 'Max avg provider latency increase in ms (e.g. 500, empty to skip):',
         placeholder: '',
       }),
     );

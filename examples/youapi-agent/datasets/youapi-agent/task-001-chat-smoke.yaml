@@ -12,6 +12,7 @@ provider:
         boardId: "019cc16f-425a-7d36-a248-afa397d5edc9"
         prompt: "Introduce yourself briefly and summarize the current board in one sentence."
         messageMode: "agent"
+        chatModel: "gpt-5-mini"
 
 graders:
   strategy: "ALL"

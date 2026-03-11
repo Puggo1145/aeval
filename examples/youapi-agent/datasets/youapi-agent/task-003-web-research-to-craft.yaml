@@ -10,7 +10,7 @@ tags: ["web-search", "fetch", "write", "craft", "tool-calls", "llm-judge", "weig
 provider:
   id: "youapi-agent"
   runs:
-    - name: "agent-can-research-web-and-write-craft"
+    - name: "GPT 5.4"
       params:
         userId: "6850dead-afa7-41f7-9e1a-91645e0249db"
         spaceId: "019cc16e-48df-73a6-87ad-6e597c86d366"
@@ -35,6 +35,59 @@ provider:
 
           Do not edit existing crafts. Do not invent facts or include unsupported claims.
         messageMode: "agent"
+        chatModel: "gpt-5-4"
+    - name: "Kimi K2.5"
+      params:
+        userId: "6850dead-afa7-41f7-9e1a-91645e0249db"
+        spaceId: "019cc16e-48df-73a6-87ad-6e597c86d366"
+        boardId: "019cc16f-425a-7d36-a248-afa397d5edc9"
+        prompt: |-
+          Search the public web for the latest stable TypeScript release.
+
+          Requirements:
+          1. Use official sources when possible, prioritizing typescriptlang.org and devblogs.microsoft.com/typescript.
+          2. Read the source pages you rely on before writing.
+          3. Create exactly one new document craft in the current board titled "TypeScript latest stable release brief".
+          4. The craft must contain:
+             - a one-sentence overview
+             - the exact stable version number
+             - the official release date
+             - exactly 3 concrete release highlights supported by the fetched source material
+             - a "Sources" section listing the official URLs you relied on
+
+          After creating the craft, reply with exactly two short lines:
+          Created: <title>
+          Summary: <one sentence>
+
+          Do not edit existing crafts. Do not invent facts or include unsupported claims.
+        messageMode: "agent"
+        chatModel: "kimi-k2.5"
+    - name: "Claude 4.6 Sonnet"
+      params:
+        userId: "6850dead-afa7-41f7-9e1a-91645e0249db"
+        spaceId: "019cc16e-48df-73a6-87ad-6e597c86d366"
+        boardId: "019cc16f-425a-7d36-a248-afa397d5edc9"
+        prompt: |-
+          Search the public web for the latest stable TypeScript release.
+
+          Requirements:
+          1. Use official sources when possible, prioritizing typescriptlang.org and devblogs.microsoft.com/typescript.
+          2. Read the source pages you rely on before writing.
+          3. Create exactly one new document craft in the current board titled "TypeScript latest stable release brief".
+          4. The craft must contain:
+             - a one-sentence overview
+             - the exact stable version number
+             - the official release date
+             - exactly 3 concrete release highlights supported by the fetched source material
+             - a "Sources" section listing the official URLs you relied on
+
+          After creating the craft, reply with exactly two short lines:
+          Created: <title>
+          Summary: <one sentence>
+
+          Do not edit existing crafts. Do not invent facts or include unsupported claims.
+        messageMode: "agent"
+        chatModel: "claude-4-5-sonnet"
 
 graders:
   strategy: "WEIGHTED"
@@ -98,4 +151,4 @@ execution:
   timeoutMs: 180000
   retryOnError: 0
   trialsPerTask: 2
-  maxConcurrency: 3
+  maxConcurrency: 4

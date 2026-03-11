@@ -155,7 +155,9 @@ internal plain-object `ExecutionResult` before grading or persistence.
 
 Persisted result records use `ExecutionResultData`, the versioned
 `execution-result.v1` store shape emitted by Core when writing adapter-facing
-records.
+records. `ExecutionResultData.metrics.latencyMs` means provider-reported
+execution latency. It is distinct from `Trial.timings.durationMs`, which is the
+core-measured wall-clock duration for the full trial lifecycle.
 
 Built-in graders may depend on extra runtime wiring. `llm-judge` is wired
 explicitly by the caller: register `new BuiltinLlmJudgeGrader(...)` on
@@ -186,6 +188,8 @@ Each task run is a first-class run record:
 `passRate` remains task-run level and is computed as `passedTrials / totalTrials`.
 `passAtK` is emitted only when `totalTrials > 1`; when emitted, it is `1` if any trial passes, otherwise `0`.
 `passHatK` is emitted only when `totalTrials > 1`; when emitted, it is `1` if all trials pass, otherwise `0`.
+`avgLatencyMs` is emitted only from provider-reported `execution.metrics.latencyMs`
+values and never from core `Trial.timings.durationMs`.
 
 ## 6. Tasks Boundary
 

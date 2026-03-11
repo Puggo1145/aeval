@@ -128,6 +128,8 @@ or orchestration continues.
 
 `ExecutionResultData` remains the persisted `execution-result.v1` record shape
 used in store-facing records.
+`ExecutionResultData.metrics.latencyMs` means provider-reported execution
+latency. It is distinct from the core-measured trial wall-clock duration.
 
 Built-in `llm-judge` depends on a separate runtime contract:
 
@@ -307,6 +309,8 @@ Rules:
 1. `passRate = passedTrials / totalTrials`
 2. `passAtK` is present only when `totalTrials > 1`; when present, it is `1` if any trial passes, otherwise `0`
 3. `passHatK` is present only when `totalTrials > 1`; when present, it is `1` if all trials pass, otherwise `0`
+4. `avgLatencyMs`, when present, is the average of provider-reported `execution.metrics.latencyMs`
+5. `avgLatencyMs` must not be derived from `trial.timings.durationMs`
 
 ## 7. Hashing Rules
 

@@ -171,7 +171,7 @@ export function formatRunSummaryDetails(
     lines.push(`Pass^K:       ${formatPassRate(summary.passHatK)}`);
   }
   if (summary.avgLatencyMs !== undefined) {
-    lines.push(`Avg Latency:  ${summary.avgLatencyMs.toFixed(0)}ms`);
+    lines.push(`Avg Provider Latency:  ${summary.avgLatencyMs.toFixed(0)}ms`);
   }
 
   if (trials.length > 0) {
@@ -199,7 +199,7 @@ export function formatComparisonNote(comparison: BaselineComparison): void {
   }
   if (comparison.avgLatencyDelta !== undefined) {
     lines.push(
-      `Latency Delta:   ${comparison.avgLatencyDelta >= 0 ? '+' : ''}${comparison.avgLatencyDelta.toFixed(0)}ms`,
+      `Provider Latency Delta:   ${comparison.avgLatencyDelta >= 0 ? '+' : ''}${comparison.avgLatencyDelta.toFixed(0)}ms`,
     );
   }
 

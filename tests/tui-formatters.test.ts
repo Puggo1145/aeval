@@ -376,6 +376,7 @@ test('formatRunSummaryDetails includes metrics for each trial', () => {
   );
 
   assert.match(output, /Run ID:\s+run-1/);
+  assert.match(output, /Avg Provider Latency:\s+20ms/);
   assert.match(output, /Metrics:/);
   assert.match(output, /Trial #0:/);
   assert.match(output, /model: gpt-5-mini/);

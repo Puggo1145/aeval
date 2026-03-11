@@ -89,6 +89,9 @@ export type TrialCompletedEvent = Readonly<{
   readonly runName: string;
   readonly trialIndex: number;
   readonly pass: boolean;
+  /**
+   * Core-measured trial wall-clock duration, not provider-reported latency.
+   */
   readonly durationMs: number;
 }>;
 

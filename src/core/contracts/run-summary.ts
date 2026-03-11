@@ -9,6 +9,10 @@ export interface RunSummaryData {
   passRate: number;
   passAtK?: number;
   passHatK?: number;
+  /**
+   * Average of provider-reported `execution.metrics.latencyMs` across completed trials.
+   * This intentionally does not use `trial.timings.durationMs`.
+   */
   avgLatencyMs?: number;
 }
 

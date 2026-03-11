@@ -30,6 +30,10 @@ export interface TrialRecord {
   timings: {
     startedAt: string;
     endedAt: string;
+    /**
+     * Core-measured wall-clock duration for the full trial lifecycle,
+     * including provider execution, grading, retries, and orchestration overhead.
+     */
     durationMs: number;
   };
 }
