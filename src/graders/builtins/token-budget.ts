@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ExecutionResult, ExecutionResultData, GraderResult } from '../../index.js';
+import type { ExecutionResult, GraderResult } from '../../index.js';
 import { ConfiguredGrader } from '../base-grader.js';
 import {
   type GraderConfigValidationResult,
@@ -40,7 +40,7 @@ type TokenBudgetConfig = z.infer<typeof TokenBudgetConfigSchema>;
  * At least one budget must be provided.
  */
 async function gradeTokenBudget(
-  result: ExecutionResult | ExecutionResultData,
+  result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
   const parsed = parseGraderConfig(TokenBudgetConfigSchema, config);

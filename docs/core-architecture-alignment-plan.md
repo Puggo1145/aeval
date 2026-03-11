@@ -153,10 +153,11 @@ export const RunEvents = {
 
 1. `SuiteDocument`
 2. `TaskDocument`
-3. `ExecutionResultData`
-4. `TrialRecord`
-5. `RunManifestRecord`
-6. `RunSummaryData`
+3. `ExecutionResultInput`
+4. `ExecutionResultData`
+5. `TrialRecord`
+6. `RunManifestRecord`
+7. `RunSummaryData`
 
 ## 5. Phase Plan
 
@@ -196,7 +197,7 @@ Exit criteria:
 
 ### Phase 2: Boundary Purity
 
-Status: untoched
+Status: finished
 
 Primary goal:
 
@@ -214,13 +215,16 @@ Expected changes:
 1. Remove domain dependency from public runtime contracts.
 2. `Provider` and `Grader` contracts should depend on boundary/public data types,
    not internal domain classes.
-3. `ExecutionResult` should be a public canonical value object
+3. `ExecutionResult` should become a core-owned plain runtime type produced by
+   boundary parsing, while `ExecutionResultInput` / `ExecutionResultData`
+   remain public boundary contracts
 
 Exit criteria:
 
 1. `core/contracts/*` does not import from `core/domain/*`.
 2. Public contracts read as standalone public API definitions.
-3. `ExecutionResult` has one clear status and one clear usage pattern.
+3. `ExecutionResult` has one clear status and one clear usage pattern across
+   provider input, internal runtime use, and persisted records.
 4. No suite or adapter-ownership refactor is mixed into this phase.
 
 ### Phase 3: Domain-Owned Validation

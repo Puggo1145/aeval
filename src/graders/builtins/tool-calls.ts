@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import type {
   ExecutionResult,
-  ExecutionResultData,
   GraderResult,
   ToolCallRecord,
 } from '../../index.js';
@@ -66,7 +65,7 @@ type ToolCallsConfig = z.infer<typeof ToolCallsConfigSchema>;
  * At least one config field must be provided.
  */
 async function gradeToolCalls(
-  result: ExecutionResult | ExecutionResultData,
+  result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
   const parsed = parseGraderConfig(ToolCallsConfigSchema, config);

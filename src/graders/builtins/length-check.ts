@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ExecutionResult, ExecutionResultData, GraderResult } from '../../index.js';
+import type { ExecutionResult, GraderResult } from '../../index.js';
 import {
   type GraderConfigValidationResult,
   parseGraderConfig,
@@ -42,7 +42,7 @@ type LengthCheckConfig = z.infer<typeof LengthCheckConfigSchema>;
  * At least one of min or max must be provided.
  */
 async function gradeLengthCheck(
-  result: ExecutionResult | ExecutionResultData,
+  result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
   const parsed = parseGraderConfig(LengthCheckConfigSchema, config);

@@ -11,8 +11,8 @@ This document defines the frozen v1 contract after the task-run-first refactor.
 
 ## 1.1 Object Taxonomy
 
-1. Boundary contracts are versioned shapes that cross IO or module boundaries.
-2. Internal protocols are core-owned in-process payloads such as `TaskContext` and `RunEvent`.
+1. Boundary contracts are versioned public shapes that cross IO or module boundaries.
+2. Internal protocols are core-owned in-process payloads such as `TaskContext`, `RunEvent`, and validated runtime-only plain object types.
 3. Domain objects stay as classes only when they add invariants or runtime behavior.
 
 ## 2. DSL Contracts
@@ -116,11 +116,18 @@ type TaskContext = {
 ```ts
 interface Provider {
   readonly id: string;
-  execute(ctx: TaskContext, run: Run): Promise<ExecutionResult>;
+  execute(ctx: TaskContext, run: Run): Promise<ExecutionResultInput>;
 }
 ```
 
 `run.params` is the selected run's parameter set.
+
+`ExecutionResultInput` is the provider boundary shape. Core validates that input
+and converts it into the internal plain-object `ExecutionResult` before grading
+or orchestration continues.
+
+`ExecutionResultData` remains the persisted `execution-result.v1` record shape
+used in store-facing records.
 
 Built-in `llm-judge` depends on a separate runtime contract:
 

@@ -1,5 +1,4 @@
-import type { ExecutionResult } from '../domain/execution-result.js';
-import type { ExecutionResultData } from './execution.js';
+import type { ExecutionResult, ExecutionResultInput } from './execution.js';
 import type { RunSummaryData } from './run-summary.js';
 import type { GraderResult } from './trial.js';
 
@@ -29,7 +28,7 @@ export interface GraderLayer {
 
 export interface Provider {
   readonly id: string;
-  execute(ctx: TaskContext, run: Run): Promise<ExecutionResult>;
+  execute(ctx: TaskContext, run: Run): Promise<ExecutionResultInput>;
 }
 
 export interface Providers {
@@ -51,7 +50,7 @@ export interface GraderValidationResult {
 
 export interface Grader {
   readonly type: string;
-  grade(result: ExecutionResult | ExecutionResultData, layer: GraderLayer): Promise<GraderResult>;
+  grade(result: ExecutionResult, layer: GraderLayer): Promise<GraderResult>;
   validate?(layer: GraderLayer): GraderValidationResult;
 }
 

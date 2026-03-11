@@ -1,4 +1,3 @@
-export * from './execution-result.js';
 export * from './grader-layer.js';
 export * from './run.js';
 export * from './run-manifest.js';

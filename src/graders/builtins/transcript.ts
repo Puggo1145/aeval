@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ExecutionResult, ExecutionResultData, GraderResult } from '../../index.js';
+import type { ExecutionResult, GraderResult } from '../../index.js';
 import { ConfiguredGrader } from '../base-grader.js';
 import {
   type GraderConfigValidationResult,
@@ -58,7 +58,7 @@ type TranscriptConfig = z.infer<typeof TranscriptConfigSchema>;
  * At least one config field must be provided.
  */
 async function gradeTranscript(
-  result: ExecutionResult | ExecutionResultData,
+  result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
   const parsed = parseGraderConfig(TranscriptConfigSchema, config);

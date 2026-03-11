@@ -1,4 +1,10 @@
-import { ExecutionResult, type Provider, type Run, type TaskContext } from 'youeval';
+import {
+  type ExecutionResult,
+  type ExecutionResultInput,
+  type Provider,
+  type Run,
+  type TaskContext,
+} from 'youeval';
 
 type TurnRecord = NonNullable<NonNullable<ExecutionResult['trace']>['turns']>[number];
 type ToolCallRecord = NonNullable<TurnRecord['toolCalls']>[number];
@@ -255,21 +261,21 @@ function getStringParam(
   return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
 }
 
-function toSystemError(message: string, code?: string): ExecutionResult {
-  return new ExecutionResult({
+function toSystemError(message: string, code?: string): ExecutionResultInput {
+  return {
     output: '',
     error: {
       type: 'system',
       message,
       ...(code ? { code } : {}),
     },
-  });
+  };
 }
 
 function getRequiredParam(
   params: Readonly<Record<string, unknown>>,
   key: 'userId' | 'spaceId' | 'boardId' | 'prompt',
-): string | ExecutionResult {
+): string | ExecutionResultInput {
   const value = getStringParam(params, key);
   if (value) {
     return value;
@@ -289,7 +295,7 @@ async function safeReadText(response: Response): Promise<string> {
 export class YouapiAgentProvider implements Provider {
   readonly id = 'youapi-agent';
 
-  async execute(ctx: TaskContext, run: Run): Promise<ExecutionResult> {
+  async execute(ctx: TaskContext, run: Run): Promise<ExecutionResultInput> {
     const params = run.params;
     const baseUrl = process.env.YOUAPI_BASE_URL;
     if (!baseUrl) {
@@ -354,14 +360,14 @@ export class YouapiAgentProvider implements Provider {
       const metrics = normalizeMetrics(payload.metrics, Date.now() - startedAt);
       const outcome = normalizeOutcome(payload.outcome, trace);
 
-      return new ExecutionResult({
+      return {
         output,
         ...(structuredOutput !== undefined ? { structuredOutput } : {}),
         ...(trace ? { trace } : {}),
         metrics,
         ...(outcome ? { outcome } : {}),
         ...(payload.error ? { error: payload.error } : {}),
-      });
+      };
     } catch (error) {
       if (ctx.signal.aborted) {
         return toSystemError('youapi eval request aborted by timeout/cancellation.', 'aborted');

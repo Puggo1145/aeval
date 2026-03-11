@@ -6,11 +6,11 @@ import type {
   ClearedResultEntry,
   Stores,
 } from '../src/core/adapters/result-store-adapter.js';
+import type { ExecutionResult } from '../src/core/contracts/execution.js';
 import { SCHEMA_VERSIONS } from '../src/core/contracts/index.js';
 import type { RunManifestRecord } from '../src/core/contracts/run-manifest.js';
 import type { RunEvent } from '../src/core/contracts/runtime.js';
 import type { RunSummaryRecord } from '../src/core/contracts/run-summary.js';
-import { ExecutionResult } from '../src/core/domain/execution-result.js';
 import { Suite } from '../src/core/domain/suite.js';
 import { Task } from '../src/core/domain/task.js';
 import type { Trial } from '../src/core/domain/trial.js';
@@ -177,11 +177,11 @@ test('TaskRunOrchestrator persists manifest, trials, and summary for one task ru
   const { deps, providers, stores, runtimeDefaults } = createDeps();
   providers.register({
     id: 'mock-provider',
-    async execute(_ctx, run) {
-      return new ExecutionResult({
+    async execute(_ctx, run): Promise<ExecutionResult> {
+      return {
         output: String(run.params.prompt ?? ''),
         metrics: { latencyMs: 50 },
-      });
+      };
     },
   });
 
@@ -229,10 +229,10 @@ test('TaskRunOrchestrator computes passRate as passedTrials divided by totalTria
 
   providers.register({
     id: 'mock-provider',
-    async execute(ctx) {
-      return new ExecutionResult({
+    async execute(ctx): Promise<ExecutionResult> {
+      return {
         output: ctx.trialIndex === 0 ? 'ok' : 'fail',
-      });
+      };
     },
   });
 
@@ -294,9 +294,9 @@ test('TaskRunOrchestrator respects task.execution.maxConcurrency for trials', as
       peak = Math.max(peak, active);
       await new Promise((resolve) => setTimeout(resolve, 10));
       active -= 1;
-      return new ExecutionResult({
+      return {
         output: 'ok',
-      });
+      };
     },
   });
 
@@ -331,16 +331,16 @@ test('Run params stay frozen before provider execution', async () => {
 
   providers.register({
     id: 'mock-provider',
-    async execute(_ctx, run) {
+    async execute(_ctx, run): Promise<ExecutionResult> {
       seenTopFrozen = Object.isFrozen(run.params);
       seenNestedFrozen = Object.isFrozen(run.params.nested as Record<string, unknown>);
       assert.throws(() => {
         (run.params as Record<string, unknown>).newField = 'mutated';
       });
 
-      return new ExecutionResult({
+      return {
         output: 'ok',
-      });
+      };
     },
   });
 

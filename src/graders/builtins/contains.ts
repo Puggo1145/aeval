@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ExecutionResult, ExecutionResultData, GraderResult } from '../../index.js';
+import type { ExecutionResult, GraderResult } from '../../index.js';
 import { ConfiguredGrader } from '../base-grader.js';
 import {
   type GraderConfigValidationResult,
@@ -41,7 +41,7 @@ type ContainsConfig = z.infer<typeof ContainsConfigSchema>;
  * At least one of mustInclude or mustNotInclude must be provided.
  */
 async function gradeContains(
-  result: ExecutionResult | ExecutionResultData,
+  result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
   const parsed = parseGraderConfig(ContainsConfigSchema, config);

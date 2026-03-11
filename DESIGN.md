@@ -63,8 +63,8 @@ Interfaces
 
 ### 3.3 Object Taxonomy
 
-1. Boundary contracts are versioned shapes that cross IO or module boundaries, such as DSL documents, result records, and public provider/grader data types.
-2. Internal protocols are core-owned in-process payloads such as `TaskContext` and `RunEvent`; they stay as plain object types or discriminated unions.
+1. Boundary contracts are versioned public shapes that cross IO or module boundaries, such as DSL documents, persisted result records, and provider input contracts.
+2. Internal protocols are core-owned in-process payloads such as `TaskContext`, `RunEvent`, and other validated runtime-only plain object types; they stay as plain object types or discriminated unions.
 3. Domain objects remain classes only when they carry invariants, lifecycle transitions, or derived runtime behavior.
 
 ## 4. DSL
@@ -141,13 +141,21 @@ credentials there.
 ```ts
 interface Provider {
   readonly id: string;
-  execute(ctx: TaskContext, run: Run): Promise<ExecutionResult>;
+  execute(ctx: TaskContext, run: Run): Promise<ExecutionResultInput>;
 }
 ```
 
 `TaskContext` is an internal protocol payload carried as a plain object. It contains `taskId`, `trialIndex`, `runName`, `runId`, and `signal`.
 
 Providers receive the selected `Run` object and the execution context.
+
+Providers return `ExecutionResultInput`, an external boundary shape that Core
+does not trust directly. Core validates and normalizes that input into the
+internal plain-object `ExecutionResult` before grading or persistence.
+
+Persisted result records use `ExecutionResultData`, the versioned
+`execution-result.v1` store shape emitted by Core when writing adapter-facing
+records.
 
 Built-in graders may depend on extra runtime wiring. `llm-judge` is wired
 explicitly by the caller: register `new BuiltinLlmJudgeGrader(...)` on

@@ -1,6 +1,11 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { generateText } from 'ai';
-import { ExecutionResult, type Provider, type Run, type TaskContext } from 'youeval';
+import {
+  type ExecutionResultInput,
+  type Provider,
+  type Run,
+  type TaskContext,
+} from 'youeval';
 
 function getStringParam(
   params: Readonly<Record<string, unknown>>,
@@ -18,20 +23,20 @@ function getNumberParam(
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
-function toSystemError(message: string): ExecutionResult {
-  return new ExecutionResult({
+function toSystemError(message: string): ExecutionResultInput {
+  return {
     output: '',
     error: {
       type: 'system',
       message,
     },
-  });
+  };
 }
 
 export class BasicLlmProvider implements Provider {
   readonly id = 'basic-llm';
 
-  async execute(ctx: TaskContext, run: Run): Promise<ExecutionResult> {
+  async execute(ctx: TaskContext, run: Run): Promise<ExecutionResultInput> {
     const params = run.params;
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
@@ -65,7 +70,7 @@ export class BasicLlmProvider implements Provider {
 
       const latencyMs = Date.now() - startedAt;
 
-      return new ExecutionResult({
+      return {
         output,
         trace: {
           turns: [
@@ -82,7 +87,7 @@ export class BasicLlmProvider implements Provider {
             total: response.usage?.totalTokens,
           },
         },
-      });
+      };
     } catch (error) {
       if (ctx.signal.aborted) {
         return toSystemError('LLM request aborted by timeout/cancellation.');

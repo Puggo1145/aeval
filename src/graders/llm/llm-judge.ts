@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import type {
   ExecutionResult,
-  ExecutionResultData,
   Grader,
   GraderLayer,
   GraderResult,
@@ -38,7 +37,7 @@ export interface LlmJudgeGraderOptions {
   validateConfig?: (config: LlmJudgeConfig) => GraderValidationResult;
 }
 
-function resolveContextPath(result: ExecutionResult | ExecutionResultData, path: string): unknown {
+function resolveContextPath(result: ExecutionResult, path: string): unknown {
   const parts = path.split('.');
   let current: unknown = result;
 
@@ -60,7 +59,7 @@ export class LlmJudgeGrader implements Grader {
     private readonly options: LlmJudgeGraderOptions = {},
   ) {}
 
-  async grade(result: ExecutionResult | ExecutionResultData, layer: GraderLayer): Promise<GraderResult> {
+  async grade(result: ExecutionResult, layer: GraderLayer): Promise<GraderResult> {
     const parsed = parseGraderConfig(LlmJudgeConfigSchema, layer.config);
     if (!parsed.ok) {
       return {

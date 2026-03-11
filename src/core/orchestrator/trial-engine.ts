@@ -1,6 +1,10 @@
-import { SYSTEM_ERROR_CODES, type SystemErrorCode } from '../contracts/execution.js';
+import {
+  type ExecutionResult,
+  parseExecutionResult,
+  SYSTEM_ERROR_CODES,
+  type SystemErrorCode,
+} from '../contracts/execution.js';
 import type { Graders, Providers, TaskContext } from '../contracts/runtime.js';
-import { ExecutionResult } from '../domain/execution-result.js';
 import type { Run } from '../domain/run.js';
 import type { Task } from '../domain/task.js';
 import { Trial } from '../domain/trial.js';
@@ -133,7 +137,7 @@ export class TrialExecutor {
     try {
       const providerPromise = (async (): Promise<ExecutionResult> => {
         const provider = this.deps.providers.require(input.task.providerId);
-        return ExecutionResult.from(await provider.execute(ctx, input.run));
+        return parseExecutionResult(await provider.execute(ctx, input.run));
       })();
 
       const timeoutPromise = new Promise<never>((_resolve, reject) => {
@@ -172,13 +176,13 @@ export class TrialExecutor {
         input,
         startedAt,
         startMs,
-        new ExecutionResult({
+        {
           output: '',
           error: {
             type: 'system',
             ...classifySystemError(error, input.timeoutMs, abortController.signal),
           },
-        }),
+        },
       );
     }
 
@@ -221,15 +225,15 @@ export class TrialExecutor {
         runId: input.runId,
         runName: input.run.name,
         trialIndex: input.trialIndex,
-        execution: new ExecutionResult({
-          ...execution.toRecord(),
+        execution: {
+          ...execution,
           error: {
             type: 'system',
             code: SYSTEM_ERROR_CODES.GRADER_EXCEPTION,
             message: error instanceof Error ? error.message : String(error),
             retryable: true,
           },
-        }),
+        },
         graderResults: [],
         aggregate: { pass: false },
         timings: { startedAt, endedAt, durationMs },

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ExecutionResult, ExecutionResultData, GraderResult } from '../../index.js';
+import type { ExecutionResult, GraderResult } from '../../index.js';
 import {
   type GraderConfigValidationResult,
   parseGraderConfig,
@@ -25,7 +25,7 @@ type OutcomeCheckConfig = z.infer<typeof OutcomeCheckConfigSchema>;
  * Values are compared using deep equality.
  */
 async function gradeOutcomeCheck(
-  result: ExecutionResult | ExecutionResultData,
+  result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
   const parsed = parseGraderConfig(OutcomeCheckConfigSchema, config);

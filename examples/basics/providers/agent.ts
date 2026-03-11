@@ -3,7 +3,12 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createOpenAI } from '@ai-sdk/openai';
-import { ExecutionResult, type Provider, type Run, type TaskContext } from 'youeval';
+import {
+  type ExecutionResultInput,
+  type Provider,
+  type Run,
+  type TaskContext,
+} from 'youeval';
 import { runReActAgent } from './react-agent/index.ts';
 
 function getStringParam(
@@ -14,11 +19,11 @@ function getStringParam(
   return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
 }
 
-function toSystemError(message: string): ExecutionResult {
-  return new ExecutionResult({
+function toSystemError(message: string): ExecutionResultInput {
+  return {
     output: '',
     error: { type: 'system', message },
-  });
+  };
 }
 
 /**
@@ -33,7 +38,7 @@ function toSystemError(message: string): ExecutionResult {
 export class FileEditAgentProvider implements Provider {
   readonly id = 'file-edit-agent';
 
-  async execute(ctx: TaskContext, run: Run): Promise<ExecutionResult> {
+  async execute(ctx: TaskContext, run: Run): Promise<ExecutionResultInput> {
     const params = run.params;
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
@@ -82,7 +87,7 @@ export class FileEditAgentProvider implements Provider {
         }
       }
 
-      return new ExecutionResult({
+      return {
         output: agentResult.output,
         trace: {
           turns: agentResult.turns,
@@ -94,7 +99,7 @@ export class FileEditAgentProvider implements Provider {
           agentSteps: agentResult.steps,
         },
         outcome: Object.keys(outcome).length > 0 ? outcome : undefined,
-      });
+      };
     } catch (error) {
       if (ctx.signal.aborted) {
         return toSystemError('Agent execution aborted by timeout/cancellation.');

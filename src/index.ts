@@ -27,6 +27,5 @@ export {
   type LoadSuiteInput,
 } from './core/api/index.js';
 export * from './core/contracts/index.js';
-export { ExecutionResult, type ExecutionResultInit } from './core/domain/execution-result.js';
 export { Graders } from './core/runtime/grader-registry.js';
 export { Providers } from './core/runtime/provider-registry.js';

@@ -14,13 +14,13 @@ import type {
   Tasks,
 } from '../src/core/adapters/task-source-adapter.js';
 import { Core } from '../src/core/api/index.js';
+import type { ExecutionResult } from '../src/core/contracts/execution.js';
 import { parseTaskDocument, SCHEMA_VERSIONS } from '../src/core/contracts/index.js';
 import type { RunManifestRecord } from '../src/core/contracts/run-manifest.js';
 import type { RunSummaryRecord } from '../src/core/contracts/run-summary.js';
 import type { SuiteDocument } from '../src/core/contracts/suite.js';
 import type { TaskDocument } from '../src/core/contracts/task.js';
 import type { TrialResultRecord } from '../src/core/contracts/trial.js';
-import { ExecutionResult } from '../src/core/domain/execution-result.js';
 import { Suite } from '../src/core/domain/suite.js';
 import { Task } from '../src/core/domain/task.js';
 import { Graders, Providers } from '../src/core/runtime/index.js';
@@ -216,13 +216,16 @@ function createTasks(): Tasks {
 class MockProvider {
   readonly id = 'mock-provider';
 
-  async execute(_ctx: unknown, run: { params: Readonly<Record<string, unknown>> }) {
-    return new ExecutionResult({
+  async execute(
+    _ctx: unknown,
+    run: { params: Readonly<Record<string, unknown>> },
+  ): Promise<ExecutionResult> {
+    return {
       output: String(run.params.prompt ?? ''),
       metrics: {
         latencyMs: 25,
       },
-    });
+    };
   }
 }
 
@@ -347,8 +350,11 @@ test('loadSuite syncs LoadedSuite metadata after resolving a bare suite input', 
   const core = createTestCore();
   const suite = await core.suites.load(createSuiteDocument());
 
-  assert.equal(suite.source, undefined);
-  assert.equal(suite.taskIndexes, undefined);
+  const sourceBeforeListTasks = suite.source;
+  const taskIndexesBeforeListTasks = suite.taskIndexes;
+
+  assert.equal(sourceBeforeListTasks, undefined);
+  assert.equal(taskIndexesBeforeListTasks, undefined);
 
   const taskIndexes = await suite.listTasks();
 

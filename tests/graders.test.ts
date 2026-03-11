@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import type { ExecutionResult } from '../src/core/contracts/execution.js';
 import type { Grader } from '../src/core/contracts/runtime.js';
-import { ExecutionResult } from '../src/core/domain/execution-result.js';
 import { GraderLayer } from '../src/core/domain/grader-layer.js';
 import { Graders } from '../src/core/runtime/grader-registry.js';
 import { contains as containsGrader } from '../src/graders/builtins/contains.js';
@@ -25,10 +25,10 @@ import { registerBuiltinGraders } from '../src/graders/register-builtins.js';
 // --- Test helpers ---
 
 function makeResult(overrides: Partial<ExecutionResult> = {}): ExecutionResult {
-  return new ExecutionResult({
+  return {
     output: '',
     ...overrides,
-  });
+  };
 }
 
 async function grade(grader: Grader, result: ExecutionResult, config: Record<string, unknown>) {

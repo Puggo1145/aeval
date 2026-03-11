@@ -7,8 +7,8 @@ import test from 'node:test';
 import { LocalStore } from '../src/adapters/result-store/local-result-store-adapter.js';
 import { LocalTask } from '../src/adapters/task-source/local-task-source-adapter.js';
 import { Core } from '../src/core/api/index.js';
+import type { ExecutionResult } from '../src/core/contracts/execution.js';
 import type { RunEvent } from '../src/core/contracts/runtime.js';
-import { ExecutionResult } from '../src/core/domain/execution-result.js';
 import { Graders, Providers } from '../src/core/runtime/index.js';
 import { LlmJudgeGrader } from '../src/graders/llm/llm-judge.js';
 import { registerBuiltinGraders } from '../src/graders/register-builtins.js';
@@ -92,11 +92,11 @@ test('E2E smoke: full chain from suite discovery to result-store readback', asyn
     const providers = new Providers();
     providers.register({
       id: 'reference',
-      async execute(_ctx, run) {
-        return new ExecutionResult({
+      async execute(_ctx, run): Promise<ExecutionResult> {
+        return {
           output: String(run.params.output ?? ''),
           metrics: { latencyMs: 25 },
-        });
+        };
       },
     });
 
@@ -156,10 +156,10 @@ test('E2E smoke: llm-judge protocol chain with mock JudgeProvider', async () => 
     const providers = new Providers();
     providers.register({
       id: 'reference',
-      async execute(_ctx, run) {
-        return new ExecutionResult({
+      async execute(_ctx, run): Promise<ExecutionResult> {
+        return {
           output: String(run.params.output ?? ''),
-        });
+        };
       },
     });
 

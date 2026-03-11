@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ExecutionResult, ExecutionResultData, GraderResult } from '../../index.js';
+import type { ExecutionResult, GraderResult } from '../../index.js';
 import { ConfiguredGrader } from '../base-grader.js';
 import {
   type GraderConfigValidationResult,
@@ -22,7 +22,7 @@ type LatencyThresholdConfig = z.infer<typeof LatencyThresholdConfigSchema>;
  *   maxMs: number  — maximum allowed latency in milliseconds
  */
 async function gradeLatencyThreshold(
-  result: ExecutionResult | ExecutionResultData,
+  result: ExecutionResult,
   config: Record<string, unknown>,
 ): Promise<GraderResult> {
   const parsed = parseGraderConfig(LatencyThresholdConfigSchema, config);

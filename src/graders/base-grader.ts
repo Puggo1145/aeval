@@ -1,6 +1,5 @@
 import type {
   ExecutionResult,
-  ExecutionResultData,
   Grader,
   GraderLayer,
   GraderResult,
@@ -9,7 +8,7 @@ import type {
 
 export interface ConfiguredGraderOptions {
   type: string;
-  grade: (result: ExecutionResult | ExecutionResultData, layer: GraderLayer) => Promise<GraderResult>;
+  grade: (result: ExecutionResult, layer: GraderLayer) => Promise<GraderResult>;
   validate?: (layer: GraderLayer) => GraderValidationResult;
 }
 
@@ -25,7 +24,7 @@ export class ConfiguredGrader implements Grader {
     this.validateFn = options.validate;
   }
 
-  async grade(result: ExecutionResult | ExecutionResultData, layer: GraderLayer): Promise<GraderResult> {
+  async grade(result: ExecutionResult, layer: GraderLayer): Promise<GraderResult> {
     return this.gradeFn(result, layer);
   }
 

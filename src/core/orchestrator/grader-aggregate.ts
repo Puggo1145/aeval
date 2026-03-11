@@ -1,7 +1,7 @@
+import type { ExecutionResult } from '../contracts/execution.js';
 import type { Graders } from '../contracts/runtime.js';
 import type { TaskGraderStrategy } from '../contracts/task.js';
 import type { GraderResult, TrialGraderResultRecord } from '../contracts/trial.js';
-import type { ExecutionResult } from '../domain/execution-result.js';
 import type { GraderLayer } from '../domain/grader-layer.js';
 
 export interface GraderAggregateResult {
