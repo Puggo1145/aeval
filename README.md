@@ -693,6 +693,7 @@ const summaries = await loadedSuite.runTask(tasks[0].id);
 - `core.baseline.compare(currentRunId, options)`
 
 `core.suites.load(...)` 返回的是公开 API handle，不是内部 domain `Suite` 实现；外部模块应只使用这些公开方法和返回的 record 数据。
+内部 `Suite` 现在只是纯定义/value object，不再承载 `listTasks`、`runTask`、`streamTask` 这类运行时动作。
 
 ## 本地参考适配器
 

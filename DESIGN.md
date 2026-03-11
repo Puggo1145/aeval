@@ -232,6 +232,11 @@ loadedSuite.runTask(taskId): Promise<RunSummaryData[]>
 loadedSuite.streamTask(taskId): AsyncIterable<RunEvent>
 ```
 
+`Suite` is the pure suite definition/value object inside Core. `LoadedSuite` is
+the public execution handle returned by `core.suites.load(...)`; it binds suite
+metadata to task projection and task execution behavior without mutating the
+domain `Suite`.
+
 `core.suites.load` accepts either:
 
 1. a suite id discovered through `tasks`

@@ -1,21 +1,11 @@
-import type { SuiteSource, TaskIndex, Tasks } from '../adapters/task-source-adapter.js';
-import type { RunSummaryData } from '../contracts/run-summary.js';
-import type { RunEvent } from '../contracts/runtime.js';
+import type { SuiteSource, TaskIndex } from '../adapters/task-source-adapter.js';
 import type { SuiteDocument } from '../contracts/suite.js';
 import { parseSuiteDocument } from '../contracts/suite.js';
-
-export interface SuiteActions {
-  listTasks(): Promise<TaskIndex[]>;
-  runTask(taskId: string): Promise<RunSummaryData[]>;
-  streamTask(taskId: string, options?: { signal?: AbortSignal }): AsyncIterable<RunEvent>;
-}
 
 interface SuiteInit {
   document: unknown;
   source?: SuiteSource;
   taskIndexes?: TaskIndex[];
-  tasks?: Tasks;
-  actions?: SuiteActions;
 }
 
 export class Suite {
@@ -25,9 +15,6 @@ export class Suite {
   readonly discover: readonly string[];
   readonly source?: SuiteSource;
   readonly taskIndexes?: readonly TaskIndex[];
-
-  private readonly tasks?: Tasks;
-  private readonly actions?: SuiteActions;
 
   private constructor(input: SuiteInit) {
     const document = parseSuiteDocument(input.document);
@@ -43,9 +30,6 @@ export class Suite {
     if (input.taskIndexes !== undefined) {
       this.taskIndexes = Object.freeze([...input.taskIndexes]);
     }
-
-    this.tasks = input.tasks;
-    this.actions = input.actions;
   }
 
   get definition(): SuiteDocument {
@@ -57,48 +41,6 @@ export class Suite {
       document,
       ...options,
     });
-  }
-
-  withActions(actions: SuiteActions, tasks?: Tasks): Suite {
-    return new Suite({
-      document: this.toDocument(),
-      ...(this.source !== undefined ? { source: this.source } : {}),
-      ...(this.taskIndexes !== undefined ? { taskIndexes: [...this.taskIndexes] } : {}),
-      actions,
-      tasks: tasks ?? this.tasks,
-    });
-  }
-
-  async listTasks(): Promise<TaskIndex[]> {
-    if (this.actions) {
-      return this.actions.listTasks();
-    }
-
-    if (this.taskIndexes) {
-      return [...this.taskIndexes];
-    }
-
-    if (!this.tasks) {
-      throw new Error(`Suite '${this.id}' is not bound to a tasks source.`);
-    }
-
-    throw new Error(`Suite '${this.id}' cannot project task indexes without Core actions.`);
-  }
-
-  async runTask(taskId: string): Promise<RunSummaryData[]> {
-    if (!this.actions) {
-      throw new Error(`Suite '${this.id}' is not bound to Core runtime actions.`);
-    }
-
-    return this.actions.runTask(taskId);
-  }
-
-  streamTask(taskId: string, options?: { signal?: AbortSignal }): AsyncIterable<RunEvent> {
-    if (!this.actions) {
-      throw new Error(`Suite '${this.id}' is not bound to Core runtime actions.`);
-    }
-
-    return this.actions.streamTask(taskId, options);
   }
 
   toDocument(): SuiteDocument {

@@ -214,12 +214,12 @@ export class Core implements CoreApi {
     if (typeof input === 'string') {
       const suiteId = ensureNonEmptyString(input, 'suiteId');
       const resolvedSuite = await this.tasks.resolveSuite(suiteId);
-      const suite = toInternalSuite(resolvedSuite, this.tasks);
+      const suite = toInternalSuite(resolvedSuite);
       return this.bindSuite(suite, resolvedSuite);
     }
 
     const raw = await input;
-    return this.bindSuite(Suite.fromDocument(raw, { tasks: this.tasks }));
+    return this.bindSuite(Suite.fromDocument(raw));
   }
 
   private async loadSuiteHandles(...inputs: LoadSuiteInput[]): Promise<LoadedSuite[]> {
@@ -400,7 +400,7 @@ export class Core implements CoreApi {
       }
 
       const resolved = await resolvedSuitePromise;
-      currentSuite = mergeSuiteMetadata(currentSuite, toInternalSuite(resolved, this.tasks));
+      currentSuite = mergeSuiteMetadata(currentSuite, toInternalSuite(resolved));
       return resolved;
     };
 
@@ -474,78 +474,66 @@ export class Core implements CoreApi {
 
       return task;
     };
+    const listTasks = async (): Promise<TaskIndex[]> => {
+      return resolveTaskIndexes();
+    };
 
-    let suiteWithActions: Suite;
+    const streamTask = async function* (
+      taskId: string,
+      options?: { signal?: AbortSignal },
+    ): AsyncIterable<RunEvent> {
+      const task = await resolveTaskById(taskId);
+      validateTaskRuntime(task, {
+        providers: suiteCore.providers,
+        graders: suiteCore.graders,
+      });
+      const execution = resolveExecutionPolicy(task, suiteCore.runtimeDefaults);
 
-    suiteWithActions = suite.withActions(
-      {
-        listTasks: async (): Promise<TaskIndex[]> => {
-          return resolveTaskIndexes();
-        },
+      for (const run of task.runs) {
+        if (options?.signal?.aborted) {
+          return;
+        }
 
-        runTask: async (taskId: string): Promise<RunSummaryData[]> => {
-          const summaries: RunSummaryData[] = [];
-          for await (const event of suiteWithActions.streamTask(taskId)) {
-            if (event.type === 'run:completed') {
-              summaries.push(event.summary);
-            }
-          }
-          return summaries;
-        },
-
-        streamTask: async function* (
-          taskId: string,
-          options?: { signal?: AbortSignal },
-        ): AsyncIterable<RunEvent> {
-          const task = await resolveTaskById(taskId);
-          validateTaskRuntime(task, {
+        yield* new TaskRunOrchestrator(
+          {
+            suite: currentSuite,
+            task,
+            run,
+            execution,
+            signal: options?.signal,
+          },
+          {
+            stores: suiteCore.stores,
+            observers: [...suiteCore.observers],
             providers: suiteCore.providers,
             graders: suiteCore.graders,
-          });
-          const execution = resolveExecutionPolicy(task, suiteCore.runtimeDefaults);
+          },
+        ).run();
+      }
+    };
 
-          for (const run of task.runs) {
-            if (options?.signal?.aborted) {
-              return;
-            }
-
-            yield* new TaskRunOrchestrator(
-              {
-                suite: currentSuite,
-                task,
-                run,
-                execution,
-                signal: options?.signal,
-              },
-              {
-                stores: suiteCore.stores,
-                observers: [...suiteCore.observers],
-                providers: suiteCore.providers,
-                graders: suiteCore.graders,
-              },
-            ).run();
-          }
-        },
-      },
-      this.tasks,
-    );
-
-    currentSuite = suiteWithActions;
+    const runTask = async (taskId: string): Promise<RunSummaryData[]> => {
+      const summaries: RunSummaryData[] = [];
+      for await (const event of streamTask(taskId)) {
+        if (event.type === 'run:completed') {
+          summaries.push(event.summary);
+        }
+      }
+      return summaries;
+    };
 
     return new LoadedSuite({
       getSuite: () => currentSuite,
-      listTasks: () => suiteWithActions.listTasks(),
-      runTask: (taskId: string) => suiteWithActions.runTask(taskId),
-      streamTask: (taskId: string, options?: { signal?: AbortSignal }) =>
-        suiteWithActions.streamTask(taskId, options),
+      listTasks,
+      runTask,
+      streamTask,
     });
   }
 }
 
-function toInternalSuite(input: ResolvedSuite, tasks: Tasks): Suite {
+function toInternalSuite(input: ResolvedSuite): Suite {
   return Suite.fromDocument(input.document, {
     ...(input.source ? { source: input.source } : {}),
-    tasks,
   });
 }
 

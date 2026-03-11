@@ -183,7 +183,7 @@ Rules:
 
 1. events are emitted in time order
 2. `run:completed` is the last event for one run
-3. `suite.streamTask(taskId)` emits one run lifecycle for each `provider.runs[]` entry
+3. `loadedSuite.streamTask(taskId)` emits one run lifecycle for each `provider.runs[]` entry
 
 ## 4. Tasks
 
@@ -233,6 +233,9 @@ loadedSuite.listTasks(): Promise<TaskIndex[]>
 loadedSuite.runTask(taskId): Promise<RunSummaryData[]>
 loadedSuite.streamTask(taskId): AsyncIterable<RunEvent>
 ```
+
+`Suite` is the pure suite definition/value object. `LoadedSuite` is the only
+public execution handle and owns task listing plus task execution actions.
 
 Rules:
 
