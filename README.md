@@ -1,8 +1,8 @@
 # YouEval
 
-YouEval 是一个 contract-first 的 LLM / Agent Eval 运行时。
+YouEval 是一个基于 Anthropic Agent 评测理念的 Agent 评测框架
 
-当前 v1 的核心模型是：
+v1 的核心模型是：
 
 1. `suite`：声明任务发现范围。
 2. `task`：声明一个评测场景。
@@ -13,18 +13,11 @@ YouEval 是一个 contract-first 的 LLM / Agent Eval 运行时。
 
 一次完整执行的顺序是：
 
-1. TUI 里先选一个 `suite`
-2. 再选一个 `task`
+1. 选择一个 `suite`
+2. 选择一个 `task`
 3. Core 读取这个 task
 4. 顺序执行这个 task 下的每个 `provider.runs[]`
-5. 每个 run 内再按 `trialsPerTask` 跑一个或多个 `trial`
-
-这意味着：
-
-- `suite` 负责“在哪里找任务”
-- `task` 负责“测什么”
-- `run` 负责“用哪组参数测”
-- `trial` 负责“重复跑几次”
+5. 每个 run 内再按 `trialsPerTask` 执行一个或多个 `trial`
 
 ## 快速开始
 
@@ -45,15 +38,15 @@ pnpm test
 
 外部实现只应依赖这 5 个公开入口：
 
-- `youeval`：Core、registry、稳定 contract / DSL / record 类型、`ExecutionResult`
-- `youeval/adapters`：`LocalTask`、`LocalStore`、`ConsoleObserver`
-- `youeval/graders`：built-in graders、`registerBuiltinGraders`、LLM judge 相关能力
-- `youeval/tools`：可选的 parser / schema 工具能力，用于 DSL 预校验、导入检查、CI lint，不是运行时接入主路径
-- `youeval/interfaces/tui`：`runTui`
+- `youeval`：评测框架的核心（core），承载所有评测功能
+- `youeval/adapters`：评测核心的 IO 适配器，包括 task adapter, store adapter 和 observer adapter (optional)
+- `youeval/graders`：core 提供的评测器
+- `youeval/tools`：可选的 parser / schema 工具能力，用于 DSL 预校验、导入检查、CI lint 等，不是运行时接入主路径
+- `youeval/interfaces/tui`：core 提供的一个预置本地交互 interface
 
-内置 adapters / graders / TUI 虽然随包一起发布，但在依赖边界上按“外部用户实现”处理，不应直接依赖 `core/domain/*`、`core/runtime/*`、`core/utils/*` 这类内部实现路径。
-
-运行时接入路径默认不依赖 parser。`Tasks` adapter 返回 raw document，Core 自己在加载 suite/task 时完成解析与校验；如果调用方想在任务录入前做预检查，再按需从 `youeval/tools` 使用 `parseSuiteDocument(...)`、`parseTaskDocument(...)` 等工具函数。
+### Tips
+- 内置 adapters / graders / TUI 虽然随包一起发布，但在依赖边界上按“外部用户实现”处理，不应直接依赖 `core/domain/*`、`core/runtime/*`、`core/utils/*` 这类内部实现路径。
+- 运行时接入路径默认不依赖 parser。`Tasks` adapter 返回 raw document，Core 自己在加载 suite/task 时完成解析与校验；如果调用方想在任务录入前做预检查，可按需从 `youeval/tools` 使用 `parseSuiteDocument(...)`、`parseTaskDocument(...)` 等工具函数。
 
 ## 从 `youapi-agent` 示例入门
 
@@ -135,7 +128,7 @@ TUI 顶层菜单分成四组：
 - `View run report`
 - `View trial details`
 
-## 逐个读懂 `youapi-agent` DSL
+## 逐个读懂 `youapi-agent` DSL (以 YAML 格式为例)
 
 ### 1. `suite.yaml`
 
@@ -415,57 +408,8 @@ graders.register(
 - task YAML 只负责写 `judge.profile`
 - API key、provider 选择、模型实例化都在运行时组合层完成，不写进 task YAML
 
-## `main.ts` 在做什么
 
-`examples/youapi-agent/main.ts` 是一个最小完整接线示例：
-
-```ts
-import { createOpenAI } from '@ai-sdk/openai';
-import { Core, Graders, Providers } from 'youeval';
-import {
-  BuiltinLlmJudgeGrader,
-  registerBuiltinGraders,
-} from 'youeval/graders';
-import { ConsoleObserver, LocalStore, LocalTask } from 'youeval/adapters';
-import { runTui } from 'youeval/interfaces/tui';
-
-const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const graders = new Graders();
-registerBuiltinGraders(graders);
-graders.register(
-  new BuiltinLlmJudgeGrader({
-    profiles: {
-      default: openai('gpt-4.1-mini'),
-    },
-  }),
-);
-
-const providers = new Providers();
-providers.register(new YouapiAgentProvider());
-
-const core = new Core({
-  tasks: new LocalTask({ rootDir: currentDir }),
-  stores: new LocalStore({
-    rootDir: resolve(currentDir, 'results'),
-  }),
-  providers,
-  graders,
-  observers: [new ConsoleObserver()],
-});
-
-await runTui(core);
-```
-
-它对应的职责是：
-
-1. 注册内置 grader
-2. 显式注册 `llm-judge`
-3. 注册业务 provider：`youapi-agent`
-4. 指定从哪里扫描 suite/task
-5. 指定结果写到哪里
-6. 启动 TUI
-
-## 从 0 配置一个完整 eval
+## 从 0 配置一个完整 eval （以 YAML 编写 DSL 为例）
 
 如果你要自己新建一套 eval，按这个顺序做就够了。
 
@@ -491,7 +435,7 @@ schemaVersion: "suite.v1"
 id: "my-suite"
 name: "My Suite"
 discover:
-  - "datasets/my-suite/**/*.yaml"
+  - "my-suite/**/*.yaml"
 ```
 
 最小要求：
@@ -546,8 +490,8 @@ interface Provider {
 你需要做的事通常只有三步：
 
 1. 从 `run.params` 里取业务参数
-2. 调用真实系统或 mock 系统
-3. 返回 `ExecutionResult`
+2. 调用真实系统的 Agent 业务
+3. 将 Agent 结构格式化为 `ExecutionResult` 返回
 
 `ctx` 里会带：
 
@@ -564,55 +508,44 @@ interface Provider {
 最小版本：
 
 ```ts
-import { Core, Graders, Providers } from 'youeval';
-import { LocalStore, LocalTask } from 'youeval/adapters';
-import { registerBuiltinGraders } from 'youeval/graders';
-import { runTui } from 'youeval/interfaces/tui';
-import { MyProvider } from './provider.ts';
+// ai sdk 模型 provider
+const openai = createOpenAI({
+  baseURL: 'https://aihubmix.com/v1',
+  apiKey: process.env.AIHUBMIX_API_KEY,
+});
 
+// 谁来运行 youapi
+const providers = new Providers();
+providers.register(new YouapiAgentProvider());
+
+// 评分器
 const graders = new Graders();
 registerBuiltinGraders(graders);
-
-const providers = new Providers();
-providers.register(new MyProvider());
+graders.register(
+  new BuiltinLlmJudgeGrader({
+    profiles: {
+      default: openai('gpt-5.4'),
+    },
+  }),
+);
 
 const core = new Core({
-  tasks: new LocalTask({ rootDir: process.cwd() }),
-  stores: new LocalStore({ rootDir: './results' }),
+  // task 来源
+  tasks: new LocalTask({
+    rootDir: resolve(currentDir, 'datasets'),
+  }),
+  // 结果怎么存
+  stores: new LocalStore({
+    rootDir: resolve(currentDir, 'results'),
+  }),
   providers,
   graders,
+  // optional。可以观测中间过程
+  observers: [new ConsoleObserver()],
 });
 
 await runTui(core);
 ```
-
-关键对齐关系：
-
-- `task.provider.id` 必须等于 provider 实例的 `id`
-- `suite.discover[]` 必须真的能找到 task 文件
-- `grader.layers[].type` 必须已经注册到 `graders`
-
-### 6. 运行 TUI
-
-```bash
-pnpm build
-node --import tsx my-example/main.ts
-```
-
-或者像仓库示例一样，把它包装进 `package.json` script。
-
-### 7. 在 TUI 里执行
-
-固定流程：
-
-1. `Suite`
-2. `Run a task`
-3. 选 suite
-4. 选 task
-5. 等待所有 `provider.runs[]` 跑完
-6. 查看结果汇总
-
-选择一个 task 后，Core 会自动执行该 task 下所有 `provider.runs[]`。你不需要手动单独点每个 run。
 
 ## DSL 速查
 
@@ -675,7 +608,7 @@ execution:
 - `latency-threshold`
 - `token-budget`
 
-`llm-judge` 需要你自己显式注册。
+`llm-judge` 由于需要选择对应的模型 provider，需要自己显式注册。
 
 ## Core API
 
@@ -716,27 +649,3 @@ const summaries = await loadedSuite.runTask(tasks[0].id);
 `core.suites.load(...)` 返回的是公开 API handle，不是内部 domain `Suite` 实现；外部模块应只使用这些公开方法和返回的 record 数据。
 内部 `Suite` 现在只是纯定义/value object，不再承载 `listTasks`、`runTask`、`streamTask` 这类运行时动作。
 `core.baseline.compare(...)` 必须显式传 `baselineRunId`，并且只允许比较同一个 `taskId` 的两次 run；如果 baseline 和 current 属于不同 task，会直接报错。
-
-## 本地参考适配器
-
-### `new LocalTask({ rootDir })`
-
-作用：
-
-- 递归扫描 `rootDir` 下的 suite YAML
-- 按 suite 的 `discover[]` 找 task YAML
-- 对 suite/task 做严格结构校验
-
-### `new LocalStore({ rootDir })`
-
-作用：
-
-- 为每个 run 存一份结果目录
-- 保存 manifest、summary、trial 记录
-
-## 示例
-
-- `examples/basics`
-- `examples/youapi-agent`
-
-如果你只想先学会一条完整链路，先跑 `examples/youapi-agent`。
