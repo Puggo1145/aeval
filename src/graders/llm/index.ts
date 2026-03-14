@@ -1,10 +1,9 @@
 export type {
   AiSdkJudgeProviderDependencies,
-  AiSdkJudgeProviderEnvironment,
   AiSdkJudgeProviderOptions,
   AiSdkJudgeProviderPromptOptions,
 } from './ai-sdk-judge-provider.js';
-export { createAiSdkJudgeProvider, resolveAiSdkJudgeProviderOptionsFromEnv } from './ai-sdk-judge-provider.js';
+export { createAiSdkJudgeProvider } from './ai-sdk-judge-provider.js';
 export type {
   BuiltinLlmJudgeGraderOptions,
   BuiltinLlmJudgeProviderOptions,
@@ -17,7 +16,7 @@ export {
 export type {
   JudgeAssertionResult,
   JudgeModelConfig,
-  JudgeModelProvider,
+  JudgeProfileMap,
   JudgeProvider,
   JudgeProviderInput,
   JudgeProviderResult,

@@ -1,15 +1,14 @@
 import type { GraderConfigValidationResult } from '../config-validation.js';
 import {
-  type AiSdkJudgeProviderEnvironment,
+  type AiSdkJudgeProviderOptions,
   type AiSdkJudgeProviderPromptOptions,
   createAiSdkJudgeProvider,
-  resolveAiSdkJudgeProviderOptionsFromEnv,
 } from './ai-sdk-judge-provider.js';
-import type { JudgeModelProvider, JudgeProvider } from './judge-provider.js';
+import type { JudgeProvider } from './judge-provider.js';
 import { LlmJudgeGrader } from './llm-judge.js';
 
 export interface BuiltinLlmJudgeProviderOptions {
-  env?: AiSdkJudgeProviderEnvironment;
+  profiles: AiSdkJudgeProviderOptions['profiles'];
   promptOptions?: AiSdkJudgeProviderPromptOptions;
 }
 
@@ -18,12 +17,8 @@ export interface BuiltinLlmJudgeGraderOptions extends BuiltinLlmJudgeProviderOpt
 export class BuiltinLlmJudgeProvider implements JudgeProvider {
   private readonly provider: JudgeProvider;
 
-  constructor(options: BuiltinLlmJudgeProviderOptions = {}) {
-    const env = options.env ?? process.env;
-    this.provider = createAiSdkJudgeProvider(
-      resolveAiSdkJudgeProviderOptionsFromEnv(env),
-      options.promptOptions,
-    );
+  constructor(options: BuiltinLlmJudgeProviderOptions) {
+    this.provider = createAiSdkJudgeProvider({ profiles: options.profiles }, options.promptOptions);
   }
 
   async evaluate(input: Parameters<JudgeProvider['evaluate']>[0]) {
@@ -32,24 +27,23 @@ export class BuiltinLlmJudgeProvider implements JudgeProvider {
 }
 
 export class BuiltinLlmJudgeConfigValidator {
-  constructor(private readonly env: AiSdkJudgeProviderEnvironment = process.env) {}
+  constructor(private readonly profiles: AiSdkJudgeProviderOptions['profiles']) {}
 
-  validate(config: { judge: { provider: JudgeModelProvider } }): GraderConfigValidationResult {
-    if (config.judge.provider === 'aihubmix' && !this.env.AIHUBMIX_API_KEY) {
+  validate(config: { judge: { profile: string } }): GraderConfigValidationResult {
+    if (!Object.prototype.hasOwnProperty.call(this.profiles, config.judge.profile)) {
       return {
         valid: false,
-        reason: "Judge provider 'aihubmix' requires process.env.AIHUBMIX_API_KEY.",
+        reason: `Judge profile '${config.judge.profile}' is not registered.`,
       };
     }
 
-  return { valid: true };
+    return { valid: true };
   }
 }
 
 export class BuiltinLlmJudgeGrader extends LlmJudgeGrader {
-  constructor(options: BuiltinLlmJudgeGraderOptions = {}) {
-    const env = options.env ?? process.env;
-    const validator = new BuiltinLlmJudgeConfigValidator(env);
+  constructor(options: BuiltinLlmJudgeGraderOptions) {
+    const validator = new BuiltinLlmJudgeConfigValidator(options.profiles);
 
     super(new BuiltinLlmJudgeProvider(options), {
       validateConfig: (config) => validator.validate(config),

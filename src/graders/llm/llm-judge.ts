@@ -24,8 +24,7 @@ const LlmJudgeConfigSchema = z
     contextFrom: z.string().optional(),
     judge: z
       .object({
-        provider: z.literal('aihubmix'),
-        model: NonEmptyTrimmedStringSchema,
+        profile: NonEmptyTrimmedStringSchema,
       })
       .strict(),
   })
@@ -99,8 +98,8 @@ export class LlmJudgeGrader implements Grader {
         dimension: parsedConfig.dimension,
         passThreshold: parsedConfig.passThreshold,
         assertions: judgeResult.assertions,
-        provider: judgeResult.provider,
-        model: judgeResult.model,
+        profile: judgeResult.profile,
+        ...(judgeResult.model !== undefined ? { model: judgeResult.model } : {}),
       },
     };
   }

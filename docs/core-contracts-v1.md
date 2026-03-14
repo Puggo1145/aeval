@@ -91,9 +91,8 @@ Built-in `llm-judge` layer config:
 4. every `config.assertions[]` item is a non-empty string
 5. `config.passThreshold` is required and must satisfy `0 < passThreshold <= 1`
 6. `config.contextFrom` is optional and resolves against `ExecutionResult`
-7. `config.judge.provider` must be `aihubmix`
-8. `config.judge.model` is required and non-empty
-9. API keys are not part of task DSL; callers register the built-in `llm-judge` grader explicitly and may source `AIHUBMIX_API_KEY` from environment variables
+7. `config.judge.profile` is required and non-empty
+8. Model/provider infrastructure is not part of task DSL; callers register the built-in `llm-judge` grader explicitly and inject AI SDK models for each profile at composition time
 
 ## 3. Runtime Contracts
 
@@ -141,15 +140,14 @@ interface JudgeProviderInput {
   context?: unknown;
   dimension: string;
   judge: {
-    provider: 'aihubmix';
-    model: string;
+    profile: string;
   };
 }
 ```
 
 `JudgeProviderResult` returns a binary result per assertion, an averaged `score`,
-and an overall `reason`. Core stores the structured assertion breakdown in
-`TrialGraderResult.result.meta`.
+an overall `reason`, and the resolved `profile`. Core stores the structured
+assertion breakdown in `TrialGraderResult.result.meta`.
 
 ### 3.3 RunEvent
 

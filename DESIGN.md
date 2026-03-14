@@ -119,10 +119,10 @@ Rules:
 5. Unknown fields fail fast.
 
 Built-in `llm-judge` uses `layers[].config` to declare a rubric, `assertions[]`,
-`passThreshold`, optional `contextFrom`, and a `judge { provider, model }`
-selector. Secrets are not part of the task DSL; callers explicitly create the
-built-in judge provider at composition time and inject environment-backed
-credentials there.
+`passThreshold`, optional `contextFrom`, and a `judge { profile }` selector.
+Model infra is not part of the task DSL; callers explicitly create the
+built-in judge provider at composition time and inject AI SDK model instances
+there.
 
 ## 5. Runtime
 

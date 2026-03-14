@@ -6,12 +6,16 @@ import {
   type AiSdkJudgeProviderDependencies,
 } from '../src/graders/llm/ai-sdk-judge-provider.js';
 
+function createMockModel(modelId = 'gpt-4.1-mini'): LanguageModel {
+  return { modelId } as unknown as LanguageModel;
+}
+
 function createDeps(
   overrides: Partial<AiSdkJudgeProviderDependencies> = {},
 ): AiSdkJudgeProviderDependencies {
   return {
-    generateObject: (async () => ({
-      object: {
+    generateText: (async () => ({
+      output: {
         summary: 'All assertions passed.',
         assertions: [
           {
@@ -22,24 +26,24 @@ function createDeps(
         ],
       },
     })) as AiSdkJudgeProviderDependencies['generateObject'],
-    createAihubmixProvider: ((settings?: { apiKey?: string }) => {
-      return ((modelId: string) => ({ provider: 'aihubmix', modelId, settings })) as unknown as LanguageModel;
-    }) as AiSdkJudgeProviderDependencies['createAihubmixProvider'],
     ...overrides,
   };
 }
 
-test('createAiSdkJudgeProvider: selects aihubmix model branch', async () => {
+test('createAiSdkJudgeProvider: selects model by judge profile', async () => {
   let capturedModel: unknown;
+  const defaultModel = createMockModel('gpt-4.1-mini');
   const provider = createAiSdkJudgeProvider(
     {
-      apiKey: 'test-aihubmix-key',
+      profiles: {
+        default: defaultModel,
+      },
     },
     createDeps({
-      generateObject: (async ({ model }) => {
+      generateText: (async ({ model }) => {
         capturedModel = model;
         return {
-          object: {
+          output: {
             summary: 'All assertions passed.',
             assertions: [
               {
@@ -50,7 +54,7 @@ test('createAiSdkJudgeProvider: selects aihubmix model branch', async () => {
             ],
           },
         };
-      }) as AiSdkJudgeProviderDependencies['generateObject'],
+      }) as AiSdkJudgeProviderDependencies['generateText'],
     }),
   );
 
@@ -60,19 +64,12 @@ test('createAiSdkJudgeProvider: selects aihubmix model branch', async () => {
     assertions: ['The answer addresses the request.'],
     dimension: 'correctness',
     judge: {
-      provider: 'aihubmix',
-      model: 'gpt-4.1-mini',
+      profile: 'default',
     },
   });
 
-  assert.deepEqual(capturedModel, {
-    provider: 'aihubmix',
-    modelId: 'gpt-4.1-mini',
-    settings: {
-      apiKey: 'test-aihubmix-key',
-    },
-  });
-  assert.equal(result.provider, 'aihubmix');
+  assert.equal(capturedModel, defaultModel);
+  assert.equal(result.profile, 'default');
   assert.equal(result.model, 'gpt-4.1-mini');
   assert.equal(result.score, 1);
 });
@@ -82,18 +79,20 @@ test('createAiSdkJudgeProvider: supports custom systemPrompt and buildPrompt', a
   let capturedPrompt = '';
   const provider = createAiSdkJudgeProvider(
     {
-      apiKey: 'test-aihubmix-key',
+      profiles: {
+        strict: createMockModel('gpt-4.1-mini'),
+      },
     },
     {
       systemPrompt: (input) => `custom system for ${input.dimension}`,
-      buildPrompt: (input) => `custom prompt for ${input.judge.model}: ${input.output}`,
+      buildPrompt: (input) => `custom prompt for ${input.judge.profile}: ${input.output}`,
     },
     createDeps({
-      generateObject: (async ({ system, prompt }) => {
+      generateText: (async ({ system, prompt }) => {
         capturedSystem = system as string;
         capturedPrompt = prompt as string;
         return {
-          object: {
+          output: {
             summary: 'All assertions passed.',
             assertions: [
               {
@@ -104,7 +103,7 @@ test('createAiSdkJudgeProvider: supports custom systemPrompt and buildPrompt', a
             ],
           },
         };
-      }) as AiSdkJudgeProviderDependencies['generateObject'],
+      }) as AiSdkJudgeProviderDependencies['generateText'],
     }),
   );
 
@@ -114,17 +113,16 @@ test('createAiSdkJudgeProvider: supports custom systemPrompt and buildPrompt', a
     assertions: ['The answer addresses the request.'],
     dimension: 'correctness',
     judge: {
-      provider: 'aihubmix',
-      model: 'gpt-4.1-mini',
+      profile: 'strict',
     },
   });
 
   assert.equal(capturedSystem, 'custom system for correctness');
-  assert.equal(capturedPrompt, 'custom prompt for gpt-4.1-mini: Paris is the capital of France.');
+  assert.equal(capturedPrompt, 'custom prompt for strict: Paris is the capital of France.');
 });
 
-test('createAiSdkJudgeProvider: missing provider config fails without leaking api key', async () => {
-  const provider = createAiSdkJudgeProvider({}, createDeps());
+test('createAiSdkJudgeProvider: unknown profile fails', async () => {
+  const provider = createAiSdkJudgeProvider({ profiles: {} }, createDeps());
 
   await assert.rejects(
     async () =>
@@ -134,15 +132,34 @@ test('createAiSdkJudgeProvider: missing provider config fails without leaking ap
         assertions: ['The answer addresses the request.'],
         dimension: 'correctness',
         judge: {
-          provider: 'aihubmix',
-          model: 'gpt-4.1-mini',
+          profile: 'default',
         },
       }),
     (error: unknown) => {
       assert.ok(error instanceof Error);
-      assert.match(error.message, /AIHubMix judge provider is not configured/);
-      assert.doesNotMatch(error.message, /apiKey/i);
-      assert.doesNotMatch(error.message, /test-aihubmix-key/);
+      assert.match(error.message, /Judge profile 'default' is not registered/);
+      return true;
+    },
+  );
+});
+
+test('createAiSdkJudgeProvider: inherited profile names are rejected', async () => {
+  const provider = createAiSdkJudgeProvider({ profiles: {} }, createDeps());
+
+  await assert.rejects(
+    async () =>
+      provider.evaluate({
+        output: 'Paris is the capital of France.',
+        rubric: 'Pass if correct.',
+        assertions: ['The answer addresses the request.'],
+        dimension: 'correctness',
+        judge: {
+          profile: 'toString',
+        },
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /Judge profile 'toString' is not registered/);
       return true;
     },
   );
@@ -151,11 +168,13 @@ test('createAiSdkJudgeProvider: missing provider config fails without leaking ap
 test('createAiSdkJudgeProvider: normalizes missing assertion results to failed assertions', async () => {
   const provider = createAiSdkJudgeProvider(
     {
-      apiKey: 'test-aihubmix-key',
+      profiles: {
+        default: createMockModel('gpt-4.1-mini'),
+      },
     },
     createDeps({
-      generateObject: (async () => ({
-        object: {
+      generateText: (async () => ({
+        output: {
           summary: 'Only one assertion returned.',
           assertions: [
             {
@@ -165,7 +184,7 @@ test('createAiSdkJudgeProvider: normalizes missing assertion results to failed a
             },
           ],
         },
-      })) as AiSdkJudgeProviderDependencies['generateObject'],
+      })) as AiSdkJudgeProviderDependencies['generateText'],
     }),
   );
 
@@ -175,8 +194,7 @@ test('createAiSdkJudgeProvider: normalizes missing assertion results to failed a
     assertions: ['The answer addresses the request.', 'The answer is grounded.'],
     dimension: 'correctness',
     judge: {
-      provider: 'aihubmix',
-      model: 'gpt-4.1-mini',
+      profile: 'default',
     },
   });
 
@@ -198,11 +216,13 @@ test('createAiSdkJudgeProvider: normalizes missing assertion results to failed a
 test('createAiSdkJudgeProvider: falls back to assertion order when texts do not match exactly', async () => {
   const provider = createAiSdkJudgeProvider(
     {
-      apiKey: 'test-aihubmix-key',
+      profiles: {
+        research: createMockModel('gpt-5.4'),
+      },
     },
     createDeps({
-      generateObject: (async () => ({
-        object: {
+      generateText: (async () => ({
+        output: {
           summary: 'All assertions pass.',
           assertions: [
             {
@@ -217,7 +237,7 @@ test('createAiSdkJudgeProvider: falls back to assertion order when texts do not 
             },
           ],
         },
-      })) as AiSdkJudgeProviderDependencies['generateObject'],
+      })) as AiSdkJudgeProviderDependencies['generateText'],
     }),
   );
 
@@ -230,8 +250,7 @@ test('createAiSdkJudgeProvider: falls back to assertion order when texts do not 
     ],
     dimension: 'web research grounding',
     judge: {
-      provider: 'aihubmix',
-      model: 'gpt-5.4',
+      profile: 'research',
     },
   });
 
@@ -255,11 +274,13 @@ test('createAiSdkJudgeProvider: falls back to assertion order when texts do not 
 test('createAiSdkJudgeProvider: prefers exact text matches before positional fallback', async () => {
   const provider = createAiSdkJudgeProvider(
     {
-      apiKey: 'test-aihubmix-key',
+      profiles: {
+        research: createMockModel('gpt-5.4'),
+      },
     },
     createDeps({
-      generateObject: (async () => ({
-        object: {
+      generateText: (async () => ({
+        output: {
           summary: 'Mixed exact and fallback matches.',
           assertions: [
             {
@@ -275,7 +296,7 @@ test('createAiSdkJudgeProvider: prefers exact text matches before positional fal
             },
           ],
         },
-      })) as AiSdkJudgeProviderDependencies['generateObject'],
+      })) as AiSdkJudgeProviderDependencies['generateText'],
     }),
   );
 
@@ -290,8 +311,7 @@ test('createAiSdkJudgeProvider: prefers exact text matches before positional fal
     assertions: expectedAssertions,
     dimension: 'web research grounding',
     judge: {
-      provider: 'aihubmix',
-      model: 'gpt-5.4',
+      profile: 'research',
     },
   });
 

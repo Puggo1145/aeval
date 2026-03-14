@@ -62,8 +62,7 @@ graders:
         passThreshold: 1
         contextFrom: "trace.turns"
         judge:
-          provider: "aihubmix"
-          model: "gpt-5.4"
+          profile: "default"
 
 execution:
   timeoutMs: 120000

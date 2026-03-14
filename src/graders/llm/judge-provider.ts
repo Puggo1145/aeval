@@ -1,8 +1,9 @@
-export type JudgeModelProvider = 'aihubmix';
+import type { LanguageModel } from 'ai';
+
+export type JudgeProfileMap = Readonly<Record<string, LanguageModel>>;
 
 export interface JudgeModelConfig {
-  provider: JudgeModelProvider;
-  model: string;
+  profile: string;
 }
 
 /**
@@ -31,8 +32,8 @@ export interface JudgeProviderResult {
   score: number;
   reason: string;
   assertions: JudgeAssertionResult[];
-  provider: JudgeModelProvider;
-  model: string;
+  profile: string;
+  model?: string;
 }
 
 export interface JudgeProvider {

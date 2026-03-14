@@ -77,8 +77,7 @@ graders:
           - "The answer does not contradict the prompt."
         passThreshold: 1
         judge:
-          provider: "aihubmix"
-          model: "gpt-4.1-mini"
+          profile: "default"
 execution:
   timeoutMs: 1000
 `;
@@ -168,7 +167,7 @@ test('E2E smoke: llm-judge protocol chain with mock JudgeProvider', async () => 
       new LlmJudgeGrader({
         async evaluate(input) {
           assert.match(input.output, /Paris/);
-          assert.equal(input.judge.provider, 'aihubmix');
+          assert.equal(input.judge.profile, 'default');
           return {
             pass: true,
             score: 1,
@@ -178,8 +177,7 @@ test('E2E smoke: llm-judge protocol chain with mock JudgeProvider', async () => 
               pass: true,
               reason: 'supported',
             })),
-            provider: input.judge.provider,
-            model: input.judge.model,
+            profile: input.judge.profile,
           };
         },
       }),
@@ -202,7 +200,7 @@ test('E2E smoke: llm-judge protocol chain with mock JudgeProvider', async () => 
 
     const runs = await core.results.list();
     const trials = await core.results.listTrials(runs[0]!.runId);
-    assert.equal(trials[0]?.graderResults[0]?.result.meta?.provider, 'aihubmix');
+    assert.equal(trials[0]?.graderResults[0]?.result.meta?.profile, 'default');
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }

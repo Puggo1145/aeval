@@ -1,8 +1,8 @@
-import { createAihubmix } from '@aihubmix/ai-sdk-provider';
-import { generateObject } from 'ai';
+import { generateText, Output } from 'ai';
 import { z } from 'zod';
 import type {
   JudgeAssertionResult,
+  JudgeProfileMap,
   JudgeProvider,
   JudgeProviderInput,
   JudgeProviderResult,
@@ -24,12 +24,11 @@ const JudgeResponseSchema = z
   .strict();
 
 export interface AiSdkJudgeProviderOptions {
-  apiKey?: string;
+  profiles: JudgeProfileMap;
 }
 
 export interface AiSdkJudgeProviderDependencies {
-  generateObject: typeof generateObject;
-  createAihubmixProvider: typeof createAihubmix;
+  generateText: typeof generateText;
 }
 
 export interface AiSdkJudgeProviderPromptOptions {
@@ -37,13 +36,8 @@ export interface AiSdkJudgeProviderPromptOptions {
   buildPrompt?: (input: JudgeProviderInput) => string;
 }
 
-export interface AiSdkJudgeProviderEnvironment {
-  AIHUBMIX_API_KEY?: string;
-}
-
 const defaultDependencies: AiSdkJudgeProviderDependencies = {
-  generateObject,
-  createAihubmixProvider: createAihubmix,
+  generateText,
 };
 
 function serializeContext(context: unknown): string {
@@ -58,34 +52,29 @@ function serializeContext(context: unknown): string {
   }
 }
 
-function createMissingProviderError(): Error {
-  return new Error(
-    'AIHubMix judge provider is not configured. Inject process.env.AIHUBMIX_API_KEY when creating the judge provider.',
-  );
-}
-
-export function resolveAiSdkJudgeProviderOptionsFromEnv(
-  env: AiSdkJudgeProviderEnvironment = process.env,
-): AiSdkJudgeProviderOptions {
-  return {
-    apiKey: env.AIHUBMIX_API_KEY,
-  };
-}
-
 function resolveModel(
   options: AiSdkJudgeProviderOptions,
   input: JudgeProviderInput,
-  deps: AiSdkJudgeProviderDependencies,
 ) {
-  if (!options.apiKey) {
-    throw createMissingProviderError();
+  if (Object.prototype.hasOwnProperty.call(options.profiles, input.judge.profile)) {
+    const model = options.profiles[input.judge.profile];
+    if (model !== undefined) {
+      return model;
+    }
   }
 
-  const provider = deps.createAihubmixProvider({
-    apiKey: options.apiKey,
-  });
+  throw new Error(
+    `Judge profile '${input.judge.profile}' is not registered. Register it on BuiltinLlmJudgeGrader({ profiles }).`,
+  );
+}
 
-  return provider(input.judge.model);
+function resolveModelName(model: unknown): string | undefined {
+  if (model === null || typeof model !== 'object') {
+    return undefined;
+  }
+
+  const candidate = (model as Record<string, unknown>).modelId;
+  return typeof candidate === 'string' && candidate.trim().length > 0 ? candidate : undefined;
 }
 
 function buildJudgePrompt(input: JudgeProviderInput): string {
@@ -197,38 +186,40 @@ export function createAiSdkJudgeProvider(
   maybeDeps?: AiSdkJudgeProviderDependencies,
 ): JudgeProvider {
   const promptOptions =
-    maybeDeps === undefined && 'generateObject' in promptOptionsOrDeps
+    maybeDeps === undefined && 'generateText' in promptOptionsOrDeps
       ? {}
       : (promptOptionsOrDeps as AiSdkJudgeProviderPromptOptions);
   const deps =
     maybeDeps ??
-    ('generateObject' in promptOptionsOrDeps
+    ('generateText' in promptOptionsOrDeps
       ? (promptOptionsOrDeps as AiSdkJudgeProviderDependencies)
       : defaultDependencies);
 
   return {
     async evaluate(input): Promise<JudgeProviderResult> {
-      const model = resolveModel(options, input, deps);
-      const response = await deps.generateObject({
+      const model = resolveModel(options, input);
+      const response = await deps.generateText({
         model,
-        schema: JudgeResponseSchema,
-        schemaName: 'llm_judge_result',
-        schemaDescription: 'Binary assertion results and a summary for an evaluation judge.',
+        output: Output.object({
+          schema: JudgeResponseSchema,
+          name: 'llm_judge_result',
+          description: 'Binary assertion results and a summary for an evaluation judge.',
+        }),
         system: resolveSystemPrompt(input, promptOptions),
         prompt: resolveUserPrompt(input, promptOptions),
       });
 
-      const assertions = normalizeAssertions(input.assertions, response.object.assertions);
+      const assertions = normalizeAssertions(input.assertions, response.output.assertions);
       const passedAssertions = assertions.filter((item) => item.pass).length;
       const score = assertions.length === 0 ? 0 : passedAssertions / assertions.length;
 
       return {
         pass: score === 1,
         score,
-        reason: response.object.summary,
+        reason: response.output.summary,
         assertions,
-        provider: input.judge.provider,
-        model: input.judge.model,
+        profile: input.judge.profile,
+        model: resolveModelName(model),
       };
     },
   };

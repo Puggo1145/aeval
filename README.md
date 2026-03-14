@@ -74,14 +74,14 @@ pnpm test
 ```dotenv
 YOUAPI_BASE_URL=http://localhost:4000
 EVAL_API_SECRET=
-AIHUBMIX_API_KEY=
+OPENAI_API_KEY=
 ```
 
 字段说明：
 
 - `YOUAPI_BASE_URL`：youapi 服务地址，provider 会向 `${YOUAPI_BASE_URL}/api/v1/eval/agent/run` 发请求。
 - `EVAL_API_SECRET`：内部 eval 接口认证头 `x-internal-secret`。从 Doppler 取一下就行
-- `AIHUBMIX_API_KEY`：只在任务使用 `llm-judge` grader 时需要。样例 task 中的 002 和 003 task 都需要 llm judge
+- `OPENAI_API_KEY`：样例里把 `llm-judge` 的 `default` profile 绑定到 `openai('gpt-4.1-mini')`，所以需要这个 key
 
 ### 第二步：启动 TUI
 
@@ -375,8 +375,7 @@ config:
   passThreshold: 1
   contextFrom: "trace.turns"
   judge:
-    provider: "aihubmix"
-    model: "gpt-5.4"
+    profile: "default"
 ```
 
 字段解释：
@@ -388,28 +387,37 @@ config:
 | `assertions` | 必填 | 非空字符串数组 | 逐条二元断言。 |
 | `passThreshold` | 必填 | `0 < x <= 1` | judge 分数达到多少才算通过。 |
 | `contextFrom` | 可选 | 字符串路径 | 从 `ExecutionResult` 中抽取额外上下文。比如 `trace.turns`、`outcome.reference`。 |
-| `judge.provider` | 必填 | 当前内置值固定为 `"aihubmix"` | 选择 judge provider。 |
-| `judge.model` | 必填 | 非空字符串 | 选择 judge 模型。 |
+| `judge.profile` | 必填 | 非空字符串 | 选择逻辑 judge profile；实际模型由运行时注册。 |
 
 要让 `llm-judge` 生效，代码里必须显式注册：
 
 ```ts
+import { createOpenAI } from '@ai-sdk/openai';
+
+const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const graders = new Graders();
 registerBuiltinGraders(graders);
-graders.register(new BuiltinLlmJudgeGrader({ env: process.env }));
+graders.register(
+  new BuiltinLlmJudgeGrader({
+    profiles: {
+      default: openai('gpt-4.1-mini'),
+    },
+  }),
+);
 ```
 
 注意：
 
 - `registerBuiltinGraders(...)` 不会自动注册 `llm-judge`
-- API key 不应该写进 task YAML
-- 如果 task 选了 `judge.provider: "aihubmix"`，运行时就要提供 `AIHUBMIX_API_KEY`
+- task YAML 只负责写 `judge.profile`
+- API key、provider 选择、模型实例化都在运行时组合层完成，不写进 task YAML
 
 ## `main.ts` 在做什么
 
 `examples/youapi-agent/main.ts` 是一个最小完整接线示例：
 
 ```ts
+import { createOpenAI } from '@ai-sdk/openai';
 import { Core, Graders, Providers } from 'youeval';
 import {
   BuiltinLlmJudgeGrader,
@@ -418,9 +426,16 @@ import {
 import { ConsoleObserver, LocalStore, LocalTask } from 'youeval/adapters';
 import { runTui } from 'youeval/interfaces/tui';
 
+const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const graders = new Graders();
 registerBuiltinGraders(graders);
-graders.register(new BuiltinLlmJudgeGrader({ env: process.env }));
+graders.register(
+  new BuiltinLlmJudgeGrader({
+    profiles: {
+      default: openai('gpt-4.1-mini'),
+    },
+  }),
+);
 
 const providers = new Providers();
 providers.register(new YouapiAgentProvider());

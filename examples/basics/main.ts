@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createOpenAI } from '@ai-sdk/openai';
 import { Core, Graders, Providers } from 'youeval';
 import { ConsoleObserver, LocalStore, LocalTask } from 'youeval/adapters';
 import {
@@ -13,7 +14,7 @@ import { BasicLlmProvider, FileEditAgentProvider } from './providers/index.ts';
 const currentDir = dirname(fileURLToPath(import.meta.url));
 
 function tryLoadEnvFile(): void {
-  if (process.env.OPENAI_API_KEY && process.env.AIHUBMIX_API_KEY) return;
+  if (process.env.OPENAI_API_KEY) return;
   const envPath = resolve(currentDir, '.env');
   if (!existsSync(envPath)) return;
   try {
@@ -26,10 +27,19 @@ function tryLoadEnvFile(): void {
 
 async function main(): Promise<void> {
   tryLoadEnvFile();
+  const openai = createOpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
 
   const graders = new Graders();
   registerBuiltinGraders(graders);
-  graders.register(new BuiltinLlmJudgeGrader({ env: process.env }));
+  graders.register(
+    new BuiltinLlmJudgeGrader({
+      profiles: {
+        default: openai('gpt-4.1-mini'),
+      },
+    }),
+  );
 
   const providers = new Providers();
   providers.register(new FileEditAgentProvider());

@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createOpenAI } from '@ai-sdk/openai';
 import { Core, Graders, Providers } from 'youeval';
 import { ConsoleObserver, LocalStore, LocalTask } from 'youeval/adapters';
 import { BuiltinLlmJudgeGrader, registerBuiltinGraders } from 'youeval/graders';
@@ -25,6 +26,9 @@ function tryLoadEnvFile(): void {
 
 async function main(): Promise<void> {
   tryLoadEnvFile();
+  const openai = createOpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
 
   // 谁来运行 youapi
   const providers = new Providers();
@@ -33,7 +37,13 @@ async function main(): Promise<void> {
   // 评分器
   const graders = new Graders();
   registerBuiltinGraders(graders);
-  graders.register(new BuiltinLlmJudgeGrader({ env: process.env }));
+  graders.register(
+    new BuiltinLlmJudgeGrader({
+      profiles: {
+        default: openai('gpt-4.1-mini'),
+      },
+    }),
+  );
 
   const core = new Core({
     // task 来源
