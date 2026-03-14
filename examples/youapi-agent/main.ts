@@ -21,11 +21,13 @@ function tryLoadEnvFile(): void {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown error';
     console.warn(`[youapi-agent] Failed to load .env file: ${message}`);
+    process.exit(1);
   }
 }
 
 async function main(): Promise<void> {
   tryLoadEnvFile();
+
   const openai = createOpenAI({
     baseURL: 'https://aihubmix.com/v1',
     apiKey: process.env.AIHUBMIX_API_KEY,
