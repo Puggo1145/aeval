@@ -355,7 +355,7 @@ export class Core implements CoreApi {
       });
     }
 
-    return records.sort((a, b) => a.runId.localeCompare(b.runId));
+    return records;
   }
 
   private async clearAllRunResults(): Promise<ClearedResultEntry[]> {

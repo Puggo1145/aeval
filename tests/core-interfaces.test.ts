@@ -158,7 +158,6 @@ function createTasks(): Tasks {
     source: {
       adapter: 'memory',
       ref: 'suites/basic.yaml',
-      fetchedAt: '2026-03-05T00:00:00.000Z',
     },
   });
 
@@ -166,7 +165,6 @@ function createTasks(): Tasks {
     adapter: 'memory',
     ref: 'datasets/task-001.yaml',
     revision: 'sha256-task-001',
-    fetchedAt: '2026-03-05T00:00:00.000Z',
   });
 
   return {
@@ -526,7 +524,6 @@ test('core projects task indexes and rejects duplicate task ids within one suite
         source: {
           adapter: 'memory',
           ref: 'suites/basic.yaml',
-          fetchedAt: '2026-03-05T00:00:00.000Z',
         },
         taskRefs: [
           { suiteId, ref: 'datasets/task-001.yaml' },
@@ -541,7 +538,6 @@ test('core projects task indexes and rejects duplicate task ids within one suite
           adapter: 'memory',
           ref: taskRef.ref,
           revision: `sha256-${taskRef.ref}`,
-          fetchedAt: '2026-03-05T00:00:00.000Z',
         },
       };
     },
@@ -579,7 +575,6 @@ test('loadSuite uses resolved suite metadata when persisting runs from a bare su
         source: {
           adapter: 'memory',
           ref: 'suites/basic.yaml',
-          fetchedAt: '2026-03-05T00:00:00.000Z',
         },
         taskRefs: [
           {
@@ -597,7 +592,6 @@ test('loadSuite uses resolved suite metadata when persisting runs from a bare su
           adapter: 'memory',
           ref: 'datasets/task-001.yaml',
           revision: 'sha256-task-001',
-          fetchedAt: '2026-03-05T00:00:00.000Z',
         },
       };
     },
@@ -798,6 +792,38 @@ test('listRuns includes interrupted runs without summaries', async () => {
   assert.equal(interrupted?.status, 'interrupted');
   assert.equal(interrupted?.summary, null);
   assert.equal(interrupted?.manifest?.runName, 'mini');
+});
+
+test('results.list preserves store-provided runId order', async () => {
+  class OrderedRunStore extends InMemoryStore {
+    override async listRunIds(): Promise<string[]> {
+      return ['run-b', 'run-a'];
+    }
+  }
+
+  const stores = new OrderedRunStore();
+  await saveRunSummary(stores, {
+    runId: 'run-a',
+    taskId: 'basic-llm/task-001',
+    runName: 'mini',
+    totalTrials: 1,
+    passRate: 1,
+  });
+  await saveRunSummary(stores, {
+    runId: 'run-b',
+    taskId: 'basic-llm/task-001',
+    runName: 'nano',
+    totalTrials: 1,
+    passRate: 1,
+  });
+
+  const core = createTestCore(stores);
+  const runs = await core.results.list();
+
+  assert.deepEqual(
+    runs.map((run) => run.runId),
+    ['run-b', 'run-a'],
+  );
 });
 
 test('loadSuites rejects when called without inputs', async () => {

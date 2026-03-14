@@ -7,14 +7,12 @@ export interface SuiteDescriptor {
 export interface SuiteSource {
   adapter: string;
   ref: string;
-  fetchedAt: string;
 }
 
 export interface TaskSource {
   adapter: string;
   ref: string;
   revision: string;
-  fetchedAt: string;
 }
 
 export interface TaskRef {

@@ -193,6 +193,8 @@ interface Tasks {
 }
 ```
 
+`ResolvedTask.source` carries adapter provenance fields: `adapter`, `ref`, and `revision`.
+
 Responsibilities:
 
 1. discover suites
@@ -258,5 +260,5 @@ Runtime display uses `taskId + runName + trialIndex`.
 
 1. Keep the orchestration boundary narrow.
 2. Prefer task-level execution primitives over suite-level batch abstractions.
-3. Keep adapters deterministic and fail-fast.
+3. Keep adapter content/provenance deterministic and fail-fast; task/suite ordering is caller-owned.
 4. Avoid compatibility layers for removed DSLs.

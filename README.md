@@ -146,7 +146,7 @@ schemaVersion: "suite.v1"
 id: "youapi-agent"
 name: "YouAPI Agent"
 discover:
-  - "datasets/youapi-agent/**/*.yaml"
+  - "youapi-agent/**/*.yaml"
 ```
 
 每个字段的含义：
@@ -160,8 +160,8 @@ discover:
 
 `discover` 在这个例子里表示：
 
-- 从 `examples/youapi-agent` 这个 rootDir 出发
-- 找到 `datasets/youapi-agent/**/*.yaml`
+- 从 `examples/youapi-agent/datasets` 这个 rootDir 出发
+- 找到 `youapi-agent/**/*.yaml`
 - 其中 `suite.yaml` 本身会被识别为 suite
 - 其余匹配到的 `task.v1` 文件会作为任务
 

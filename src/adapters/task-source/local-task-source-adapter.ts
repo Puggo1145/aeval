@@ -140,10 +140,9 @@ async function collectYamlFiles(
 ): Promise<string[]> {
   async function walk(dirPath: string): Promise<string[]> {
     const dirents = await readdir(dirPath, { withFileTypes: true });
-    const entries = dirents.sort((a, b) => a.name.localeCompare(b.name));
     const files: string[] = [];
 
-    for (const dirent of entries) {
+    for (const dirent of dirents) {
       if (dirent.isDirectory() && IGNORED_DIRECTORY_NAMES.has(dirent.name)) {
         continue;
       }
@@ -193,12 +192,9 @@ async function scanSuites(rootDirRealPath: string): Promise<SuiteEntry[]> {
       source: {
         adapter: ADAPTER_ID,
         ref,
-        fetchedAt: new Date().toISOString(),
       },
     });
   }
-
-  entries.sort((a, b) => a.suite.id.localeCompare(b.suite.id) || a.ref.localeCompare(b.ref));
 
   const seenIds = new Set<string>();
   for (const entry of entries) {
@@ -253,8 +249,7 @@ async function collectTaskRefsForDiscoverPattern(
 
     return (await collectYamlFiles(startDirRealPath, rootDirRealPath))
       .map((filePath) => toDisplayPath(relative(rootDirRealPath, filePath)))
-      .filter((fileRef) => matchesGlob(fileRef, pattern))
-      .sort();
+      .filter((fileRef) => matchesGlob(fileRef, pattern));
   }
 
   if (!startStat.isFile()) {
@@ -292,7 +287,6 @@ async function resolveYamlFile(
     adapter: ADAPTER_ID,
     ref: normalizedRef,
     revision,
-    fetchedAt: new Date().toISOString(),
   };
 
   return {
@@ -333,7 +327,7 @@ export class LocalTask implements Tasks {
           )
         ).flat(),
       ),
-    ).sort();
+    );
 
     if (matchedTaskRefs.length === 0) {
       throw new Error(`Suite '${entry.suite.id}' did not match any task files.`);

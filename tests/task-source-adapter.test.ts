@@ -120,7 +120,7 @@ test('listSuites returns suite descriptors discovered under rootDir', async () =
   }
 });
 
-test('resolveSuite expands discover globs with deterministic task ordering', async () => {
+test('resolveSuite expands discover globs into task refs', async () => {
   const rootDir = await createTempRootDir();
   try {
     await writeYaml(rootDir, 'suites/basic.yaml', SUITE_YAML);
@@ -135,7 +135,7 @@ test('resolveSuite expands discover globs with deterministic task ordering', asy
     assert.equal(suite.id, 'basic-llm');
     assert.equal(taskRefs.length, 2);
     assert.deepEqual(
-      taskRefs.map((taskRef) => taskRef.ref),
+      taskRefs.map((taskRef) => taskRef.ref).sort(),
       ['datasets/a-task.yaml', 'datasets/z-task.yaml'],
     );
   } finally {
@@ -164,7 +164,7 @@ discover:
     const taskRefs = resolvedSuite.taskRefs;
 
     assert.deepEqual(
-      taskRefs.map((taskRef) => taskRef.ref),
+      taskRefs.map((taskRef) => taskRef.ref).sort(),
       ['datasets/group-a/task-a.yaml', 'datasets/group-a/task-b.yaml'],
     );
   } finally {
@@ -234,7 +234,7 @@ test('resolveSuite returns task refs without projecting task ids', async () => {
     const resolvedSuite = await adapter.resolveSuite('basic-llm');
 
     assert.deepEqual(
-      resolvedSuite.taskRefs.map((taskRef) => taskRef.ref),
+      resolvedSuite.taskRefs.map((taskRef) => taskRef.ref).sort(),
       ['datasets/task-a.yaml', 'datasets/task-b.yaml'],
     );
   } finally {

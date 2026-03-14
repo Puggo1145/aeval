@@ -93,7 +93,6 @@ function createTask(overrides: Partial<ReturnType<Task['toDocument']>> = {}): Ta
       adapter: 'memory',
       ref: 'datasets/task-001.yaml',
       revision: 'sha256-task-001',
-      fetchedAt: '2026-03-05T00:00:00.000Z',
     },
   );
 }

@@ -200,17 +200,15 @@ interface Tasks {
 1. `source.adapter`
 2. `source.ref`
 3. `source.revision`
-4. `source.fetchedAt`
 
 Rules:
 
 1. `tasks` owns suite/task discovery, source metadata, and raw document deserialization
-2. `tasks` produces deterministic task ordering
-3. `ResolvedSuite.taskRefs[]` is the deterministic ordered task membership for one suite
-4. provider/grader resolvability stays in Core
-5. `ResolvedSuite.document` and `ResolvedTask.document` are raw adapter inputs
-6. Core derives `TaskIndex` projections by resolving `taskRefs` into domain `Task` objects
-7. `Suite.fromDocument(...)` and `Task.fromDocument(...)` are the only legal runtime construction paths
+2. provider/grader resolvability stays in Core
+3. `ResolvedSuite.document` and `ResolvedTask.document` are raw adapter inputs
+4. Core derives `TaskIndex` projections by resolving `taskRefs` into domain `Task` objects
+5. `Suite.fromDocument(...)` and `Task.fromDocument(...)` are the only legal runtime construction paths
+6. `ResolvedSuite.taskRefs[]` ordering is adapter-defined and is not a core contract guarantee
 
 ## 5. Core API
 
