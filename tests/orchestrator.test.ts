@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import type { ClearedResultEntry, Stores } from '../packages/core/src/core/adapters/result-store-adapter.js';
+import type {
+  ClearedResultEntry,
+  Stores,
+} from '../packages/core/src/core/adapters/result-store-adapter.js';
 import type { ExecutionResult } from '../packages/core/src/core/contracts/execution.js';
 import { SCHEMA_VERSIONS } from '../packages/core/src/core/contracts/index.js';
 import type { RunManifestRecord } from '../packages/core/src/core/contracts/run-manifest.js';
-import type { RunEvent } from '../packages/core/src/core/contracts/runtime.js';
 import type { RunSummaryRecord } from '../packages/core/src/core/contracts/run-summary.js';
+import type { RunEvent } from '../packages/core/src/core/contracts/runtime.js';
 import { Suite } from '../packages/core/src/core/domain/suite.js';
 import { Task } from '../packages/core/src/core/domain/task.js';
 import type { Trial } from '../packages/core/src/core/domain/trial.js';

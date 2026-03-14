@@ -113,10 +113,7 @@ function normalizeTrace(trace: unknown): ExecutionResult['trace'] | undefined {
   };
 }
 
-function normalizeMetrics(
-  metrics: unknown,
-  roundTripMs: number,
-): ExecutionResult['metrics'] {
+function normalizeMetrics(metrics: unknown, roundTripMs: number): ExecutionResult['metrics'] {
   if (!isRecord(metrics)) {
     return { roundTripMs };
   }

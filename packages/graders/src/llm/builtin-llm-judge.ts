@@ -30,7 +30,7 @@ export class BuiltinLlmJudgeConfigValidator {
   constructor(private readonly profiles: AiSdkJudgeProviderOptions['profiles']) {}
 
   validate(config: { judge: { profile: string } }): GraderConfigValidationResult {
-    if (!Object.prototype.hasOwnProperty.call(this.profiles, config.judge.profile)) {
+    if (!Object.hasOwn(this.profiles, config.judge.profile)) {
       return {
         valid: false,
         reason: `Judge profile '${config.judge.profile}' is not registered.`,

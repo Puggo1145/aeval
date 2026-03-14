@@ -19,7 +19,10 @@ import {
   BuiltinLlmJudgeConfigValidator,
   BuiltinLlmJudgeGrader,
 } from '../packages/graders/src/llm/builtin-llm-judge.js';
-import type { JudgeProvider, JudgeProviderResult } from '../packages/graders/src/llm/judge-provider.js';
+import type {
+  JudgeProvider,
+  JudgeProviderResult,
+} from '../packages/graders/src/llm/judge-provider.js';
 import { LlmJudgeGrader } from '../packages/graders/src/llm/llm-judge.js';
 import { registerBuiltinGraders } from '../packages/graders/src/register-builtins.js';
 
@@ -814,12 +817,12 @@ test('llm-judge: resolves contextFrom path', async () => {
         score: 1,
         reason: 'ok',
         assertions: [
-        {
-          assertion: 'The answer uses the provided context.',
-          pass: true,
-          reason: 'ok',
-        },
-      ],
+          {
+            assertion: 'The answer uses the provided context.',
+            pass: true,
+            reason: 'ok',
+          },
+        ],
         profile: 'default',
         model: 'gpt-4.1-mini',
       };

@@ -134,10 +134,10 @@ test('resolveSuite expands discover globs into task refs', async () => {
 
     assert.equal(suite.id, 'basic-llm');
     assert.equal(taskRefs.length, 2);
-    assert.deepEqual(
-      taskRefs.map((taskRef) => taskRef.ref).sort(),
-      ['datasets/a-task.yaml', 'datasets/z-task.yaml'],
-    );
+    assert.deepEqual(taskRefs.map((taskRef) => taskRef.ref).sort(), [
+      'datasets/a-task.yaml',
+      'datasets/z-task.yaml',
+    ]);
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
@@ -163,10 +163,10 @@ discover:
     const resolvedSuite = await adapter.resolveSuite('basic-llm');
     const taskRefs = resolvedSuite.taskRefs;
 
-    assert.deepEqual(
-      taskRefs.map((taskRef) => taskRef.ref).sort(),
-      ['datasets/group-a/task-a.yaml', 'datasets/group-a/task-b.yaml'],
-    );
+    assert.deepEqual(taskRefs.map((taskRef) => taskRef.ref).sort(), [
+      'datasets/group-a/task-a.yaml',
+      'datasets/group-a/task-b.yaml',
+    ]);
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
@@ -233,10 +233,10 @@ test('resolveSuite returns task refs without projecting task ids', async () => {
     const adapter = new LocalTask({ rootDir });
     const resolvedSuite = await adapter.resolveSuite('basic-llm');
 
-    assert.deepEqual(
-      resolvedSuite.taskRefs.map((taskRef) => taskRef.ref).sort(),
-      ['datasets/task-a.yaml', 'datasets/task-b.yaml'],
-    );
+    assert.deepEqual(resolvedSuite.taskRefs.map((taskRef) => taskRef.ref).sort(), [
+      'datasets/task-a.yaml',
+      'datasets/task-b.yaml',
+    ]);
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
@@ -267,10 +267,7 @@ test('listSuites ignores symlinks under node_modules', async () => {
     await writeYaml(rootDir, 'suites/basic.yaml', SUITE_YAML);
     await writeYaml(rootDir, 'datasets/a-task.yaml', TASK_ONE_YAML);
     await mkdir(join(rootDir, 'node_modules', '@ai-sdk'), { recursive: true });
-    await symlink(
-      join(externalRoot, 'openai'),
-      join(rootDir, 'node_modules', '@ai-sdk', 'openai'),
-    );
+    await symlink(join(externalRoot, 'openai'), join(rootDir, 'node_modules', '@ai-sdk', 'openai'));
 
     const adapter = new LocalTask({ rootDir });
     const suites = await adapter.listSuites();

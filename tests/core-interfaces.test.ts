@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import type { ClearedResultEntry, Stores } from '../packages/core/src/core/adapters/result-store-adapter.js';
+import type {
+  ClearedResultEntry,
+  Stores,
+} from '../packages/core/src/core/adapters/result-store-adapter.js';
 import type {
   ResolvedSuite,
   ResolvedTask,
@@ -22,7 +25,10 @@ import { Suite } from '../packages/core/src/core/domain/suite.js';
 import { Task } from '../packages/core/src/core/domain/task.js';
 import { Trial } from '../packages/core/src/core/domain/trial.js';
 import { Graders, Providers } from '../packages/core/src/core/runtime/index.js';
-import { resolveExecutionPolicy, validateTaskRuntime } from '../packages/core/src/core/runtime/task-execution.js';
+import {
+  resolveExecutionPolicy,
+  validateTaskRuntime,
+} from '../packages/core/src/core/runtime/task-execution.js';
 import { parseTaskDocument } from '../packages/core/src/tools/index.ts';
 
 class InMemoryStore implements Stores {

@@ -63,8 +63,20 @@ test('groupRunsBySuiteAndTask groups runs by suite then task and falls back to u
     ]),
   );
 
-  assert.deepEqual(groups.map((group) => group.suite), ['suite-a', 'unknown']);
-  assert.deepEqual(groups[0]?.tasks.map((task) => task.task), ['task-001']);
-  assert.deepEqual(groups[0]?.tasks[0]?.runs.map((run) => run.runId), ['run-1', 'run-2']);
-  assert.deepEqual(groups[1]?.tasks.map((task) => task.task), ['task-002']);
+  assert.deepEqual(
+    groups.map((group) => group.suite),
+    ['suite-a', 'unknown'],
+  );
+  assert.deepEqual(
+    groups[0]?.tasks.map((task) => task.task),
+    ['task-001'],
+  );
+  assert.deepEqual(
+    groups[0]?.tasks[0]?.runs.map((run) => run.runId),
+    ['run-1', 'run-2'],
+  );
+  assert.deepEqual(
+    groups[1]?.tasks.map((task) => task.task),
+    ['task-002'],
+  );
 });

@@ -13,7 +13,9 @@ export function normalizeRuntimeDefaults(
   const result = RuntimeDefaultsSchema.safeParse(runtimeDefaults ?? {});
   if (!result.success) {
     const issue = result.error.issues[0];
-    const field = issue?.path.length ? `runtimeDefaults.${issue.path.join('.')}` : 'runtimeDefaults';
+    const field = issue?.path.length
+      ? `runtimeDefaults.${issue.path.join('.')}`
+      : 'runtimeDefaults';
     throw new ValidationError(issue?.message ?? 'Invalid runtime defaults.', {
       details: {
         field,

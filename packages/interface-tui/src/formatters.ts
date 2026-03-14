@@ -1,11 +1,6 @@
 import * as p from '@clack/prompts';
 
-import type {
-  BaselineComparison,
-  RunRecord,
-  RunSummaryData,
-  TrialRecord,
-} from '@youeval/core';
+import type { BaselineComparison, RunRecord, RunSummaryData, TrialRecord } from '@youeval/core';
 import type { RunMetadata } from './run-metadata.js';
 
 function formatPassRate(rate: number): string {
@@ -134,11 +129,7 @@ function collectMetricLines(value: unknown, path: string[] = []): string[] {
 
   const label = path.join('.');
   const rendered =
-    typeof value === 'string'
-      ? value
-      : value === undefined
-        ? 'undefined'
-        : String(value);
+    typeof value === 'string' ? value : value === undefined ? 'undefined' : String(value);
   return label.length > 0 ? [`${label}: ${rendered}`] : [rendered];
 }
 
@@ -328,13 +319,7 @@ export function formatTrialGraderDetails(trial: TrialRecord): string {
     lines.push(`  Message:   ${error.message}`);
   }
 
-  lines.push(
-    '',
-    'Metrics:',
-    formatMetricsValue(trial.execution.metrics),
-    '',
-    'Graders:',
-  );
+  lines.push('', 'Metrics:', formatMetricsValue(trial.execution.metrics), '', 'Graders:');
 
   if (trial.graderResults.length === 0) {
     lines.push('  (no grader results)');

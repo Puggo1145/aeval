@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { formatTaskRunHeader, getSpinnerFrameCount } from '../packages/interface-tui/src/task-run-panel.js';
+import {
+  formatTaskRunHeader,
+  getSpinnerFrameCount,
+} from '../packages/interface-tui/src/task-run-panel.js';
 
 test('formatTaskRunHeader renders animated spinner before the progress bar while running', () => {
   const output = formatTaskRunHeader({

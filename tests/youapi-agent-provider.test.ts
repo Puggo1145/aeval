@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-
-import type { Run, TaskContext } from '../packages/core/src/core/contracts/runtime.js';
 import { YouapiAgentProvider } from '../examples/youapi-agent/provider.ts';
+import type { Run, TaskContext } from '../packages/core/src/core/contracts/runtime.js';
 
 function createTaskContext(): TaskContext {
   return {

@@ -1,7 +1,4 @@
-import type {
-  TaskGraderLayerDocument,
-  WeightedGraderLayerDocument,
-} from '../contracts/task.js';
+import type { TaskGraderLayerDocument, WeightedGraderLayerDocument } from '../contracts/task.js';
 import { cloneAndFreezeRecord } from '../utils/immutability.js';
 import { ensureNonEmptyString } from '../validation/helpers.js';
 

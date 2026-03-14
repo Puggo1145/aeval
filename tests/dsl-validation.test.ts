@@ -6,7 +6,9 @@ import { parseSuiteDocument, parseTaskDocument } from '../packages/core/src/tool
 function expectValidationField(error: unknown, field: string): boolean {
   assert.ok(error instanceof Error);
   const details =
-    'details' in error && typeof error.details === 'object' ? (error.details as { field?: unknown }) : {};
+    'details' in error && typeof error.details === 'object'
+      ? (error.details as { field?: unknown })
+      : {};
   assert.equal(details.field, field);
   return true;
 }

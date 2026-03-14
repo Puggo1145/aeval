@@ -52,11 +52,8 @@ function serializeContext(context: unknown): string {
   }
 }
 
-function resolveModel(
-  options: AiSdkJudgeProviderOptions,
-  input: JudgeProviderInput,
-) {
-  if (Object.prototype.hasOwnProperty.call(options.profiles, input.judge.profile)) {
+function resolveModel(options: AiSdkJudgeProviderOptions, input: JudgeProviderInput) {
+  if (Object.hasOwn(options.profiles, input.judge.profile)) {
     const model = options.profiles[input.judge.profile];
     if (model !== undefined) {
       return model;
@@ -161,7 +158,9 @@ function normalizeAssertions(
       return exactMatch;
     }
 
-    const fallbackIndex = normalizedActual.findIndex((_, actualIndex) => !usedActualIndexes.has(actualIndex));
+    const fallbackIndex = normalizedActual.findIndex(
+      (_, actualIndex) => !usedActualIndexes.has(actualIndex),
+    );
     if (fallbackIndex >= 0) {
       usedActualIndexes.add(fallbackIndex);
       const positional = normalizedActual[fallbackIndex];

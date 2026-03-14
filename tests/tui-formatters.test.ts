@@ -3,10 +3,10 @@ import test from 'node:test';
 
 import {
   formatInterruptedRunNote,
-  formatRunSummaryDetails,
   formatRunOptionHint,
   formatRunOptionLabel,
   formatRunOptionStatsHint,
+  formatRunSummaryDetails,
   formatRunsTable,
   formatTrialGraderDetails,
   formatTrialsTable,
@@ -305,7 +305,7 @@ test('formatTrialGraderDetails shows execution error details for failed trials',
   assert.match(output, /Code:\s+timeout/);
   assert.match(output, /Retryable:\s+no/);
   assert.match(output, /Message:\s+Trial timed out after 30000ms/);
-  assert.match(output, /Graders:\n  \(no grader results\)/);
+  assert.match(output, /Graders:\n {2}\(no grader results\)/);
 });
 
 test('formatRunSummaryDetails includes metrics for each trial', () => {

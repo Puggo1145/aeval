@@ -172,18 +172,13 @@ export class TrialExecutor {
       removeParentAbortListener?.();
       removeAbortListener?.();
 
-      return this.buildFailedTrial(
-        input,
-        startedAt,
-        startMs,
-        {
-          output: '',
-          error: {
-            type: 'system',
-            ...classifySystemError(error, input.timeoutMs, abortController.signal),
-          },
+      return this.buildFailedTrial(input, startedAt, startMs, {
+        output: '',
+        error: {
+          type: 'system',
+          ...classifySystemError(error, input.timeoutMs, abortController.signal),
         },
-      );
+      });
     }
 
     if (timeoutId !== undefined) {

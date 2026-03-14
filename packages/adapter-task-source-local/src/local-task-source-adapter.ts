@@ -1,10 +1,6 @@
 import { createHash } from 'node:crypto';
 import { lstat, readdir, readFile, realpath } from 'node:fs/promises';
 import { isAbsolute, matchesGlob, relative, resolve, sep } from 'node:path';
-
-import canonicalizeModule from 'canonicalize';
-import { parse } from 'yaml';
-
 import type {
   ResolvedSuite,
   ResolvedTask,
@@ -15,6 +11,8 @@ import type {
   Tasks,
 } from '@youeval/core';
 import { SCHEMA_VERSIONS } from '@youeval/core';
+import canonicalizeModule from 'canonicalize';
+import { parse } from 'yaml';
 
 const ADAPTER_ID = 'local';
 const YAML_EXTENSIONS = new Set(['.yaml', '.yml']);

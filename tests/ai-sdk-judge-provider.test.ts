@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { LanguageModel } from 'ai';
 import {
-  createAiSdkJudgeProvider,
   type AiSdkJudgeProviderDependencies,
+  createAiSdkJudgeProvider,
 } from '../packages/graders/src/llm/ai-sdk-judge-provider.js';
 
 function createMockModel(modelId = 'gpt-4.1-mini'): LanguageModel {
@@ -242,7 +242,8 @@ test('createAiSdkJudgeProvider: falls back to assertion order when texts do not 
   );
 
   const result = await provider.evaluate({
-    output: 'Created: TypeScript latest stable release brief\nSummary: TypeScript 5.9 is the latest stable release.',
+    output:
+      'Created: TypeScript latest stable release brief\nSummary: TypeScript 5.9 is the latest stable release.',
     rubric: 'Pass if research is grounded.',
     assertions: [
       'The trace shows at least one public web search and at least one fetched source page used before the craft was written.',
@@ -306,7 +307,8 @@ test('createAiSdkJudgeProvider: prefers exact text matches before positional fal
   ];
 
   const result = await provider.evaluate({
-    output: 'Created: TypeScript latest stable release brief\nSummary: TypeScript 5.9 is the latest stable release.',
+    output:
+      'Created: TypeScript latest stable release brief\nSummary: TypeScript 5.9 is the latest stable release.',
     rubric: 'Pass if research is grounded.',
     assertions: expectedAssertions,
     dimension: 'web research grounding',
