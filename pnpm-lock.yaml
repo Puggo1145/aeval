@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@ai-sdk/openai':
-        specifier: ^3.0.39
-        version: 3.0.39(zod@4.3.6)
       '@clack/prompts':
         specifier: ^1.1.0
         version: 1.1.0
@@ -33,6 +30,50 @@ importers:
       '@biomejs/biome':
         specifier: ^2.4.4
         version: 2.4.4
+      '@types/node':
+        specifier: ^25.3.3
+        version: 25.3.3
+      tsx:
+        specifier: ^4.20.3
+        version: 4.21.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  examples/basics:
+    dependencies:
+      '@ai-sdk/openai':
+        specifier: ^3.0.39
+        version: 3.0.39(zod@4.3.6)
+      ai:
+        specifier: ^6.0.111
+        version: 6.0.111(zod@4.3.6)
+      youeval:
+        specifier: workspace:*
+        version: link:../..
+    devDependencies:
+      '@types/node':
+        specifier: ^25.3.3
+        version: 25.3.3
+      tsx:
+        specifier: ^4.20.3
+        version: 4.21.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  examples/youapi-agent:
+    dependencies:
+      '@ai-sdk/openai':
+        specifier: ^3.0.39
+        version: 3.0.39(zod@4.3.6)
+      ai:
+        specifier: ^6.0.111
+        version: 6.0.111(zod@4.3.6)
+      youeval:
+        specifier: workspace:*
+        version: link:../..
+    devDependencies:
       '@types/node':
         specifier: ^25.3.3
         version: 25.3.3

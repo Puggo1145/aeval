@@ -1,6 +1,6 @@
 {
   "name": "youeval",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
@@ -29,7 +29,6 @@
   },
   "description": "Evaluation toolkit for YouMind services",
   "dependencies": {
-    "@ai-sdk/openai": "^3.0.39",
     "@clack/prompts": "^1.1.0",
     "ai": "^6.0.111",
     "ajv": "^8.18.0",
@@ -39,8 +38,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "example:basics": "pnpm build && node --env-file=examples/basics/.env --import tsx examples/basics/main.ts",
-    "example:youapi-agent": "pnpm build && node --import tsx examples/youapi-agent/main.ts",
+    "example:basics": "pnpm build && pnpm --filter @youeval/example-basics start",
+    "example:youapi-agent": "pnpm build && pnpm --filter @youeval/example-youapi-agent start",
     "lint": "biome check . --diagnostic-level=error",
     "lint:fix": "biome check . --write --diagnostic-level=error",
     "format": "biome format . --write",

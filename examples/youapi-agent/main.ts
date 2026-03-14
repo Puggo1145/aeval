@@ -27,7 +27,8 @@ function tryLoadEnvFile(): void {
 async function main(): Promise<void> {
   tryLoadEnvFile();
   const openai = createOpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
+    baseURL: 'https://aihubmix.com/v1',
+    apiKey: process.env.AIHUBMIX_API_KEY,
   });
 
   // 谁来运行 youapi
@@ -40,7 +41,7 @@ async function main(): Promise<void> {
   graders.register(
     new BuiltinLlmJudgeGrader({
       profiles: {
-        default: openai('gpt-4.1-mini'),
+        default: openai('gpt-5.4'),
       },
     }),
   );
@@ -48,7 +49,7 @@ async function main(): Promise<void> {
   const core = new Core({
     // task 来源
     tasks: new LocalTask({
-      rootDir: currentDir,
+      rootDir: resolve(currentDir, 'datasets'),
     }),
     // 结果怎么存
     stores: new LocalStore({

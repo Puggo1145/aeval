@@ -4,10 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { createOpenAI } from '@ai-sdk/openai';
 import { Core, Graders, Providers } from 'youeval';
 import { ConsoleObserver, LocalStore, LocalTask } from 'youeval/adapters';
-import {
-  BuiltinLlmJudgeGrader,
-  registerBuiltinGraders,
-} from 'youeval/graders';
+import { BuiltinLlmJudgeGrader, registerBuiltinGraders } from 'youeval/graders';
 import { runTui } from 'youeval/interfaces/tui';
 import { BasicLlmProvider, FileEditAgentProvider } from './providers/index.ts';
 
@@ -28,7 +25,8 @@ function tryLoadEnvFile(): void {
 async function main(): Promise<void> {
   tryLoadEnvFile();
   const openai = createOpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
+    baseURL: 'https://aihubmix.com/v1',
+    apiKey: process.env.AIHUBMIX_API_KEY,
   });
 
   const graders = new Graders();
@@ -36,7 +34,7 @@ async function main(): Promise<void> {
   graders.register(
     new BuiltinLlmJudgeGrader({
       profiles: {
-        default: openai('gpt-4.1-mini'),
+        default: openai('gpt-5.4'),
       },
     }),
   );

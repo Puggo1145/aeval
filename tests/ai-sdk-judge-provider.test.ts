@@ -25,7 +25,7 @@ function createDeps(
           },
         ],
       },
-    })) as AiSdkJudgeProviderDependencies['generateObject'],
+    })) as unknown as AiSdkJudgeProviderDependencies['generateText'],
     ...overrides,
   };
 }
@@ -40,7 +40,7 @@ test('createAiSdkJudgeProvider: selects model by judge profile', async () => {
       },
     },
     createDeps({
-      generateText: (async ({ model }) => {
+      generateText: (async ({ model }: { model: unknown }) => {
         capturedModel = model;
         return {
           output: {
@@ -54,7 +54,7 @@ test('createAiSdkJudgeProvider: selects model by judge profile', async () => {
             ],
           },
         };
-      }) as AiSdkJudgeProviderDependencies['generateText'],
+      }) as unknown as AiSdkJudgeProviderDependencies['generateText'],
     }),
   );
 
@@ -88,7 +88,7 @@ test('createAiSdkJudgeProvider: supports custom systemPrompt and buildPrompt', a
       buildPrompt: (input) => `custom prompt for ${input.judge.profile}: ${input.output}`,
     },
     createDeps({
-      generateText: (async ({ system, prompt }) => {
+      generateText: (async ({ system, prompt }: { system?: unknown; prompt?: unknown }) => {
         capturedSystem = system as string;
         capturedPrompt = prompt as string;
         return {
@@ -103,7 +103,7 @@ test('createAiSdkJudgeProvider: supports custom systemPrompt and buildPrompt', a
             ],
           },
         };
-      }) as AiSdkJudgeProviderDependencies['generateText'],
+      }) as unknown as AiSdkJudgeProviderDependencies['generateText'],
     }),
   );
 
@@ -184,7 +184,7 @@ test('createAiSdkJudgeProvider: normalizes missing assertion results to failed a
             },
           ],
         },
-      })) as AiSdkJudgeProviderDependencies['generateText'],
+      })) as unknown as AiSdkJudgeProviderDependencies['generateText'],
     }),
   );
 
@@ -237,7 +237,7 @@ test('createAiSdkJudgeProvider: falls back to assertion order when texts do not 
             },
           ],
         },
-      })) as AiSdkJudgeProviderDependencies['generateText'],
+      })) as unknown as AiSdkJudgeProviderDependencies['generateText'],
     }),
   );
 
@@ -296,7 +296,7 @@ test('createAiSdkJudgeProvider: prefers exact text matches before positional fal
             },
           ],
         },
-      })) as AiSdkJudgeProviderDependencies['generateText'],
+      })) as unknown as AiSdkJudgeProviderDependencies['generateText'],
     }),
   );
 

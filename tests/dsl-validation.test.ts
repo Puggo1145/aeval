@@ -20,7 +20,7 @@ function createValidSuiteInput() {
   };
 }
 
-function createValidTaskInput() {
+function createValidTaskInput(): any {
   return {
     schemaVersion: 'task.v1',
     id: 'basic-llm/task-001',

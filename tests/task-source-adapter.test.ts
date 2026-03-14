@@ -260,6 +260,34 @@ test('listSuites fails fast when rootDir contains symlinked YAML paths', async (
   }
 });
 
+test('listSuites ignores symlinks under node_modules', async () => {
+  const rootDir = await createTempRootDir();
+  const externalRoot = await createTempRootDir();
+  try {
+    await writeYaml(rootDir, 'suites/basic.yaml', SUITE_YAML);
+    await writeYaml(rootDir, 'datasets/a-task.yaml', TASK_ONE_YAML);
+    await mkdir(join(rootDir, 'node_modules', '@ai-sdk'), { recursive: true });
+    await symlink(
+      join(externalRoot, 'openai'),
+      join(rootDir, 'node_modules', '@ai-sdk', 'openai'),
+    );
+
+    const adapter = new LocalTask({ rootDir });
+    const suites = await adapter.listSuites();
+
+    assert.deepEqual(suites, [
+      {
+        id: 'basic-llm',
+        name: 'Basic LLM',
+        ref: 'suites/basic.yaml',
+      },
+    ]);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+    await rm(externalRoot, { recursive: true, force: true });
+  }
+});
+
 test('resolveSuite fails when matched files are not task YAML documents', async () => {
   const rootDir = await createTempRootDir();
   try {

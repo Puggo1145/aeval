@@ -86,15 +86,18 @@ OPENAI_API_KEY=
 ### 第二步：启动 TUI
 
 ```bash
-pnpm example:youapi-agent
+pnpm build
+pnpm --filter @youeval/example-youapi-agent start
 ```
 
-这个命令会：
+这两个命令会：
 
-1. 先执行 `pnpm build`
-2. 用 `tsx` 启动 `examples/youapi-agent/main.ts`
+1. 在根包构建 `youeval` core
+2. 进入 workspace 示例包并用 `tsx` 启动 `examples/youapi-agent/main.ts`
 3. 创建 Core、注册 provider / grader
 4. 打开交互式 TUI
+
+也可以继续使用根脚本快捷方式：`pnpm example:youapi-agent`（内部同样是先 build，再委托到 workspace 示例包）。
 
 ### 第三步：在 TUI 里怎么操作
 

@@ -19,6 +19,7 @@ import { SCHEMA_VERSIONS } from '../../index.js';
 const ADAPTER_ID = 'local';
 const YAML_EXTENSIONS = new Set(['.yaml', '.yml']);
 const GLOB_MAGIC_PATTERN = /[*?[{\]}]/;
+const IGNORED_DIRECTORY_NAMES = new Set(['node_modules']);
 const canonicalize = canonicalizeModule as unknown as (value: unknown) => string | undefined;
 
 interface SuiteEntry {
@@ -143,6 +144,10 @@ async function collectYamlFiles(
     const files: string[] = [];
 
     for (const dirent of entries) {
+      if (dirent.isDirectory() && IGNORED_DIRECTORY_NAMES.has(dirent.name)) {
+        continue;
+      }
+
       const entryPath = resolve(dirPath, dirent.name);
       const entryStat = await lstat(entryPath);
       if (entryStat.isSymbolicLink()) {

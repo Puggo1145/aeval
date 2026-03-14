@@ -2,4 +2,4 @@ schemaVersion: "suite.v1"
 id: "youapi-agent"
 name: "YouAPI Agent"
 discover:
-  - "datasets/youapi-agent/**/*.yaml"
+  - "youapi-agent/**/*.yaml"
