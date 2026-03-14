@@ -18,6 +18,10 @@
       "types": "./dist/graders/index.d.ts",
       "default": "./dist/graders/index.js"
     },
+    "./tools": {
+      "types": "./dist/tools/index.d.ts",
+      "default": "./dist/tools/index.js"
+    },
     "./interfaces/tui": {
       "types": "./dist/interfaces/tui/index.d.ts",
       "default": "./dist/interfaces/tui/index.js"

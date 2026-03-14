@@ -48,5 +48,19 @@ test('package exports expose only root and declared public subpaths', async () =
     './adapters',
     './graders',
     './interfaces/tui',
+    './tools',
   ]);
+});
+
+test('root public surface does not expose parser helpers; tools surface does', async () => {
+  const rootExports = await import('../src/index.ts');
+  const toolsExports = await import('../src/tools/index.ts');
+
+  assert.equal('parseSuiteDocument' in rootExports, false);
+  assert.equal('parseTaskDocument' in rootExports, false);
+  assert.equal('parseExecutionResult' in rootExports, false);
+
+  assert.equal(typeof toolsExports.parseSuiteDocument, 'function');
+  assert.equal(typeof toolsExports.parseTaskDocument, 'function');
+  assert.equal(typeof toolsExports.parseExecutionResult, 'function');
 });

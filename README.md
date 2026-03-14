@@ -43,14 +43,17 @@ pnpm test
 
 ## 公开入口与边界
 
-外部实现只应依赖这 4 个公开入口：
+外部实现只应依赖这 5 个公开入口：
 
 - `youeval`：Core、registry、稳定 contract / DSL / record 类型、`ExecutionResult`
 - `youeval/adapters`：`LocalTask`、`LocalStore`、`ConsoleObserver`
 - `youeval/graders`：built-in graders、`registerBuiltinGraders`、LLM judge 相关能力
+- `youeval/tools`：可选的 parser / schema 工具能力，用于 DSL 预校验、导入检查、CI lint，不是运行时接入主路径
 - `youeval/interfaces/tui`：`runTui`
 
 内置 adapters / graders / TUI 虽然随包一起发布，但在依赖边界上按“外部用户实现”处理，不应直接依赖 `core/domain/*`、`core/runtime/*`、`core/utils/*` 这类内部实现路径。
+
+运行时接入路径默认不依赖 parser。`Tasks` adapter 返回 raw document，Core 自己在加载 suite/task 时完成解析与校验；如果调用方想在任务录入前做预检查，再按需从 `youeval/tools` 使用 `parseSuiteDocument(...)`、`parseTaskDocument(...)` 等工具函数。
 
 ## 从 `youapi-agent` 示例入门
 

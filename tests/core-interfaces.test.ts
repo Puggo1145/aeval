@@ -11,7 +11,7 @@ import type {
 } from '../src/core/adapters/task-source-adapter.js';
 import { Core } from '../src/core/api/index.js';
 import type { ExecutionResult } from '../src/core/contracts/execution.js';
-import { parseTaskDocument, SCHEMA_VERSIONS } from '../src/core/contracts/index.js';
+import { SCHEMA_VERSIONS } from '../src/core/contracts/index.js';
 import type { RunManifestRecord } from '../src/core/contracts/run-manifest.js';
 import type { RunSummaryRecord } from '../src/core/contracts/run-summary.js';
 import type { SuiteDocument } from '../src/core/contracts/suite.js';
@@ -23,6 +23,7 @@ import { Task } from '../src/core/domain/task.js';
 import { Trial } from '../src/core/domain/trial.js';
 import { Graders, Providers } from '../src/core/runtime/index.js';
 import { resolveExecutionPolicy, validateTaskRuntime } from '../src/core/runtime/task-execution.js';
+import { parseTaskDocument } from '../src/tools/index.ts';
 
 class InMemoryStore implements Stores {
   private readonly manifests = new Map<string, RunManifestRecord>();

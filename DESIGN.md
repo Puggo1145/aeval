@@ -1,38 +1,30 @@
 # YouEval Design
 
+YouEval is an evaluation runtime for Agent systems.
+
 ## 1. Scope
 
-YouEval is a core-first evaluation runtime for LLM and agent systems.
-
-Current scope:
-
-1. Suite-based task discovery.
-2. Task-level multi-run execution.
-3. Local reference adapters for task source and result storage.
-4. TUI as the v1 interactive interface.
-
-The project is still early-stage. We keep the model small and avoid compatibility layers for deprecated execution shapes.
+The project is still under development. We keep the model small and avoid compatibility layers for deprecated execution shapes.
 
 ## 2. Semantic Model
 
-- `Suite`: discovery scope for tasks.
+- `Suite`: discovery scope for tasks / collection of tasks.
 - `Task`: one evaluation definition.
 - `Run`: one named provider parameter set inside a task.
 - `Trial`: one execution attempt of a run.
 
-Execution rule:
+General execution process:
 
 1. User selects a suite.
 2. User selects a task inside that suite.
 3. Core resolves the task once.
 4. Core executes every `task.provider.runs[]` entry, serially.
-5. Trials within one run may execute concurrently, bounded by `maxConcurrency`.
+5. Trials within one run may execute concurrently for multiple times.
 
 ## 3. Architecture
 
 ### 3.1 Layers
 
-```text
 Core
   - domain
   - contracts
@@ -45,21 +37,19 @@ Adapters
   - tasks
   - stores
   - observers
-
-Interfaces
-  - TUI
-```
+  - interfaces
 
 ### 3.2 Dependency Direction
 
 1. Core owns evaluation semantics.
 2. Adapters implement IO boundaries only.
 3. Providers and graders are resolved through containers injected into Core.
-4. TUI consumes Core APIs only. It does not call infrastructure classes directly.
+4. Interfaces consumes Core APIs only.
 5. `contracts` own suite/task schemas; `Suite` and `Task` domain factories call those parsers internally and remain the only legal construction path for runtime suite/task objects.
-6. Built-in adapters, graders, and TUI are treated like external modules for boundary control.
-7. Public package surfaces are limited to `youeval`, `youeval/adapters`, `youeval/graders`, and `youeval/interfaces/tui`.
+6. Built-in adapters, graders, and TUI (interface) are treated like external modules for boundary control.
+7. Public package surfaces are limited to `youeval`, `youeval/adapters`, `youeval/graders`, `youeval/tools`, and `youeval/interfaces/**`.
 8. `core/domain`, `core/runtime`, `core/orchestrator`, `core/utils`, and `core/validation` remain internal implementation layers.
+9. Parser/schema entrypoints are optional tool capabilities. Runtime composition does not require callers to parse DSL documents themselves; when exposed publicly, they live under `youeval/tools`.
 
 ### 3.3 Object Taxonomy
 
