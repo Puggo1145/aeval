@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { parseSuiteDocument, parseTaskDocument } from '../src/tools/index.ts';
+import { parseSuiteDocument, parseTaskDocument } from '../packages/core/src/tools/index.ts';
 
 function expectValidationField(error: unknown, field: string): boolean {
   assert.ok(error instanceof Error);

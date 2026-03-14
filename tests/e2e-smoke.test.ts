@@ -4,14 +4,14 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 
-import { LocalStore } from '../src/adapters/result-store/local-result-store-adapter.js';
-import { LocalTask } from '../src/adapters/task-source/local-task-source-adapter.js';
-import { Core } from '../src/core/api/index.js';
-import type { ExecutionResult } from '../src/core/contracts/execution.js';
-import type { RunEvent } from '../src/core/contracts/runtime.js';
-import { Graders, Providers } from '../src/core/runtime/index.js';
-import { LlmJudgeGrader } from '../src/graders/llm/llm-judge.js';
-import { registerBuiltinGraders } from '../src/graders/register-builtins.js';
+import { LocalStore } from '../packages/adapter-result-store-local/src/local-result-store-adapter.js';
+import { LocalTask } from '../packages/adapter-task-source-local/src/local-task-source-adapter.js';
+import { Core } from '../packages/core/src/core/api/index.js';
+import type { ExecutionResult } from '../packages/core/src/core/contracts/execution.js';
+import type { RunEvent } from '../packages/core/src/core/contracts/runtime.js';
+import { Graders, Providers } from '../packages/core/src/core/runtime/index.js';
+import { LlmJudgeGrader } from '../packages/graders/src/llm/llm-judge.js';
+import { registerBuiltinGraders } from '../packages/graders/src/register-builtins.js';
 
 async function createWorkspace(): Promise<string> {
   return mkdtemp(join(tmpdir(), 'youeval-e2e-'));
@@ -100,7 +100,7 @@ test('E2E smoke: full chain from suite discovery to result-store readback', asyn
     });
 
     const graders = new Graders();
-    registerBuiltinGraders(graders);
+    registerBuiltinGraders(graders as unknown as Parameters<typeof registerBuiltinGraders>[0]);
 
     const core = new Core({
       tasks: new LocalTask({ rootDir: workspace }),

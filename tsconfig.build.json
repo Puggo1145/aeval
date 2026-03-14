@@ -1,13 +1,11 @@
 {
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "noEmit": false,
-    "rootDir": "src",
-    "outDir": "dist",
-    "declaration": true,
-    "allowImportingTsExtensions": false,
-    "sourceMap": true,
-    "declarationMap": true
-  },
-  "include": ["src/**/*.ts"]
+  "files": [],
+  "references": [
+    { "path": "./packages/core/tsconfig.build.json" },
+    { "path": "./packages/graders/tsconfig.build.json" },
+    { "path": "./packages/adapter-task-source-local/tsconfig.build.json" },
+    { "path": "./packages/adapter-result-store-local/tsconfig.build.json" },
+    { "path": "./packages/adapter-observer-console/tsconfig.build.json" },
+    { "path": "./packages/interface-tui/tsconfig.build.json" }
+  ]
 }

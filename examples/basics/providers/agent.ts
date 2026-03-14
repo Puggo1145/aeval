@@ -8,7 +8,7 @@ import {
   type Provider,
   type Run,
   type TaskContext,
-} from 'youeval';
+} from '@youeval/core';
 import { runReActAgent } from './react-agent/index.ts';
 
 function getStringParam(

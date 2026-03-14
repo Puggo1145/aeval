@@ -7,9 +7,15 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@youeval/adapter-observer-console": "workspace:*",
+    "@youeval/adapter-result-store-local": "workspace:*",
+    "@youeval/adapter-task-source-local": "workspace:*",
+    "@youeval/core": "workspace:*",
+    "@youeval/graders": "workspace:*",
+    "@youeval/interface-tui": "workspace:*",
     "@ai-sdk/openai": "^3.0.39",
     "ai": "^6.0.111",
-    "youeval": "workspace:*"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^25.3.3",

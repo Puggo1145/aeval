@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { LocalStore } from '../src/adapters/result-store/local-result-store-adapter.js';
-import { SCHEMA_VERSIONS } from '../src/core/contracts/schema-versions.js';
+import { LocalStore } from '../packages/adapter-result-store-local/src/local-result-store-adapter.js';
+import { SCHEMA_VERSIONS } from '../packages/core/src/core/contracts/schema-versions.js';
 
 async function createTempResultsDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), 'youeval-results-'));

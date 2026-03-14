@@ -36,17 +36,19 @@ pnpm test
 
 ## 公开入口与边界
 
-外部实现只应依赖这 5 个公开入口：
+外部实现只应依赖这些公开入口：
 
-- `youeval`：评测框架的核心（core），承载所有评测功能
-- `youeval/adapters`：评测核心的 IO 适配器，包括 task adapter, store adapter 和 observer adapter (optional)
-- `youeval/graders`：core 提供的评测器
-- `youeval/tools`：可选的 parser / schema 工具能力，用于 DSL 预校验、导入检查、CI lint 等，不是运行时接入主路径
-- `youeval/interfaces/tui`：core 提供的一个预置本地交互 interface
+- `@youeval/core`：评测框架核心（Core API、contracts、runtime registry）
+- `@youeval/core/tools`：可选 parser / schema 工具能力（DSL 预校验、导入检查、CI lint）
+- `@youeval/graders`：内置 graders 与 `registerBuiltinGraders(...)`
+- `@youeval/adapter-task-source-local`：本地 YAML 任务源适配器 `LocalTask`
+- `@youeval/adapter-result-store-local`：本地结果存储适配器 `LocalStore`
+- `@youeval/adapter-observer-console`：控制台观察器 `ConsoleObserver`
+- `@youeval/interface-tui`：预置本地交互 TUI
 
 ### Tips
-- 内置 adapters / graders / TUI 虽然随包一起发布，但在依赖边界上按“外部用户实现”处理，不应直接依赖 `core/domain/*`、`core/runtime/*`、`core/utils/*` 这类内部实现路径。
-- 运行时接入路径默认不依赖 parser。`Tasks` adapter 返回 raw document，Core 自己在加载 suite/task 时完成解析与校验；如果调用方想在任务录入前做预检查，可按需从 `youeval/tools` 使用 `parseSuiteDocument(...)`、`parseTaskDocument(...)` 等工具函数。
+- 内置 adapters / graders / TUI 现在按包独立发布，按需安装即可；不应直接依赖 `core/domain/*`、`core/runtime/*`、`core/utils/*` 这类内部实现路径。
+- 运行时接入路径默认不依赖 parser。`Tasks` adapter 返回 raw document，Core 自己在加载 suite/task 时完成解析与校验；如果调用方想在任务录入前做预检查，可按需从 `@youeval/core/tools` 使用 `parseSuiteDocument(...)`、`parseTaskDocument(...)` 等工具函数。
 
 ## 从 `youapi-agent` 示例入门
 
@@ -85,7 +87,7 @@ pnpm --filter @youeval/example-youapi-agent start
 
 这两个命令会：
 
-1. 在根包构建 `youeval` core
+1. 在 workspace 中构建 `@youeval/*` 包
 2. 进入 workspace 示例包并用 `tsx` 启动 `examples/youapi-agent/main.ts`
 3. 创建 Core、注册 provider / grader
 4. 打开交互式 TUI

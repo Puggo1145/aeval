@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { groupRunsBySuiteAndTask } from '../src/interfaces/tui/run-selection.js';
+import { groupRunsBySuiteAndTask } from '../packages/interface-tui/src/run-selection.js';
 
 test('groupRunsBySuiteAndTask groups runs by suite then task and falls back to unknown', () => {
   const records = [

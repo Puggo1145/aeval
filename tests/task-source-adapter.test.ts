@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 
-import { LocalTask } from '../src/adapters/task-source/local-task-source-adapter.js';
-import { Suite } from '../src/core/domain/suite.js';
-import { Task } from '../src/core/domain/task.js';
+import { LocalTask } from '../packages/adapter-task-source-local/src/local-task-source-adapter.js';
+import { Suite } from '../packages/core/src/core/domain/suite.js';
+import { Task } from '../packages/core/src/core/domain/task.js';
 
 async function createTempRootDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), 'youeval-task-source-'));

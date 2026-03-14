@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { ConsoleObserver } from '../src/adapters/observer/console-observer.js';
-import { RunEvents } from '../src/core/contracts/runtime.js';
+import { ConsoleObserver } from '../packages/adapter-observer-console/src/console-observer.js';
+import { RunEvents } from '../packages/core/src/core/contracts/runtime.js';
 
 test('console observer logs run:started with task and trial counts', () => {
   const observer = new ConsoleObserver();

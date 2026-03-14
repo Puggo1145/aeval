@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { countTerminalRows, createLiveRegion } from '../src/interfaces/tui/live-region.js';
+import { countTerminalRows, createLiveRegion } from '../packages/interface-tui/src/live-region.js';
 
 class MockWriteStream {
   public readonly chunks: string[] = [];

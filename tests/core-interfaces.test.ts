@@ -1,29 +1,29 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import type { ClearedResultEntry, Stores } from '../src/core/adapters/result-store-adapter.js';
+import type { ClearedResultEntry, Stores } from '../packages/core/src/core/adapters/result-store-adapter.js';
 import type {
   ResolvedSuite,
   ResolvedTask,
   SuiteDescriptor,
   TaskRef,
   Tasks,
-} from '../src/core/adapters/task-source-adapter.js';
-import { Core } from '../src/core/api/index.js';
-import type { ExecutionResult } from '../src/core/contracts/execution.js';
-import { SCHEMA_VERSIONS } from '../src/core/contracts/index.js';
-import type { RunManifestRecord } from '../src/core/contracts/run-manifest.js';
-import type { RunSummaryRecord } from '../src/core/contracts/run-summary.js';
-import type { SuiteDocument } from '../src/core/contracts/suite.js';
-import type { TaskDocument } from '../src/core/contracts/task.js';
-import type { TrialResultRecord } from '../src/core/contracts/trial.js';
-import { RunSummary } from '../src/core/domain/run-summary.js';
-import { Suite } from '../src/core/domain/suite.js';
-import { Task } from '../src/core/domain/task.js';
-import { Trial } from '../src/core/domain/trial.js';
-import { Graders, Providers } from '../src/core/runtime/index.js';
-import { resolveExecutionPolicy, validateTaskRuntime } from '../src/core/runtime/task-execution.js';
-import { parseTaskDocument } from '../src/tools/index.ts';
+} from '../packages/core/src/core/adapters/task-source-adapter.js';
+import { Core } from '../packages/core/src/core/api/index.js';
+import type { ExecutionResult } from '../packages/core/src/core/contracts/execution.js';
+import { SCHEMA_VERSIONS } from '../packages/core/src/core/contracts/index.js';
+import type { RunManifestRecord } from '../packages/core/src/core/contracts/run-manifest.js';
+import type { RunSummaryRecord } from '../packages/core/src/core/contracts/run-summary.js';
+import type { SuiteDocument } from '../packages/core/src/core/contracts/suite.js';
+import type { TaskDocument } from '../packages/core/src/core/contracts/task.js';
+import type { TrialResultRecord } from '../packages/core/src/core/contracts/trial.js';
+import { RunSummary } from '../packages/core/src/core/domain/run-summary.js';
+import { Suite } from '../packages/core/src/core/domain/suite.js';
+import { Task } from '../packages/core/src/core/domain/task.js';
+import { Trial } from '../packages/core/src/core/domain/trial.js';
+import { Graders, Providers } from '../packages/core/src/core/runtime/index.js';
+import { resolveExecutionPolicy, validateTaskRuntime } from '../packages/core/src/core/runtime/task-execution.js';
+import { parseTaskDocument } from '../packages/core/src/tools/index.ts';
 
 class InMemoryStore implements Stores {
   private readonly manifests = new Map<string, RunManifestRecord>();

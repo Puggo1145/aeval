@@ -1,11 +1,11 @@
 import { createOpenAI } from '@ai-sdk/openai';
-import { generateText } from 'ai';
 import {
   type ExecutionResultInput,
   type Provider,
   type Run,
   type TaskContext,
-} from 'youeval';
+} from '@youeval/core';
+import { generateText } from 'ai';
 
 function getStringParam(
   params: Readonly<Record<string, unknown>>,

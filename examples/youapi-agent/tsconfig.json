@@ -1,5 +1,16 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true
+  },
   "include": ["./**/*.ts"],
-  "exclude": ["node_modules", "results"]
+  "exclude": ["node_modules", "results"],
+  "references": [
+    { "path": "../../packages/core" },
+    { "path": "../../packages/graders" },
+    { "path": "../../packages/adapter-task-source-local" },
+    { "path": "../../packages/adapter-result-store-local" },
+    { "path": "../../packages/adapter-observer-console" },
+    { "path": "../../packages/interface-tui" }
+  ]
 }

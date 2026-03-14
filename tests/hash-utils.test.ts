@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { computeSha256 } from '../src/core/utils/hash.js';
+import { computeSha256 } from '../packages/core/src/core/utils/hash.js';
 
 test('computeSha256 is stable across object key order and ignores undefined fields', () => {
   const hash1 = computeSha256({

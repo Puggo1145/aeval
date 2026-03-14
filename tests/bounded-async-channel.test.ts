@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createBoundedAsyncChannel } from '../src/core/orchestrator/bounded-async-channel.js';
+import { createBoundedAsyncChannel } from '../packages/core/src/core/orchestrator/bounded-async-channel.js';
 
 test('bounded channel supports basic push/next flow', async () => {
   const channel = createBoundedAsyncChannel<number>(2);

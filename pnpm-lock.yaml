@@ -1,38 +1,25 @@
 lockfileVersion: '9.0'
 
 settings:
-  autoInstallPeers: true
+  autoInstallPeers: false
   excludeLinksFromLockfile: false
 
 importers:
 
   .:
-    dependencies:
-      '@clack/prompts':
-        specifier: ^1.1.0
-        version: 1.1.0
-      ai:
-        specifier: ^6.0.111
-        version: 6.0.111(zod@4.3.6)
-      ajv:
-        specifier: ^8.18.0
-        version: 8.18.0
-      canonicalize:
-        specifier: ^2.1.0
-        version: 2.1.0
-      yaml:
-        specifier: ^2.8.2
-        version: 2.8.2
-      zod:
-        specifier: ^4.3.6
-        version: 4.3.6
     devDependencies:
       '@biomejs/biome':
         specifier: ^2.4.4
         version: 2.4.4
+      '@clack/prompts':
+        specifier: ^1.1.0
+        version: 1.1.0
       '@types/node':
         specifier: ^25.3.3
         version: 25.3.3
+      ai:
+        specifier: ^6.0.111
+        version: 6.0.111(zod@4.3.6)
       tsx:
         specifier: ^4.20.3
         version: 4.21.0
@@ -45,12 +32,30 @@ importers:
       '@ai-sdk/openai':
         specifier: ^3.0.39
         version: 3.0.39(zod@4.3.6)
+      '@youeval/adapter-observer-console':
+        specifier: workspace:*
+        version: link:../../packages/adapter-observer-console
+      '@youeval/adapter-result-store-local':
+        specifier: workspace:*
+        version: link:../../packages/adapter-result-store-local
+      '@youeval/adapter-task-source-local':
+        specifier: workspace:*
+        version: link:../../packages/adapter-task-source-local
+      '@youeval/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@youeval/graders':
+        specifier: workspace:*
+        version: link:../../packages/graders
+      '@youeval/interface-tui':
+        specifier: workspace:*
+        version: link:../../packages/interface-tui
       ai:
         specifier: ^6.0.111
         version: 6.0.111(zod@4.3.6)
-      youeval:
-        specifier: workspace:*
-        version: link:../..
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
     devDependencies:
       '@types/node':
         specifier: ^25.3.3
@@ -67,12 +72,30 @@ importers:
       '@ai-sdk/openai':
         specifier: ^3.0.39
         version: 3.0.39(zod@4.3.6)
+      '@youeval/adapter-observer-console':
+        specifier: workspace:*
+        version: link:../../packages/adapter-observer-console
+      '@youeval/adapter-result-store-local':
+        specifier: workspace:*
+        version: link:../../packages/adapter-result-store-local
+      '@youeval/adapter-task-source-local':
+        specifier: workspace:*
+        version: link:../../packages/adapter-task-source-local
+      '@youeval/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@youeval/graders':
+        specifier: workspace:*
+        version: link:../../packages/graders
+      '@youeval/interface-tui':
+        specifier: workspace:*
+        version: link:../../packages/interface-tui
       ai:
         specifier: ^6.0.111
         version: 6.0.111(zod@4.3.6)
-      youeval:
-        specifier: workspace:*
-        version: link:../..
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
     devDependencies:
       '@types/node':
         specifier: ^25.3.3
@@ -83,6 +106,66 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+
+  packages/adapter-observer-console:
+    devDependencies:
+      '@youeval/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/adapter-result-store-local:
+    devDependencies:
+      '@youeval/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/adapter-task-source-local:
+    dependencies:
+      canonicalize:
+        specifier: ^2.1.0
+        version: 2.1.0
+      yaml:
+        specifier: ^2.8.2
+        version: 2.8.2
+    devDependencies:
+      '@youeval/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/core:
+    dependencies:
+      canonicalize:
+        specifier: ^2.1.0
+        version: 2.1.0
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+
+  packages/graders:
+    dependencies:
+      ai:
+        specifier: ^6.0.111
+        version: 6.0.111(zod@4.3.6)
+      ajv:
+        specifier: ^8.18.0
+        version: 8.18.0
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@youeval/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/interface-tui:
+    dependencies:
+      '@clack/prompts':
+        specifier: ^1.1.0
+        version: 1.1.0
+    devDependencies:
+      '@youeval/core':
+        specifier: workspace:*
+        version: link:../core
 
 packages:
 

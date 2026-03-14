@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import * as p from '@clack/prompts';
 
-import { CancelError, handleCancel } from '../src/interfaces/tui/utils.js';
+import { CancelError, handleCancel } from '../packages/interface-tui/src/utils.js';
 
 test('handleCancel returns original value when prompt is not canceled', () => {
   assert.equal(handleCancel('ok'), 'ok');

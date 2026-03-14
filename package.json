@@ -1,56 +1,25 @@
 {
-  "name": "youeval",
-  "version": "0.1.0",
+  "name": "@youeval/monorepo",
   "private": true,
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    },
-    "./adapters": {
-      "types": "./dist/adapters/index.d.ts",
-      "default": "./dist/adapters/index.js"
-    },
-    "./graders": {
-      "types": "./dist/graders/index.d.ts",
-      "default": "./dist/graders/index.js"
-    },
-    "./tools": {
-      "types": "./dist/tools/index.d.ts",
-      "default": "./dist/tools/index.js"
-    },
-    "./interfaces/tui": {
-      "types": "./dist/interfaces/tui/index.d.ts",
-      "default": "./dist/interfaces/tui/index.js"
-    }
-  },
-  "description": "Evaluation toolkit for YouMind services",
-  "dependencies": {
-    "@clack/prompts": "^1.1.0",
-    "ai": "^6.0.111",
-    "ajv": "^8.18.0",
-    "canonicalize": "^2.1.0",
-    "yaml": "^2.8.2",
-    "zod": "^4.3.6"
-  },
+  "description": "YouEval monorepo",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -b tsconfig.build.json",
     "example:basics": "pnpm build && pnpm --filter @youeval/example-basics start",
     "example:youapi-agent": "pnpm build && pnpm --filter @youeval/example-youapi-agent start",
     "lint": "biome check . --diagnostic-level=error",
     "lint:fix": "biome check . --write --diagnostic-level=error",
     "format": "biome format . --write",
     "format:check": "biome format .",
-    "test": "node --import tsx --test",
-    "typecheck": "tsc --noEmit"
+    "test": "pnpm build && node --import tsx --test",
+    "typecheck": "pnpm -r --filter \"./packages/*\" run typecheck && pnpm -r --filter \"./examples/*\" run typecheck && pnpm exec tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.4",
     "@types/node": "^25.3.3",
     "tsx": "^4.20.3",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "ai": "^6.0.111",
+    "@clack/prompts": "^1.1.0"
   }
 }

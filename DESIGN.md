@@ -47,9 +47,9 @@ Adapters
 4. Interfaces consumes Core APIs only.
 5. `contracts` own suite/task schemas; `Suite` and `Task` domain factories call those parsers internally and remain the only legal construction path for runtime suite/task objects.
 6. Built-in adapters, graders, and TUI (interface) are treated like external modules for boundary control.
-7. Public package surfaces are limited to `youeval`, `youeval/adapters`, `youeval/graders`, `youeval/tools`, and `youeval/interfaces/**`.
+7. Public package surfaces are limited to `@youeval/core`, `@youeval/core/tools`, `@youeval/graders`, `@youeval/adapter-task-source-local`, `@youeval/adapter-result-store-local`, `@youeval/adapter-observer-console`, and `@youeval/interface-tui`.
 8. `core/domain`, `core/runtime`, `core/orchestrator`, `core/utils`, and `core/validation` remain internal implementation layers.
-9. Parser/schema entrypoints are optional tool capabilities. Runtime composition does not require callers to parse DSL documents themselves; when exposed publicly, they live under `youeval/tools`.
+9. Parser/schema entrypoints are optional tool capabilities. Runtime composition does not require callers to parse DSL documents themselves; when exposed publicly, they live under `@youeval/core/tools`.
 
 ### 3.3 Object Taxonomy
 

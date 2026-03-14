@@ -10,7 +10,7 @@ import {
   formatRunsTable,
   formatTrialGraderDetails,
   formatTrialsTable,
-} from '../src/interfaces/tui/formatters.js';
+} from '../packages/interface-tui/src/formatters.js';
 
 test('formatTrialsTable includes header row and aligned trial values', () => {
   const output = formatTrialsTable([

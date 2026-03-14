@@ -1,27 +1,27 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { LanguageModel } from 'ai';
-import type { ExecutionResult } from '../src/core/contracts/execution.js';
-import type { Grader } from '../src/core/contracts/runtime.js';
-import { GraderLayer } from '../src/core/domain/grader-layer.js';
-import { Graders } from '../src/core/runtime/grader-registry.js';
-import { contains as containsGrader } from '../src/graders/builtins/contains.js';
-import { exactMatch as exactMatchGrader } from '../src/graders/builtins/exact-match.js';
-import { jsonSchema as jsonSchemaGrader } from '../src/graders/builtins/json-schema.js';
-import { latencyThreshold as latencyThresholdGrader } from '../src/graders/builtins/latency-threshold.js';
-import { lengthCheck as lengthCheckGrader } from '../src/graders/builtins/length-check.js';
-import { outcomeCheck as outcomeCheckGrader } from '../src/graders/builtins/outcome-check.js';
-import { regex as regexGrader } from '../src/graders/builtins/regex.js';
-import { tokenBudget } from '../src/graders/builtins/token-budget.js';
-import { toolCalls as toolCallsGrader } from '../src/graders/builtins/tool-calls.js';
-import { transcript as transcriptGrader } from '../src/graders/builtins/transcript.js';
+import type { ExecutionResult } from '../packages/core/src/core/contracts/execution.js';
+import type { Grader } from '../packages/core/src/core/contracts/runtime.js';
+import { GraderLayer } from '../packages/core/src/core/domain/grader-layer.js';
+import { Graders } from '../packages/core/src/core/runtime/grader-registry.js';
+import { contains as containsGrader } from '../packages/graders/src/builtins/contains.js';
+import { exactMatch as exactMatchGrader } from '../packages/graders/src/builtins/exact-match.js';
+import { jsonSchema as jsonSchemaGrader } from '../packages/graders/src/builtins/json-schema.js';
+import { latencyThreshold as latencyThresholdGrader } from '../packages/graders/src/builtins/latency-threshold.js';
+import { lengthCheck as lengthCheckGrader } from '../packages/graders/src/builtins/length-check.js';
+import { outcomeCheck as outcomeCheckGrader } from '../packages/graders/src/builtins/outcome-check.js';
+import { regex as regexGrader } from '../packages/graders/src/builtins/regex.js';
+import { tokenBudget } from '../packages/graders/src/builtins/token-budget.js';
+import { toolCalls as toolCallsGrader } from '../packages/graders/src/builtins/tool-calls.js';
+import { transcript as transcriptGrader } from '../packages/graders/src/builtins/transcript.js';
 import {
   BuiltinLlmJudgeConfigValidator,
   BuiltinLlmJudgeGrader,
-} from '../src/graders/llm/builtin-llm-judge.js';
-import type { JudgeProvider, JudgeProviderResult } from '../src/graders/llm/judge-provider.js';
-import { LlmJudgeGrader } from '../src/graders/llm/llm-judge.js';
-import { registerBuiltinGraders } from '../src/graders/register-builtins.js';
+} from '../packages/graders/src/llm/builtin-llm-judge.js';
+import type { JudgeProvider, JudgeProviderResult } from '../packages/graders/src/llm/judge-provider.js';
+import { LlmJudgeGrader } from '../packages/graders/src/llm/llm-judge.js';
+import { registerBuiltinGraders } from '../packages/graders/src/register-builtins.js';
 
 // --- Test helpers ---
 
@@ -1026,7 +1026,7 @@ test('llm-judge: legacy provider/model fields fail', async () => {
 
 test('registerBuiltinGraders: registers all 10 non-llm built-in graders', () => {
   const registry = new Graders();
-  registerBuiltinGraders(registry);
+  registerBuiltinGraders(registry as unknown as Parameters<typeof registerBuiltinGraders>[0]);
   const list = registry.list();
   const expected = [
     'exact-match',
@@ -1048,7 +1048,7 @@ test('registerBuiltinGraders: registers all 10 non-llm built-in graders', () => 
 
 test('llm-judge is registered explicitly on the GraderRegistry', () => {
   const registry = new Graders();
-  registerBuiltinGraders(registry);
+  registerBuiltinGraders(registry as unknown as Parameters<typeof registerBuiltinGraders>[0]);
   registry.register(
     new BuiltinLlmJudgeGrader({
       profiles: {
@@ -1131,7 +1131,7 @@ test('BuiltinLlmJudgeGrader validates profile availability', () => {
 
 test('custom graders work via GraderRegistry.register()', () => {
   const registry = new Graders();
-  registerBuiltinGraders(registry);
+  registerBuiltinGraders(registry as unknown as Parameters<typeof registerBuiltinGraders>[0]);
   // Custom grader registration
   registry.register({
     type: 'my-custom',

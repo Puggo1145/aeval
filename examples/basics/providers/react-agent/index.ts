@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { ToolCallRecord, TurnRecord } from '@youeval/core';
 import { generateText, type LanguageModel, type ModelMessage, tool } from 'ai';
-import type { ToolCallRecord, TurnRecord } from 'youeval';
 import { z } from 'zod';
 
 const SYSTEM_PROMPT = `You are a file editing agent with access to a working directory.

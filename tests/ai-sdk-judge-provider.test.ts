@@ -4,7 +4,7 @@ import type { LanguageModel } from 'ai';
 import {
   createAiSdkJudgeProvider,
   type AiSdkJudgeProviderDependencies,
-} from '../src/graders/llm/ai-sdk-judge-provider.js';
+} from '../packages/graders/src/llm/ai-sdk-judge-provider.js';
 
 function createMockModel(modelId = 'gpt-4.1-mini'): LanguageModel {
   return { modelId } as unknown as LanguageModel;

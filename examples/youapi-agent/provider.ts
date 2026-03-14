@@ -4,7 +4,7 @@ import {
   type Provider,
   type Run,
   type TaskContext,
-} from 'youeval';
+} from '@youeval/core';
 
 type TurnRecord = NonNullable<NonNullable<ExecutionResult['trace']>['turns']>[number];
 type ToolCallRecord = NonNullable<TurnRecord['toolCalls']>[number];
