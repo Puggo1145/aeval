@@ -122,10 +122,8 @@ export const TaskDocumentSchema = z
     tier: OptionalMetadataStringSchema,
     difficulty: OptionalMetadataStringSchema,
     tags: TaskTagsSchema.optional(),
-    lifecycle: UnknownRecordSchema.optional(),
     provider: TaskProviderDocumentSchema,
     graders: TaskGradersDocumentSchema,
-    trackedMetrics: UnknownRecordSchema.optional(),
     execution: TaskExecutionDocumentSchema,
   })
   .strict();

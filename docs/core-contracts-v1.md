@@ -54,11 +54,9 @@ Standardized optional fields:
 4. `tier`
 5. `difficulty`
 6. `tags`
-7. `lifecycle`
-8. `trackedMetrics`
-9. `execution.retryOnError`
-10. `execution.trialsPerTask`
-11. `execution.maxConcurrency`
+7. `execution.retryOnError`
+8. `execution.trialsPerTask`
+9. `execution.maxConcurrency`
 
 Provider run rules:
 

@@ -8,7 +8,6 @@ import type {
 } from '../contracts/task.js';
 import { parseTaskDocument } from '../contracts/task.js';
 import { ValidationError } from '../errors/index.js';
-import { cloneAndFreezeRecord } from '../utils/immutability.js';
 import { GraderLayer } from './grader-layer.js';
 import { Run } from './run.js';
 
@@ -26,8 +25,6 @@ export class Task {
   readonly tier?: string;
   readonly difficulty?: string;
   readonly tags?: readonly string[];
-  readonly lifecycle?: Readonly<Record<string, unknown>>;
-  readonly trackedMetrics?: Readonly<Record<string, unknown>>;
   readonly providerId: string;
   readonly runs: readonly Run[];
   readonly graderStrategy: TaskGraderStrategy;
@@ -79,12 +76,6 @@ export class Task {
     }
     if (document.tags !== undefined) {
       this.tags = Object.freeze([...document.tags]);
-    }
-    if (document.lifecycle !== undefined) {
-      this.lifecycle = cloneAndFreezeRecord(document.lifecycle);
-    }
-    if (document.trackedMetrics !== undefined) {
-      this.trackedMetrics = cloneAndFreezeRecord(document.trackedMetrics);
     }
     if ('passThreshold' in document.graders && document.graders.passThreshold !== undefined) {
       this.passThreshold = document.graders.passThreshold;
@@ -138,13 +129,11 @@ export class Task {
       ...(this.tier !== undefined ? { tier: this.tier } : {}),
       ...(this.difficulty !== undefined ? { difficulty: this.difficulty } : {}),
       ...(this.tags !== undefined ? { tags: [...this.tags] } : {}),
-      ...(this.lifecycle !== undefined ? { lifecycle: { ...this.lifecycle } } : {}),
       provider: {
         id: this.providerId,
         runs: this.runs.map((run) => run.toDocument()),
       },
       graders,
-      ...(this.trackedMetrics !== undefined ? { trackedMetrics: { ...this.trackedMetrics } } : {}),
       execution: { ...this.execution },
     };
   }

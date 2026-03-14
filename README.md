@@ -208,8 +208,6 @@ execution:
 | `tier` | 可选 | 字符串 | 自定义分层，比如 `L0/L1/L2`。 |
 | `difficulty` | 可选 | 字符串 | 自定义难度，比如 `easy/medium/hard`。 |
 | `tags` | 可选 | 字符串数组 | 自定义标签。 |
-| `lifecycle` | 可选 | object | 自定义生命周期元数据。 |
-| `trackedMetrics` | 可选 | object | 自定义跟踪指标定义。 |
 | `provider` | 必填 | object | 声明调用哪个 provider、跑哪些 run。 |
 | `graders` | 必填 | object | 声明怎么判分。 |
 | `execution` | 必填 | object | 声明超时、重试、trial 数、并发等执行策略。 |
