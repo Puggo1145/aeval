@@ -282,6 +282,12 @@ interface RunManifest {
 }
 ```
 
+Rules:
+
+1. `completedAt` is emitted only when one run reaches a completed summary write
+2. Core does not derive a public run status enum from manifest-only records
+3. Callers interpret manifest-only vs summary-backed runs according to their own product semantics
+
 ### 6.2 RunSummary
 
 ```ts

@@ -349,7 +349,6 @@ export class Core implements CoreApi {
 
       records.push({
         runId,
-        status: summaryRecord ? 'completed' : 'interrupted',
         manifest: manifestRecord,
         summary: summaryRecord?.summary ?? null,
       });

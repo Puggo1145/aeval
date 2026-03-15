@@ -18,11 +18,11 @@ export async function compareBaseline(core: CoreApi): Promise<void> {
   const s = p.spinner();
   s.start('Loading runs…');
   const records = await core.results.list();
-  const completedRuns = records.filter((record) => record.status === 'completed');
+  const completedRuns = records.filter((record) => record.summary !== null);
   s.stop('Runs loaded.');
 
   if (completedRuns.length === 0) {
-    p.log.warn('No completed runs found.');
+    p.log.warn('No runs with summaries found.');
     return;
   }
 
@@ -58,7 +58,7 @@ export async function compareBaseline(core: CoreApi): Promise<void> {
     return candidateTaskId === currentTaskId;
   });
   if (baselineOptions.length === 0) {
-    p.log.warn('No other completed runs for the same task are available as baseline.');
+    p.log.warn('No other runs with summaries for the same task are available as baseline.');
     return;
   }
 

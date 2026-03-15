@@ -25,10 +25,6 @@ export function formatTaskText(value: string | undefined): string {
   return value.trim();
 }
 
-function formatRunStatus(status: RunRecord['status']): string {
-  return status.toUpperCase();
-}
-
 function formatRunTaskId(record: RunRecord): string {
   return record.summary?.taskId ?? record.manifest?.taskId ?? 'unknown';
 }
@@ -66,10 +62,10 @@ export function formatRunOptionHint(record: RunRecord, metadata: RunMetadata | u
 
 export function formatRunOptionStatsHint(record: RunRecord): string {
   if (record.summary) {
-    return `status=${record.status} | pass=${formatPassRate(record.summary.passRate)} | task=${record.summary.taskId} | trials=${record.summary.totalTrials}`;
+    return `pass=${formatPassRate(record.summary.passRate)} | task=${record.summary.taskId} | trials=${record.summary.totalTrials}`;
   }
 
-  return `status=${record.status} | task=${formatRunTaskId(record)}`;
+  return `task=${formatRunTaskId(record)} | summary=missing`;
 }
 
 export function formatSummaryNote(
@@ -80,14 +76,15 @@ export function formatSummaryNote(
   p.note(formatRunSummaryDetails(summary, metadata, trials), 'Run Summary');
 }
 
-export function formatInterruptedRunNote(record: RunRecord, metadata?: RunMetadata): void {
+export function formatManifestOnlyRunNote(record: RunRecord, metadata?: RunMetadata): void {
   const lines = [
     `Run ID:       ${record.runId}`,
-    `Status:       ${formatRunStatus(record.status)}`,
     `Suite:        ${formatSuiteText(metadata?.suiteName ?? record.manifest?.suiteName)}`,
     `Task:         ${formatTaskText(metadata?.taskId ?? formatRunTaskId(record))}`,
     `Run Name:     ${record.manifest?.runName ?? 'unknown'}`,
     `Started At:   ${record.manifest?.startedAt ?? 'unknown'}`,
+    `Completed At: ${record.manifest?.completedAt ?? 'n/a'}`,
+    'Summary:      unavailable',
   ];
 
   p.note(lines.join('\n'), 'Run Summary');
@@ -258,10 +255,9 @@ export function formatRunsTable(
     return 'No runs found.';
   }
 
-  const header = ['Run ID', 'Status', 'Suite', 'Task', 'Run Name', 'Pass Rate', 'Trials'];
+  const header = ['Run ID', 'Suite', 'Task', 'Run Name', 'Pass Rate', 'Trials'];
   const rows = records.map((r) => [
     r.runId,
-    formatRunStatus(r.status),
     formatSuiteText(metadataByRunId.get(r.runId)?.suiteName),
     formatTaskText(metadataByRunId.get(r.runId)?.taskId ?? formatRunTaskId(r)),
     r.summary?.runName ?? r.manifest?.runName ?? 'unknown',
@@ -269,7 +265,7 @@ export function formatRunsTable(
     r.summary ? String(r.summary.totalTrials) : '-',
   ]);
 
-  return formatBoundedTable(header, rows, [20, 12, 18, 28, 18, 10, 8], [10, 6, 8, 12, 8, 9, 6]);
+  return formatBoundedTable(header, rows, [20, 18, 28, 18, 10, 8], [10, 8, 12, 8, 9, 6]);
 }
 
 export function formatTrialsTable(records: TrialRecord[]): string {

@@ -132,7 +132,7 @@ test('E2E smoke: full chain from suite discovery to result-store readback', asyn
 
     const runs = await core.results.list();
     assert.equal(runs.length, 2);
-    assert.ok(runs.every((run) => run.status === 'completed'));
+    assert.ok(runs.every((run) => run.summary !== null));
 
     const manifest = await core.results.getManifest(runs[0]!.runId);
     assert.equal(manifest?.suiteId, 'basic-llm');

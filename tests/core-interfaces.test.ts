@@ -270,6 +270,16 @@ async function saveRunSummary(
   });
 }
 
+async function saveRunManifest(
+  stores: Stores,
+  input: Omit<RunManifestRecord, 'schemaVersion'>,
+): Promise<void> {
+  await stores.saveRunManifest({
+    schemaVersion: SCHEMA_VERSIONS.RUN_MANIFEST,
+    ...input,
+  });
+}
+
 test('listSuites exposes adapter-backed suite discovery', async () => {
   const core = createTestCore();
 
@@ -748,10 +758,9 @@ test('streamTask emits run lifecycle events for each provider run', async () => 
   assert.equal(eventTypes.filter((type) => type === 'run:completed').length, 2);
 });
 
-test('listRuns includes interrupted runs without summaries', async () => {
+test('listRuns includes manifest-only runs without deriving a status', async () => {
   const stores = new InMemoryStore();
-  const interruptedManifest: RunManifestRecord = {
-    schemaVersion: SCHEMA_VERSIONS.RUN_MANIFEST,
+  await saveRunManifest(stores, {
     runId: 'run-interrupted',
     suiteId: 'basic-llm',
     suiteName: 'Basic LLM',
@@ -765,8 +774,7 @@ test('listRuns includes interrupted runs without summaries', async () => {
     taskHash: 'task-hash-001',
     configHash: 'config-hash-001',
     startedAt: '2026-03-05T00:00:00.000Z',
-  };
-  await stores.saveRunManifest(interruptedManifest);
+  });
   await stores.saveTrial({
     runId: 'run-interrupted',
     trial: {
@@ -793,11 +801,10 @@ test('listRuns includes interrupted runs without summaries', async () => {
   const core = createTestCore(stores);
 
   const runs = await core.results.list();
-  const interrupted = runs.find((run) => run.runId === 'run-interrupted');
+  const manifestOnlyRun = runs.find((run) => run.runId === 'run-interrupted');
 
-  assert.equal(interrupted?.status, 'interrupted');
-  assert.equal(interrupted?.summary, null);
-  assert.equal(interrupted?.manifest?.runName, 'mini');
+  assert.equal(manifestOnlyRun?.summary, null);
+  assert.equal(manifestOnlyRun?.manifest?.runName, 'mini');
 });
 
 test('results.list preserves store-provided runId order', async () => {

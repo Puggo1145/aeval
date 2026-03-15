@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  formatInterruptedRunNote,
   formatRunOptionHint,
   formatRunOptionLabel,
   formatRunOptionStatsHint,
@@ -45,7 +44,6 @@ test('formatRunsTable includes suite and task columns', () => {
     [
       {
         runId: 'run-1',
-        status: 'completed',
         manifest: null,
         summary: {
           schemaVersion: 'run-summary.v1',
@@ -68,9 +66,8 @@ test('formatRunsTable includes suite and task columns', () => {
     ]),
   );
 
-  assert.match(output, /^Run ID\s+Status\s+Suite\s+Task\s+Run Name\s+Pass Rate\s+Trials/m);
+  assert.match(output, /^Run ID\s+Suite\s+Task\s+Run Name\s+Pass Rate\s+Trials/m);
   assert.match(output, /file-edit-agent/);
-  assert.match(output, /COMPLETED/);
 });
 
 test('formatRunsTable truncates long identifiers to keep columns stable', () => {
@@ -78,7 +75,6 @@ test('formatRunsTable truncates long identifiers to keep columns stable', () => 
     [
       {
         runId: 'run-1234567890-abcdefghijklmnopqrstuvwxyz',
-        status: 'completed',
         manifest: null,
         summary: {
           schemaVersion: 'run-summary.v1',
@@ -110,7 +106,6 @@ test('formatRunOptionHint falls back to unknown suite and task when missing', ()
     formatRunOptionHint(
       {
         runId: 'run-1',
-        status: 'completed',
         manifest: null,
         summary: {
           schemaVersion: 'run-summary.v1',
@@ -131,7 +126,6 @@ test('formatRunOptionLabel includes timestamp and shortened run id when manifest
   assert.equal(
     formatRunOptionLabel({
       runId: '7a215d3d-f536-4c23-92a3-fbab4076d3b3',
-      status: 'completed',
       manifest: {
         schemaVersion: 'run-manifest.v1',
         runId: '7a215d3d-f536-4c23-92a3-fbab4076d3b3',
@@ -166,7 +160,6 @@ test('formatRunOptionLabel falls back to shortened run id when manifest timestam
   assert.equal(
     formatRunOptionLabel({
       runId: 'run-1234567890',
-      status: 'completed',
       manifest: null,
       summary: {
         schemaVersion: 'run-summary.v1',
@@ -185,7 +178,6 @@ test('formatRunOptionStatsHint includes pass rate, task id, and trial count', ()
   assert.equal(
     formatRunOptionStatsHint({
       runId: 'run-1',
-      status: 'completed',
       manifest: null,
       summary: {
         schemaVersion: 'run-summary.v1',
@@ -196,15 +188,14 @@ test('formatRunOptionStatsHint includes pass rate, task id, and trial count', ()
         passRate: 0.5,
       },
     }),
-    'status=completed | pass=50.0% | task=task-001 | trials=3',
+    'pass=50.0% | task=task-001 | trials=3',
   );
 });
 
-test('formatRunOptionStatsHint shows interrupted status for incomplete runs', () => {
+test('formatRunOptionStatsHint shows raw manifest-only details for incomplete runs', () => {
   assert.equal(
     formatRunOptionStatsHint({
       runId: 'run-2',
-      status: 'interrupted',
       manifest: {
         schemaVersion: 'run-manifest.v1',
         runId: 'run-2',
@@ -220,10 +211,11 @@ test('formatRunOptionStatsHint shows interrupted status for incomplete runs', ()
         taskHash: 'task-hash-002',
         configHash: 'config-hash-002',
         startedAt: '2026-03-06T00:00:00.000Z',
+        completedAt: '2026-03-06T00:00:01.000Z',
       },
       summary: null,
     }),
-    'status=interrupted | task=task-002',
+    'task=task-002 | summary=missing',
   );
 });
 

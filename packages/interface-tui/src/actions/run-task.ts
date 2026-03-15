@@ -260,7 +260,6 @@ export async function runTask(core: CoreApi): Promise<void> {
           indicatorState = 'completed';
           completedRuns.push({
             runId: event.summary.runId,
-            status: 'completed',
             manifest: null,
             summary: event.summary,
           });

@@ -180,6 +180,8 @@ Each task run is a first-class run record:
 `passHatK` is emitted only when `totalTrials > 1`; when emitted, it is `1` if all trials pass, otherwise `0`.
 `avgLatencyMs` is emitted only from provider-reported `execution.metrics.latencyMs`
 values and never from core `Trial.timings.durationMs`.
+Core returns raw persisted facts only: `RunManifest`, optional `RunSummary`,
+and trial records. It does not derive a public run status enum.
 
 ## 6. Tasks Boundary
 
@@ -252,7 +254,7 @@ The TUI flow is:
 3. stream task execution
 4. inspect stored runs, summaries, and trials
 
-Results views include interrupted runs that have a manifest but no completed summary yet.
+Results views include manifest-only runs without a derived status label.
 
 Runtime display uses `taskId + runName + trialIndex`.
 

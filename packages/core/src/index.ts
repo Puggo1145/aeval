@@ -37,7 +37,7 @@ export {
   toExecutionResultData,
 } from './core/contracts/execution.js';
 export type { RunManifestRecord, RunManifestSourceRecord } from './core/contracts/run-manifest.js';
-export type { RunRecord, RunStatus } from './core/contracts/run-record.js';
+export type { RunRecord } from './core/contracts/run-record.js';
 export type { RunSummaryData, RunSummaryRecord } from './core/contracts/run-summary.js';
 export {
   type BaselineComparison,

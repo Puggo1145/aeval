@@ -24,7 +24,6 @@ export interface TaskRunOrchestratorInput {
 }
 
 const OBSERVER_NOTIFY_TIMEOUT_MS = 300;
-
 export class TaskRunOrchestrator {
   constructor(
     private readonly input: TaskRunOrchestratorInput,
@@ -45,18 +44,7 @@ export class TaskRunOrchestrator {
       run: this.input.run,
       execution: this.input.execution,
     });
-    await this.deps.stores.saveRunManifest(manifest.toRecord());
-
     const totalTrials = this.input.execution.trialsPerTask;
-    const runStartedEvent = RunEvents.started(
-      runId,
-      this.input.task.id,
-      this.input.run.name,
-      totalTrials,
-    );
-    yield runStartedEvent;
-    await notifyObservers(this.deps.observers, runStartedEvent);
-
     const completedTrials: Trial[] = [];
     const runAbortController = new AbortController();
     const trialIndices = Array.from({ length: totalTrials }, (_, index) => index);
@@ -80,6 +68,16 @@ export class TaskRunOrchestrator {
       }
       eventChannel.close();
     };
+    await this.deps.stores.saveRunManifest(manifest.toRecord());
+
+    const runStartedEvent = RunEvents.started(
+      runId,
+      this.input.task.id,
+      this.input.run.name,
+      totalTrials,
+    );
+    yield runStartedEvent;
+    await notifyObservers(this.deps.observers, runStartedEvent);
 
     if (this.input.signal) {
       if (this.input.signal.aborted) {

@@ -2,7 +2,7 @@ import * as p from '@clack/prompts';
 
 import type { CoreApi } from '@youeval/core';
 import {
-  formatInterruptedRunNote,
+  formatManifestOnlyRunNote,
   formatRunOptionLabel,
   formatRunOptionStatsHint,
   formatSummaryNote,
@@ -83,5 +83,5 @@ export async function viewReport(core: CoreApi): Promise<void> {
     return;
   }
 
-  formatInterruptedRunNote(record, metadataByRunId.get(runId));
+  formatManifestOnlyRunNote(record, metadataByRunId.get(runId));
 }

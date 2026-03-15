@@ -202,6 +202,7 @@ test('TaskRunOrchestrator persists manifest, trials, and summary for one task ru
   assert.equal(manifest?.suiteId, 'basic-llm');
   assert.equal(manifest?.taskId, 'basic-llm/task-001');
   assert.equal(manifest?.runName, 'mini');
+  assert.ok(manifest?.completedAt);
   assert.equal(manifest?.taskHash, computeSha256(task.toDocument()));
   assert.equal(
     manifest?.configHash,
@@ -216,6 +217,102 @@ test('TaskRunOrchestrator persists manifest, trials, and summary for one task ru
   assert.equal(summaryRecord?.summary.totalTrials, 2);
   assert.equal(summaryRecord?.summary.passRate, 1);
   assert.equal(stores.trialRecords.size, 1);
+});
+
+test('TaskRunOrchestrator leaves manifest incomplete when the input signal aborts', async () => {
+  const { deps, providers, stores, runtimeDefaults } = createDeps();
+  const inputAbortController = new AbortController();
+
+  providers.register({
+    id: 'mock-provider',
+    async execute(ctx): Promise<ExecutionResult> {
+      await new Promise<void>((resolve) => {
+        ctx.signal.addEventListener('abort', () => resolve(), { once: true });
+      });
+      return {
+        output: 'aborted',
+      };
+    },
+  });
+
+  const task = createTask({
+    execution: {
+      timeoutMs: 1000,
+      retryOnError: 0,
+      trialsPerTask: 1,
+      maxConcurrency: 1,
+    },
+  });
+
+  setTimeout(() => inputAbortController.abort(), 0).unref();
+  const events = await collectEvents(
+    new TaskRunOrchestrator(
+      {
+        suite: createSuite(),
+        task,
+        run: task.runs[0]!,
+        execution: resolveExecutionPolicy(task, runtimeDefaults),
+        signal: inputAbortController.signal,
+      },
+      deps,
+    ).run(),
+  );
+
+  const [manifest] = [...stores.runManifests.values()];
+
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ['run:started', 'trial:started'],
+  );
+  assert.equal(manifest?.completedAt, undefined);
+  assert.equal(stores.runSummaries.size, 0);
+});
+
+test('TaskRunOrchestrator leaves manifest incomplete on fatal persistence errors', async () => {
+  const stores = new InMemoryStore();
+  const { deps, providers, runtimeDefaults } = createDeps(stores);
+
+  providers.register({
+    id: 'mock-provider',
+    async execute(): Promise<ExecutionResult> {
+      return {
+        output: 'ok',
+      };
+    },
+  });
+
+  stores.saveTrial = async () => {
+    throw new Error('saveTrial exploded');
+  };
+
+  const task = createTask({
+    execution: {
+      timeoutMs: 1000,
+      retryOnError: 0,
+      trialsPerTask: 1,
+      maxConcurrency: 1,
+    },
+  });
+
+  await assert.rejects(
+    collectEvents(
+      new TaskRunOrchestrator(
+        {
+          suite: createSuite(),
+          task,
+          run: task.runs[0]!,
+          execution: resolveExecutionPolicy(task, runtimeDefaults),
+        },
+        deps,
+      ).run(),
+    ),
+    /saveTrial exploded/,
+  );
+
+  const [manifest] = [...stores.runManifests.values()];
+
+  assert.equal(manifest?.completedAt, undefined);
+  assert.equal(stores.runSummaries.size, 0);
 });
 
 test('TaskRunOrchestrator computes passRate as passedTrials divided by totalTrials', async () => {
