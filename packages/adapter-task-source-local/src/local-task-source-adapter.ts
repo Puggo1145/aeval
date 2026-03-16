@@ -317,6 +317,14 @@ export class LocalTask implements Tasks {
     const rootDirRealPath = await this.resolveRootDirRealPath();
     const entry = await this.findSuiteEntry(suiteId);
     const patterns = entry.suite.discover.map((pattern) => normalizeDiscoverPattern(pattern));
+    if (patterns.length === 0) {
+      return {
+        document: entry.document,
+        source: entry.source,
+        taskRefs: [],
+      };
+    }
+
     const matchedTaskRefs = Array.from(
       new Set(
         (

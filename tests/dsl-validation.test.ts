@@ -77,15 +77,12 @@ test('parseSuiteDocument rejects unknown fields', async () => {
   );
 });
 
-test('parseSuiteDocument rejects empty discover patterns', async () => {
-  await assert.rejects(
-    async () =>
-      parseSuiteDocument({
-        ...createValidSuiteInput(),
-        discover: [],
-      }),
-    (error: unknown) => expectValidationField(error, 'suite.discover'),
-  );
+test('parseSuiteDocument accepts empty discover patterns', () => {
+  const suite = parseSuiteDocument({
+    ...createValidSuiteInput(),
+    discover: [],
+  });
+  assert.deepEqual(suite.discover, []);
 });
 
 test('parseTaskDocument accepts provider runs and execution.maxConcurrency', () => {

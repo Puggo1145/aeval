@@ -99,6 +99,15 @@ function createSuiteDocument(): SuiteDocument {
   };
 }
 
+function createEmptySuiteDocument(): SuiteDocument {
+  return {
+    schemaVersion: 'suite.v1',
+    id: 'empty-suite',
+    name: 'Empty Suite',
+    discover: [],
+  };
+}
+
 function createTaskDocument(): TaskDocument {
   return {
     schemaVersion: SCHEMA_VERSIONS.TASK,
@@ -515,6 +524,42 @@ test('loadSuite syncs LoadedSuite metadata after resolving a bare suite input', 
 
   assert.equal(suite.source?.adapter, 'memory');
   assert.deepEqual(suite.taskIndexes, taskIndexes);
+});
+
+test('loadSuite accepts bare empty suite definitions and returns no task indexes', async () => {
+  const tasks: Tasks = {
+    async listSuites(): Promise<SuiteDescriptor[]> {
+      return [
+        {
+          id: 'empty-suite',
+          name: 'Empty Suite',
+          ref: 'suites/empty.yaml',
+        },
+      ];
+    },
+    async resolveSuite(suiteId: string): Promise<ResolvedSuite> {
+      assert.equal(suiteId, 'empty-suite');
+      return {
+        document: createEmptySuiteDocument(),
+        source: {
+          adapter: 'memory',
+          ref: 'suites/empty.yaml',
+        },
+        taskRefs: [],
+      };
+    },
+    async resolveTask(): Promise<ResolvedTask> {
+      throw new Error('resolveTask should not be called for an empty suite.');
+    },
+  };
+
+  const core = createTestCoreWithTasks(tasks);
+  const suite = await core.suites.load(createEmptySuiteDocument());
+  const taskIndexes = await suite.listTasks();
+
+  assert.deepEqual(taskIndexes, []);
+  assert.equal(suite.source?.adapter, 'memory');
+  assert.deepEqual(suite.taskIndexes, []);
 });
 
 test('core projects task indexes and rejects duplicate task ids within one suite', async () => {

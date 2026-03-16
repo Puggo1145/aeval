@@ -29,7 +29,7 @@ Required fields:
 Validation rules:
 
 1. Only `suite.v1` is accepted.
-2. `discover.length >= 1`.
+2. `discover[]` may be empty.
 3. `discover[]` contains only non-empty strings.
 4. Unknown fields fail fast.
 5. `parseSuiteDocument(input)` is the contract entrypoint for structural validation and is exposed as an optional tool API under `@youeval/core/tools`.

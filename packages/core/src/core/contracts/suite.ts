@@ -10,9 +10,7 @@ export const SuiteDocumentSchema = z
     schemaVersion: z.literal(SCHEMA_VERSIONS.SUITE),
     id: NonEmptyStringSchema,
     name: NonEmptyStringSchema,
-    discover: z.array(NonEmptyStringSchema).min(1, {
-      message: "Field 'suite.discover' must contain at least one pattern.",
-    }),
+    discover: z.array(NonEmptyStringSchema),
   })
   .strict();
 

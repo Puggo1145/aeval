@@ -73,7 +73,7 @@ discover:
 
 Rules:
 
-1. `discover[]` is required.
+1. `discover[]` is required and may be empty.
 2. Unknown fields fail fast.
 3. `discover[]` is resolved relative to `new LocalTask({ rootDir })`.
 

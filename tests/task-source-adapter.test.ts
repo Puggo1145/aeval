@@ -143,6 +143,28 @@ test('resolveSuite expands discover globs into task refs', async () => {
   }
 });
 
+test('resolveSuite accepts suites with empty discover lists', async () => {
+  const rootDir = await createTempRootDir();
+  try {
+    await writeYaml(
+      rootDir,
+      'suites/empty.yaml',
+      `schemaVersion: "suite.v1"
+id: "empty-suite"
+name: "Empty Suite"
+discover: []
+`,
+    );
+
+    const adapter = new LocalTask({ rootDir });
+    const resolvedSuite = await adapter.resolveSuite('empty-suite');
+
+    assert.deepEqual(resolvedSuite.taskRefs, []);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
 test('resolveSuite ignores colocated suite documents matched by discover globs', async () => {
   const rootDir = await createTempRootDir();
   try {
