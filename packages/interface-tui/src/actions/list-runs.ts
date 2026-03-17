@@ -1,6 +1,6 @@
 import * as p from '@clack/prompts';
 
-import type { CoreApi } from '@youeval/core';
+import type { CoreApi } from '@youmindinc/youeval-core';
 import { formatRunsTable } from '../formatters.js';
 import { readRunMetadataMap } from '../run-metadata.js';
 

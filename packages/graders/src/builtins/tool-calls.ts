@@ -1,4 +1,8 @@
-import type { ExecutionResult, GraderResult, ToolCallRecord } from '@youeval/core';
+import type {
+  ExecutionResult,
+  GraderResult,
+  ToolCallRecord,
+} from '@youmindinc/youeval-core';
 import { z } from 'zod';
 import { ConfiguredGrader } from '../base-grader.js';
 import {

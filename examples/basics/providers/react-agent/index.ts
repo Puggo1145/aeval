@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { ToolCallRecord, TurnRecord } from '@youeval/core';
+import type { ToolCallRecord, TurnRecord } from '@youmindinc/youeval-core';
 import { generateText, type LanguageModel, type ModelMessage, tool } from 'ai';
 import { z } from 'zod';
 

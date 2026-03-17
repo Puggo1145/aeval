@@ -4,7 +4,7 @@ import {
   type Provider,
   type Run,
   type TaskContext,
-} from '@youeval/core';
+} from '@youmindinc/youeval-core';
 import { generateText } from 'ai';
 
 function getStringParam(

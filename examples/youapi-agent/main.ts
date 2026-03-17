@@ -2,12 +2,15 @@ import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createOpenAI } from '@ai-sdk/openai';
-import { ConsoleObserver } from '@youeval/adapter-observer-console';
-import { LocalStore } from '@youeval/adapter-result-store-local';
-import { LocalTask } from '@youeval/adapter-task-source-local';
-import { Core, Graders, Providers } from '@youeval/core';
-import { BuiltinLlmJudgeGrader, registerBuiltinGraders } from '@youeval/graders';
-import { runTui } from '@youeval/interface-tui';
+import { ConsoleObserver } from '@youmindinc/youeval-adapter-observer-console';
+import { LocalStore } from '@youmindinc/youeval-adapter-result-store-local';
+import { LocalTask } from '@youmindinc/youeval-adapter-task-source-local';
+import { Core, Graders, Providers } from '@youmindinc/youeval-core';
+import {
+  BuiltinLlmJudgeGrader,
+  registerBuiltinGraders,
+} from '@youmindinc/youeval-graders';
+import { runTui } from '@youmindinc/youeval-interface-tui';
 import { YouapiAgentProvider } from './provider.ts';
 
 const currentDir = dirname(fileURLToPath(import.meta.url));

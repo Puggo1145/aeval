@@ -8,7 +8,7 @@ import type {
   RunSummaryRecord,
   Stores,
   TrialResultRecord,
-} from '@youeval/core';
+} from '@youmindinc/youeval-core';
 
 const MANIFEST_FILE = 'manifest.json';
 const SUMMARY_FILE = 'summary.json';

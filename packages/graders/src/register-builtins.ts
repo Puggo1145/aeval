@@ -1,4 +1,4 @@
-import type { Graders } from '@youeval/core';
+import type { Graders } from '@youmindinc/youeval-core';
 import { contains } from './builtins/contains.js';
 import { exactMatch } from './builtins/exact-match.js';
 import { jsonSchema } from './builtins/json-schema.js';

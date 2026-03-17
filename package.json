@@ -1,16 +1,18 @@
 {
-  "name": "@youeval/monorepo",
+  "name": "@youmindinc/youeval-monorepo",
   "private": true,
   "type": "module",
   "description": "YouEval monorepo",
   "scripts": {
     "build": "tsc -b tsconfig.build.json",
-    "example:basics": "pnpm build && pnpm --filter @youeval/example-basics start",
-    "example:youapi-agent": "pnpm build && pnpm --filter @youeval/example-youapi-agent start",
+    "example:basics": "pnpm build && pnpm --filter @youmindinc/youeval-example-basics start",
+    "example:youapi-agent": "pnpm build && pnpm --filter @youmindinc/youeval-example-youapi-agent start",
     "lint": "biome check . --diagnostic-level=error",
     "lint:fix": "biome check . --write --diagnostic-level=error",
     "format": "biome format . --write",
     "format:check": "biome format .",
+    "publish:github": "pnpm -r --filter \"./packages/*\" publish --no-git-checks",
+    "publish:github:core-graders": "pnpm -r --filter @youmindinc/youeval-core --filter @youmindinc/youeval-graders publish --no-git-checks",
     "test": "pnpm build && node --import tsx --test",
     "typecheck": "pnpm -r --filter \"./packages/*\" run typecheck && pnpm -r --filter \"./examples/*\" run typecheck && pnpm exec tsc -p tsconfig.json --noEmit"
   },

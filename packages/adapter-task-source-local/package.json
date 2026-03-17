@@ -1,9 +1,14 @@
 {
-  "name": "@youeval/adapter-task-source-local",
+  "name": "@youmindinc/youeval-adapter-task-source-local",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YouMindInc/youeval.git",
+    "directory": "packages/adapter-task-source-local"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -13,15 +18,18 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "scripts": {
     "build": "tsc -b tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "peerDependencies": {
-    "@youeval/core": "^0.1.0"
+    "@youmindinc/youeval-core": "^0.1.0"
   },
   "devDependencies": {
-    "@youeval/core": "workspace:*"
+    "@youmindinc/youeval-core": "workspace:*"
   },
   "dependencies": {
     "canonicalize": "^2.1.0",

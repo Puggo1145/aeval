@@ -1,6 +1,6 @@
 import * as p from '@clack/prompts';
 
-import type { CoreApi } from '@youeval/core';
+import type { CoreApi } from '@youmindinc/youeval-core';
 import { formatRunOptionHint, formatRunOptionLabel } from '../formatters.js';
 import { readRunMetadataMap } from '../run-metadata.js';
 import { handleCancel } from '../utils.js';

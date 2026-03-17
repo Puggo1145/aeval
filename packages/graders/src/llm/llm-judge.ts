@@ -4,7 +4,7 @@ import type {
   GraderLayer,
   GraderResult,
   GraderValidationResult,
-} from '@youeval/core';
+} from '@youmindinc/youeval-core';
 import { z } from 'zod';
 import { parseGraderConfig } from '../config-validation.js';
 import type { JudgeProvider } from './judge-provider.js';

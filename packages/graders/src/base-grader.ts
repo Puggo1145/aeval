@@ -4,7 +4,7 @@ import type {
   GraderLayer,
   GraderResult,
   GraderValidationResult,
-} from '@youeval/core';
+} from '@youmindinc/youeval-core';
 
 export interface ConfiguredGraderOptions {
   type: string;

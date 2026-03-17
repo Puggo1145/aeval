@@ -38,17 +38,79 @@ pnpm test
 
 外部实现只应依赖这些公开入口：
 
-- `@youeval/core`：评测框架核心（Core API、contracts、runtime registry）
-- `@youeval/core/tools`：可选 parser / schema 工具能力（DSL 预校验、导入检查、CI lint）
-- `@youeval/graders`：内置 graders 与 `registerBuiltinGraders(...)`
-- `@youeval/adapter-task-source-local`：本地 YAML 任务源适配器 `LocalTask`
-- `@youeval/adapter-result-store-local`：本地结果存储适配器 `LocalStore`
-- `@youeval/adapter-observer-console`：控制台观察器 `ConsoleObserver`
-- `@youeval/interface-tui`：预置本地交互 TUI
+- `@youmindinc/youeval-core`：评测框架核心（Core API、contracts、runtime registry）
+- `@youmindinc/youeval-core/tools`：可选 parser / schema 工具能力（DSL 预校验、导入检查、CI lint）
+- `@youmindinc/youeval-graders`：内置 graders 与 `registerBuiltinGraders(...)`
+- `@youmindinc/youeval-adapter-task-source-local`：本地 YAML 任务源适配器 `LocalTask`
+- `@youmindinc/youeval-adapter-result-store-local`：本地结果存储适配器 `LocalStore`
+- `@youmindinc/youeval-adapter-observer-console`：控制台观察器 `ConsoleObserver`
+- `@youmindinc/youeval-interface-tui`：预置本地交互 TUI
 
 ### Tips
 - 内置 adapters / graders / TUI 现在按包独立发布，按需安装即可；不应直接依赖 `core/domain/*`、`core/runtime/*`、`core/utils/*` 这类内部实现路径。
-- 运行时接入路径默认不依赖 parser。`Tasks` adapter 返回 raw document，Core 自己在加载 suite/task 时完成解析与校验；如果调用方想在任务录入前做预检查，可按需从 `@youeval/core/tools` 使用 `parseSuiteDocument(...)`、`parseTaskDocument(...)` 等工具函数。
+- 运行时接入路径默认不依赖 parser。`Tasks` adapter 返回 raw document，Core 自己在加载 suite/task 时完成解析与校验；如果调用方想在任务录入前做预检查，可按需从 `@youmindinc/youeval-core/tools` 使用 `parseSuiteDocument(...)`、`parseTaskDocument(...)` 等工具函数。
+
+## 发布到 GitHub Packages（私有）
+
+当前仓库远端是 `github.com/YouMindInc/youeval`，因此发布到 GitHub Packages 时，包 scope 统一使用 `@youmindinc/*`。
+
+### 仓库内配置
+
+根目录 `.npmrc`：
+
+```ini
+@youmindinc:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+always-auth=true
+```
+
+各发布包 `package.json` 需要具备：
+
+- `name: "@youmindinc/youeval-<pkg>"`
+- `publishConfig.registry: "https://npm.pkg.github.com"`
+- `repository.url: "git+https://github.com/YouMindInc/youeval.git"`
+- `repository.directory: "packages/<pkg-dir>"`
+
+本仓库已经补齐以上配置，并提供发布脚本：
+
+```bash
+pnpm publish:github
+```
+
+如果你当前只想先发 `core` 和 `graders`，直接用：
+
+```bash
+pnpm publish:github:core-graders
+```
+
+本地发布前需要准备一个具备 `write:packages` 权限的 GitHub token：
+
+```bash
+export GITHUB_TOKEN=YOUR_GITHUB_PAT
+pnpm install
+pnpm build
+pnpm publish:github:core-graders
+```
+
+也可以直接使用仓库内的 GitHub Actions 工作流，由 `GITHUB_TOKEN` 配合 `packages: write` 权限完成发布。手动触发时默认只发 `core-graders`，如果你之后要一次性发全部包，再在工作流输入里切到 `all`。
+
+### 其他项目如何安装
+
+消费方项目需要在自己的 `.npmrc` 里声明同样的 scope registry：
+
+```ini
+@youmindinc:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+always-auth=true
+```
+
+然后安装：
+
+```bash
+pnpm add @youmindinc/youeval-core @youmindinc/youeval-graders
+```
+
+如果是 CI 或公司内部项目，给对应 token 配 `read:packages` 即可。
 
 ## 从 `youapi-agent` 示例入门
 
@@ -82,12 +144,12 @@ OPENAI_API_KEY=
 
 ```bash
 pnpm build
-pnpm --filter @youeval/example-youapi-agent start
+pnpm --filter @youmindinc/youeval-example-youapi-agent start
 ```
 
 这两个命令会：
 
-1. 在 workspace 中构建 `@youeval/*` 包
+1. 在 workspace 中构建 `@youmindinc/*` 包
 2. 进入 workspace 示例包并用 `tsx` 启动 `examples/youapi-agent/main.ts`
 3. 创建 Core、注册 provider / grader
 4. 打开交互式 TUI
