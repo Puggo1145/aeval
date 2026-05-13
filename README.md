@@ -196,18 +196,3 @@ The real LLM example expects a `.env` file under `examples/basics/` with:
 ```dotenv
 DEEPSEEK_API_KEY=...
 ```
-
-## Public Surfaces
-
-Application code should import from public package entrypoints only:
-
-- `@aeval/core`
-- `@aeval/core/tools`
-- `@aeval/graders`
-- `@aeval/adapter-task-source-local`
-- `@aeval/adapter-result-store-local`
-- `@aeval/adapter-observer-console`
-- `@aeval/interface-tui`
-
-Do not import internal paths such as `core/domain/*`, `core/runtime/*`,
-`core/utils/*`, or `core/validation/*`.
