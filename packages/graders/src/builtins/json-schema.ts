@@ -1,4 +1,4 @@
-import type { ExecutionResult, GraderResult } from '@youmindinc/youeval-core';
+import type { ExecutionResult, GraderResult } from '@aeval/core';
 import { Ajv } from 'ajv';
 import { z } from 'zod';
 import { ConfiguredGrader } from '../base-grader.js';

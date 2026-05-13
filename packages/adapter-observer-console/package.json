@@ -1,12 +1,12 @@
 {
-  "name": "@youmindinc/youeval-adapter-observer-console",
+  "name": "@aeval/adapter-observer-console",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/YouMindInc/youeval.git",
+    "url": "git+https://github.com/aeval/aeval.git",
     "directory": "packages/adapter-observer-console"
   },
   "exports": {
@@ -19,16 +19,16 @@
     "dist"
   ],
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   },
   "scripts": {
     "build": "tsc -b tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "peerDependencies": {
-    "@youmindinc/youeval-core": "^0.1.0"
+    "@aeval/core": "^0.1.0"
   },
   "devDependencies": {
-    "@youmindinc/youeval-core": "workspace:*"
+    "@aeval/core": "workspace:*"
   }
 }

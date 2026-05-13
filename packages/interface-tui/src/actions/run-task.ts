@@ -1,6 +1,5 @@
+import type { CoreApi, RunRecord } from '@aeval/core';
 import * as p from '@clack/prompts';
-
-import type { CoreApi, RunRecord } from '@youmindinc/youeval-core';
 import { formatRunsTable } from '../formatters.js';
 import { createLiveRegion } from '../live-region.js';
 import { type RunMetadata, readRunMetadataMap } from '../run-metadata.js';

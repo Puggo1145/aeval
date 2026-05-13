@@ -1,4 +1,4 @@
-import type { CoreApi } from '@youmindinc/youeval-core';
+import type { CoreApi } from '@aeval/core';
 
 export interface RunMetadata {
   suiteName?: string;

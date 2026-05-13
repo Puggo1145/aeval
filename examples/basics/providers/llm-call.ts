@@ -1,10 +1,5 @@
+import { type ExecutionResultInput, type Provider, type Run, type TaskContext } from '@aeval/core';
 import { createOpenAI } from '@ai-sdk/openai';
-import {
-  type ExecutionResultInput,
-  type Provider,
-  type Run,
-  type TaskContext,
-} from '@youmindinc/youeval-core';
 import { generateText } from 'ai';
 
 function getStringParam(

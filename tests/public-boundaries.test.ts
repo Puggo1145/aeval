@@ -97,7 +97,7 @@ test('core package dependencies exclude optional adapters/tui/grader runtime dep
   }
 });
 
-test('plugin packages declare @youmindinc/youeval-core as a peer dependency', () => {
+test('plugin packages declare @aeval/core as a peer dependency', () => {
   const pluginPackages = [
     readPackageManifest('packages/graders/package.json'),
     readPackageManifest('packages/adapter-task-source-local/package.json'),
@@ -107,6 +107,6 @@ test('plugin packages declare @youmindinc/youeval-core as a peer dependency', ()
   ];
 
   for (const manifest of pluginPackages) {
-    assert.equal(Boolean(manifest.peerDependencies?.['@youmindinc/youeval-core']), true);
+    assert.equal(Boolean(manifest.peerDependencies?.['@aeval/core']), true);
   }
 });

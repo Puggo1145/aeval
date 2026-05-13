@@ -14,7 +14,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   publish:
@@ -33,8 +32,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          registry-url: https://npm.pkg.github.com
-          scope: "@youmindinc"
+          registry-url: https://registry.npmjs.org
           cache: pnpm
 
       - name: Install
@@ -47,12 +45,12 @@ jobs:
         id: publish-command
         run: |
           if [ "${{ inputs.package_set }}" = "all" ]; then
-            echo "command=pnpm publish:github" >> "$GITHUB_OUTPUT"
+            echo "command=pnpm publish:npm" >> "$GITHUB_OUTPUT"
           else
-            echo "command=pnpm publish:github:core-graders" >> "$GITHUB_OUTPUT"
+            echo "command=pnpm publish:npm:core-graders" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Publish selected packages
         run: ${{ steps.publish-command.outputs.command }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

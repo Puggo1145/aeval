@@ -1,5 +1,5 @@
 {
-  "name": "@youmindinc/youeval-example-basics",
+  "name": "@aeval/example-basics",
   "private": true,
   "type": "module",
   "scripts": {
@@ -7,12 +7,12 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@youmindinc/youeval-adapter-observer-console": "workspace:*",
-    "@youmindinc/youeval-adapter-result-store-local": "workspace:*",
-    "@youmindinc/youeval-adapter-task-source-local": "workspace:*",
-    "@youmindinc/youeval-core": "workspace:*",
-    "@youmindinc/youeval-graders": "workspace:*",
-    "@youmindinc/youeval-interface-tui": "workspace:*",
+    "@aeval/adapter-observer-console": "workspace:*",
+    "@aeval/adapter-result-store-local": "workspace:*",
+    "@aeval/adapter-task-source-local": "workspace:*",
+    "@aeval/core": "workspace:*",
+    "@aeval/graders": "workspace:*",
+    "@aeval/interface-tui": "workspace:*",
     "@ai-sdk/openai": "^3.0.39",
     "ai": "^6.0.111",
     "zod": "^4.3.6"

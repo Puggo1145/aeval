@@ -1,5 +1,5 @@
 {
   "extends": "./tsconfig.base.json",
   "include": ["tests/**/*.ts"],
-  "exclude": ["node_modules", "dist", ".youeval", "packages/**/dist"]
+  "exclude": ["node_modules", "dist", ".aeval", "packages/**/dist"]
 }

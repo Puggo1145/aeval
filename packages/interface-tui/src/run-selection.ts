@@ -1,4 +1,4 @@
-import type { RunRecord } from '@youmindinc/youeval-core';
+import type { RunRecord } from '@aeval/core';
 
 import type { RunMetadata } from './run-metadata.js';
 

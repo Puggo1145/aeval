@@ -9,7 +9,7 @@ import { Suite } from '../packages/core/src/core/domain/suite.js';
 import { Task } from '../packages/core/src/core/domain/task.js';
 
 async function createTempRootDir(): Promise<string> {
-  return mkdtemp(join(tmpdir(), 'youeval-task-source-'));
+  return mkdtemp(join(tmpdir(), 'aeval-task-source-'));
 }
 
 async function writeYaml(rootDir: string, relativePath: string, content: string): Promise<void> {

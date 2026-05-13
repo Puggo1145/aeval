@@ -1,4 +1,4 @@
-# YouEval Core Contracts (v1)
+# AEval Core Contracts (v1)
 
 This document defines the frozen v1 contract after the task-run-first refactor.
 
@@ -32,7 +32,7 @@ Validation rules:
 2. `discover[]` may be empty.
 3. `discover[]` contains only non-empty strings.
 4. Unknown fields fail fast.
-5. `parseSuiteDocument(input)` is the contract entrypoint for structural validation and is exposed as an optional tool API under `@youmindinc/youeval-core/tools`.
+5. `parseSuiteDocument(input)` is the contract entrypoint for structural validation and is exposed as an optional tool API under `@aeval/core/tools`.
 
 ### 2.2 Task DSL
 
@@ -79,7 +79,7 @@ Grader rules:
 2. `WEIGHTED` requires `passThreshold`
 3. `WEIGHTED` requires every layer to define `weight`
 4. unknown fields fail fast
-5. `parseTaskDocument(input)` is the contract entrypoint for structural validation and is exposed as an optional tool API under `@youmindinc/youeval-core/tools`
+5. `parseTaskDocument(input)` is the contract entrypoint for structural validation and is exposed as an optional tool API under `@aeval/core/tools`
 
 Built-in `llm-judge` layer config:
 

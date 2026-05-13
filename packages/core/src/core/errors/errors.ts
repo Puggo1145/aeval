@@ -1,4 +1,4 @@
-import { BaseYouEvalError } from './base-error.js';
+import { BaseAEvalError } from './base-error.js';
 import {
   type ContractErrorCode,
   ERROR_CATEGORIES,
@@ -14,7 +14,7 @@ interface ErrorOptions<TCode extends string> {
   cause?: unknown;
 }
 
-export class ContractError extends BaseYouEvalError {
+export class ContractError extends BaseAEvalError {
   constructor(message: string, options: ErrorOptions<ContractErrorCode> = {}) {
     super(message, {
       category: ERROR_CATEGORIES.CONTRACT,
@@ -26,7 +26,7 @@ export class ContractError extends BaseYouEvalError {
   }
 }
 
-export class ValidationError extends BaseYouEvalError {
+export class ValidationError extends BaseAEvalError {
   constructor(message: string, options: ErrorOptions<ValidationErrorCode> = {}) {
     super(message, {
       category: ERROR_CATEGORIES.VALIDATION,
@@ -38,7 +38,7 @@ export class ValidationError extends BaseYouEvalError {
   }
 }
 
-export class RuntimeError extends BaseYouEvalError {
+export class RuntimeError extends BaseAEvalError {
   constructor(message: string, options: ErrorOptions<RuntimeErrorCode> = {}) {
     super(message, {
       category: ERROR_CATEGORIES.RUNTIME,
@@ -50,7 +50,7 @@ export class RuntimeError extends BaseYouEvalError {
   }
 }
 
-export class StoreError extends BaseYouEvalError {
+export class StoreError extends BaseAEvalError {
   constructor(message: string, options: ErrorOptions<StoreErrorCode> = {}) {
     super(message, {
       category: ERROR_CATEGORIES.STORE,

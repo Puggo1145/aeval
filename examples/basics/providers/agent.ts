@@ -2,13 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { type ExecutionResultInput, type Provider, type Run, type TaskContext } from '@aeval/core';
 import { createOpenAI } from '@ai-sdk/openai';
-import {
-  type ExecutionResultInput,
-  type Provider,
-  type Run,
-  type TaskContext,
-} from '@youmindinc/youeval-core';
 import { runReActAgent } from './react-agent/index.ts';
 
 function getStringParam(
@@ -54,7 +49,7 @@ export class FileEditAgentProvider implements Provider {
     const setup = params.setup as Record<string, string> | undefined;
     const outcomePaths = params.outcomePaths as string[] | undefined;
 
-    const workdir = join(tmpdir(), `youeval-file-agent-${randomUUID()}`);
+    const workdir = join(tmpdir(), `aeval-file-agent-${randomUUID()}`);
     mkdirSync(workdir, { recursive: true });
 
     try {

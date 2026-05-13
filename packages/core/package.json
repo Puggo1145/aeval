@@ -1,12 +1,12 @@
 {
-  "name": "@youmindinc/youeval-core",
+  "name": "@aeval/core",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/YouMindInc/youeval.git",
+    "url": "git+https://github.com/aeval/aeval.git",
     "directory": "packages/core"
   },
   "exports": {
@@ -23,7 +23,7 @@
     "dist"
   ],
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   },
   "scripts": {
     "build": "tsc -b tsconfig.build.json",

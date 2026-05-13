@@ -1,6 +1,5 @@
+import type { CoreApi } from '@aeval/core';
 import * as p from '@clack/prompts';
-
-import type { CoreApi } from '@youmindinc/youeval-core';
 
 import { clearResults } from './actions/clear-results.js';
 import { compareBaseline } from './actions/compare-baseline.js';
@@ -11,7 +10,7 @@ import { viewTrials } from './actions/view-trials.js';
 import { CancelError } from './utils.js';
 
 type Action = (core: CoreApi) => Promise<void>;
-const TUI_TITLE = 'YouEval — Interactive Mode';
+const TUI_TITLE = 'AEval — Interactive Mode';
 const ACTION_CANCELLED_MESSAGE = 'Action cancelled.';
 // 取消后短暂等待，避免残留的 ESC 按键被下一个 clack prompt 误读为取消操作
 const CARRY_OVER_CANCEL_WINDOW_MS = 200;

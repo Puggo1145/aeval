@@ -29,67 +29,27 @@ importers:
 
   examples/basics:
     dependencies:
+      '@aeval/adapter-observer-console':
+        specifier: workspace:*
+        version: link:../../packages/adapter-observer-console
+      '@aeval/adapter-result-store-local':
+        specifier: workspace:*
+        version: link:../../packages/adapter-result-store-local
+      '@aeval/adapter-task-source-local':
+        specifier: workspace:*
+        version: link:../../packages/adapter-task-source-local
+      '@aeval/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@aeval/graders':
+        specifier: workspace:*
+        version: link:../../packages/graders
+      '@aeval/interface-tui':
+        specifier: workspace:*
+        version: link:../../packages/interface-tui
       '@ai-sdk/openai':
         specifier: ^3.0.39
         version: 3.0.39(zod@4.3.6)
-      '@youmindinc/youeval-adapter-observer-console':
-        specifier: workspace:*
-        version: link:../../packages/adapter-observer-console
-      '@youmindinc/youeval-adapter-result-store-local':
-        specifier: workspace:*
-        version: link:../../packages/adapter-result-store-local
-      '@youmindinc/youeval-adapter-task-source-local':
-        specifier: workspace:*
-        version: link:../../packages/adapter-task-source-local
-      '@youmindinc/youeval-core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@youmindinc/youeval-graders':
-        specifier: workspace:*
-        version: link:../../packages/graders
-      '@youmindinc/youeval-interface-tui':
-        specifier: workspace:*
-        version: link:../../packages/interface-tui
-      ai:
-        specifier: ^6.0.111
-        version: 6.0.111(zod@4.3.6)
-      zod:
-        specifier: ^4.3.6
-        version: 4.3.6
-    devDependencies:
-      '@types/node':
-        specifier: ^25.3.3
-        version: 25.3.3
-      tsx:
-        specifier: ^4.20.3
-        version: 4.21.0
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-
-  examples/youapi-agent:
-    dependencies:
-      '@ai-sdk/openai':
-        specifier: ^3.0.39
-        version: 3.0.39(zod@4.3.6)
-      '@youmindinc/youeval-adapter-observer-console':
-        specifier: workspace:*
-        version: link:../../packages/adapter-observer-console
-      '@youmindinc/youeval-adapter-result-store-local':
-        specifier: workspace:*
-        version: link:../../packages/adapter-result-store-local
-      '@youmindinc/youeval-adapter-task-source-local':
-        specifier: workspace:*
-        version: link:../../packages/adapter-task-source-local
-      '@youmindinc/youeval-core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@youmindinc/youeval-graders':
-        specifier: workspace:*
-        version: link:../../packages/graders
-      '@youmindinc/youeval-interface-tui':
-        specifier: workspace:*
-        version: link:../../packages/interface-tui
       ai:
         specifier: ^6.0.111
         version: 6.0.111(zod@4.3.6)
@@ -109,13 +69,13 @@ importers:
 
   packages/adapter-observer-console:
     devDependencies:
-      '@youmindinc/youeval-core':
+      '@aeval/core':
         specifier: workspace:*
         version: link:../core
 
   packages/adapter-result-store-local:
     devDependencies:
-      '@youmindinc/youeval-core':
+      '@aeval/core':
         specifier: workspace:*
         version: link:../core
 
@@ -128,7 +88,7 @@ importers:
         specifier: ^2.8.2
         version: 2.8.2
     devDependencies:
-      '@youmindinc/youeval-core':
+      '@aeval/core':
         specifier: workspace:*
         version: link:../core
 
@@ -153,7 +113,7 @@ importers:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@youmindinc/youeval-core':
+      '@aeval/core':
         specifier: workspace:*
         version: link:../core
 
@@ -163,7 +123,7 @@ importers:
         specifier: ^1.1.0
         version: 1.1.0
     devDependencies:
-      '@youmindinc/youeval-core':
+      '@aeval/core':
         specifier: workspace:*
         version: link:../core
 

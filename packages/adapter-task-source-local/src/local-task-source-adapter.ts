@@ -9,8 +9,8 @@ import type {
   TaskRef,
   TaskSource,
   Tasks,
-} from '@youmindinc/youeval-core';
-import { SCHEMA_VERSIONS } from '@youmindinc/youeval-core';
+} from '@aeval/core';
+import { SCHEMA_VERSIONS } from '@aeval/core';
 import canonicalizeModule from 'canonicalize';
 import { parse } from 'yaml';
 

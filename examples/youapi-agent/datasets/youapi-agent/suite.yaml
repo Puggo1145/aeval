@@ -1,5 +1,0 @@
-schemaVersion: "suite.v1"
-id: "youapi-agent"
-name: "YouAPI Agent"
-discover:
-  - "youapi-agent/**/*.yaml"

@@ -1,11 +1,5 @@
+import type { BaselineComparison, RunRecord, RunSummaryData, TrialRecord } from '@aeval/core';
 import * as p from '@clack/prompts';
-
-import type {
-  BaselineComparison,
-  RunRecord,
-  RunSummaryData,
-  TrialRecord,
-} from '@youmindinc/youeval-core';
 import type { RunMetadata } from './run-metadata.js';
 
 function formatPassRate(rate: number): string {

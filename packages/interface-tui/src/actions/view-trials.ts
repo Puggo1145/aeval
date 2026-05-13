@@ -1,6 +1,5 @@
+import type { CoreApi } from '@aeval/core';
 import * as p from '@clack/prompts';
-
-import type { CoreApi } from '@youmindinc/youeval-core';
 import {
   formatRunOptionLabel,
   formatRunOptionStatsHint,

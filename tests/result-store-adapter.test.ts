@@ -8,7 +8,7 @@ import { LocalStore } from '../packages/adapter-result-store-local/src/local-res
 import { SCHEMA_VERSIONS } from '../packages/core/src/core/contracts/schema-versions.js';
 
 async function createTempResultsDir(): Promise<string> {
-  return mkdtemp(join(tmpdir(), 'youeval-results-'));
+  return mkdtemp(join(tmpdir(), 'aeval-results-'));
 }
 
 function createManifest(runId: string) {

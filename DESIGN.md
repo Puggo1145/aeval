@@ -1,6 +1,6 @@
-# YouEval Design
+# AEval Design
 
-YouEval is an evaluation runtime for Agent systems.
+AEval is an evaluation runtime for Agent systems.
 
 ## 1. Scope
 
@@ -47,9 +47,9 @@ Adapters
 4. Interfaces consumes Core APIs only.
 5. `contracts` own suite/task schemas; `Suite` and `Task` domain factories call those parsers internally and remain the only legal construction path for runtime suite/task objects.
 6. Built-in adapters, graders, and TUI (interface) are treated like external modules for boundary control.
-7. Public package surfaces are limited to `@youmindinc/youeval-core`, `@youmindinc/youeval-core/tools`, `@youmindinc/youeval-graders`, `@youmindinc/youeval-adapter-task-source-local`, `@youmindinc/youeval-adapter-result-store-local`, `@youmindinc/youeval-adapter-observer-console`, and `@youmindinc/youeval-interface-tui`.
+7. Public package surfaces are limited to `@aeval/core`, `@aeval/core/tools`, `@aeval/graders`, `@aeval/adapter-task-source-local`, `@aeval/adapter-result-store-local`, `@aeval/adapter-observer-console`, and `@aeval/interface-tui`.
 8. `core/domain`, `core/runtime`, `core/orchestrator`, `core/utils`, and `core/validation` remain internal implementation layers.
-9. Parser/schema entrypoints are optional tool capabilities. Runtime composition does not require callers to parse DSL documents themselves; when exposed publicly, they live under `@youmindinc/youeval-core/tools`.
+9. Parser/schema entrypoints are optional tool capabilities. Runtime composition does not require callers to parse DSL documents themselves; when exposed publicly, they live under `@aeval/core/tools`.
 
 ### 3.3 Object Taxonomy
 

@@ -1,6 +1,5 @@
+import type { BaselineThresholds, CoreApi } from '@aeval/core';
 import * as p from '@clack/prompts';
-
-import type { BaselineThresholds, CoreApi } from '@youmindinc/youeval-core';
 import { formatComparisonNote, formatRunOptionHint, formatRunOptionLabel } from '../formatters.js';
 import { readRunMetadataMap } from '../run-metadata.js';
 import { handleCancel } from '../utils.js';

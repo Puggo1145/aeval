@@ -1,6 +1,6 @@
-# YouEval Agent Roadmap
+# AEval Agent Roadmap
 
-This file is the agent-facing roadmap for `youeval`.
+This file is the agent-facing roadmap for `aeval`.
 
 ## 1. Document Read Order
 Read these files first, in order:

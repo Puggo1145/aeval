@@ -14,7 +14,7 @@ import { LlmJudgeGrader } from '../packages/graders/src/llm/llm-judge.js';
 import { registerBuiltinGraders } from '../packages/graders/src/register-builtins.js';
 
 async function createWorkspace(): Promise<string> {
-  return mkdtemp(join(tmpdir(), 'youeval-e2e-'));
+  return mkdtemp(join(tmpdir(), 'aeval-e2e-'));
 }
 
 async function writeYaml(rootDir: string, relativePath: string, content: string): Promise<void> {

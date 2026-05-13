@@ -1,7 +1,7 @@
 node_modules/
 
 .datasets/
-.youeval/
+.aeval/
 dist/
 packages/*/dist/
 *.tsbuildinfo

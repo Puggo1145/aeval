@@ -1,16 +1,13 @@
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ConsoleObserver } from '@aeval/adapter-observer-console';
+import { LocalStore } from '@aeval/adapter-result-store-local';
+import { LocalTask } from '@aeval/adapter-task-source-local';
+import { Core, Graders, Providers } from '@aeval/core';
+import { BuiltinLlmJudgeGrader, registerBuiltinGraders } from '@aeval/graders';
+import { runTui } from '@aeval/interface-tui';
 import { createOpenAI } from '@ai-sdk/openai';
-import { ConsoleObserver } from '@youmindinc/youeval-adapter-observer-console';
-import { LocalStore } from '@youmindinc/youeval-adapter-result-store-local';
-import { LocalTask } from '@youmindinc/youeval-adapter-task-source-local';
-import { Core, Graders, Providers } from '@youmindinc/youeval-core';
-import {
-  BuiltinLlmJudgeGrader,
-  registerBuiltinGraders,
-} from '@youmindinc/youeval-graders';
-import { runTui } from '@youmindinc/youeval-interface-tui';
 import { BasicLlmProvider, FileEditAgentProvider } from './providers/index.ts';
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
@@ -49,12 +46,8 @@ async function main(): Promise<void> {
   providers.register(new BasicLlmProvider());
 
   const core = new Core({
-    tasks: new LocalTask({
-      rootDir: currentDir,
-    }),
-    stores: new LocalStore({
-      rootDir: resolve(currentDir, 'results'),
-    }),
+    tasks: new LocalTask({ rootDir: currentDir }),
+    stores: new LocalStore({ rootDir: resolve(currentDir, 'results') }),
     providers,
     graders,
     observers: [new ConsoleObserver()],

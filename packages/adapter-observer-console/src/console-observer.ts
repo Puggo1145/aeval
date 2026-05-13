@@ -1,4 +1,4 @@
-import type { Observer, RunEvent } from '@youmindinc/youeval-core';
+import type { Observer, RunEvent } from '@aeval/core';
 
 export class ConsoleObserver implements Observer {
   onEvent(event: RunEvent): void {
