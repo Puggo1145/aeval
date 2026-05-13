@@ -10,9 +10,9 @@ tags: ["smoke", "file-modify", "weighted", "tool-calls", "llm-judge"]
 provider:
   id: "file-edit-agent"
   runs:
-    - name: "gpt-4o-mini"
+    - name: "test1"
       params:
-        model: "gpt-4o-mini"
+        model: "deepseek-v4-flash"
         task: "In release-notes.txt, change the line 'Status: draft' to 'Status: published'. Do not change any other line. Then reply with a short summary of the edit."
         setup:
           "release-notes.txt": |-
@@ -21,9 +21,9 @@ provider:
             Owner: Ops
         outcomePaths:
           - "release-notes.txt"
-    - name: "gpt-5-mini"
+    - name: "test2"
       params:
-        model: "gpt-5-mini"
+        model: "deepseek-v4-flash"
         task: "In release-notes.txt, change the line 'Status: draft' to 'Status: published'. Do not change any other line. Then reply with a short summary of the edit."
         setup:
           "release-notes.txt": |-
@@ -32,9 +32,9 @@ provider:
             Owner: Ops
         outcomePaths:
           - "release-notes.txt"
-    - name: "gpt-5-nano"
+    - name: "test3"
       params:
-        model: "gpt-5-nano"
+        model: "deepseek-v4-flash"
         task: "In release-notes.txt, change the line 'Status: draft' to 'Status: published'. Do not change any other line. Then reply with a short summary of the edit."
         setup:
           "release-notes.txt": |-

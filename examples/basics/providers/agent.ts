@@ -25,7 +25,7 @@ function toSystemError(message: string): ExecutionResultInput {
  * Provider that runs a ReAct file-editing agent.
  *
  * Task params:
- *   model        – OpenAI model name (default: gpt-4o-mini)
+ *   model        – DeepSeek model name (default: deepseek-v4-flash)
  *   task         – Natural-language instruction for the agent
  *   setup        – Optional Record<filename, content> to pre-populate the workdir
  *   outcomePaths – Optional string[] of file paths to capture into ExecutionResult.outcome
@@ -35,12 +35,12 @@ export class FileEditAgentProvider implements Provider {
 
   async execute(ctx: TaskContext, run: Run): Promise<ExecutionResultInput> {
     const params = run.params;
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
-      return toSystemError('Missing OPENAI_API_KEY environment variable.');
+      return toSystemError('Missing DEEPSEEK_API_KEY environment variable.');
     }
 
-    const model = getStringParam(params, 'model') ?? 'gpt-4o-mini';
+    const model = getStringParam(params, 'model') ?? 'deepseek-v4-flash';
     const task = getStringParam(params, 'task');
     if (!task) {
       return toSystemError("Provider param 'task' must be a non-empty string.");
@@ -59,11 +59,11 @@ export class FileEditAgentProvider implements Provider {
         }
       }
 
-      const openai = createOpenAI({ apiKey });
+      const openai = createOpenAI({ apiKey, baseURL: 'https://api.deepseek.com' });
       const startedAt = Date.now();
 
       const agentResult = await runReActAgent({
-        model: openai(model),
+        model: openai.chat(model),
         task,
         workdir,
         maxSteps: 10,

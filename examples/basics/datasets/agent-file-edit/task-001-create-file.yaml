@@ -10,21 +10,21 @@ tags: ["smoke", "file-create", "outcome"]
 provider:
   id: "file-edit-agent"
   runs:
-    - name: "gpt-4o-mini"
+    - name: "test-1"
       params:
-        model: "gpt-4o-mini"
+        model: "deepseek-v4-flash"
         task: "Create a file called hello.txt with the content: Hello, Agent!"
         outcomePaths:
           - "hello.txt"
-    - name: "gpt-5-mini"
+    - name: "test-2"
       params:
-        model: "gpt-5-mini"
+        model: "deepseek-v4-flash"
         task: "Create a file called hello.txt with the content: Hello, Agent!"
         outcomePaths:
           - "hello.txt"
-    - name: "gpt-5-nano"
+    - name: "test-3"
       params:
-        model: "gpt-5-nano"
+        model: "deepseek-v4-flash"
         task: "Create a file called hello.txt with the content: Hello, Agent!"
         outcomePaths:
           - "hello.txt"

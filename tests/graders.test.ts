@@ -65,7 +65,7 @@ const outcomeCheck = (result: ExecutionResult, config: Record<string, unknown>) 
 const latencyThreshold = (result: ExecutionResult, config: Record<string, unknown>) =>
   grade(latencyThresholdGrader, result, config);
 
-function createMockLanguageModel(modelId = 'gpt-4.1-mini'): LanguageModel {
+function createMockLanguageModel(modelId = 'deepseek-v4-flash'): LanguageModel {
   return { modelId } as unknown as LanguageModel;
 }
 
@@ -733,7 +733,7 @@ test('llm-judge: passes with mock judge', async () => {
         },
       ],
       profile: 'default',
-      model: 'gpt-4.1-mini',
+      model: 'deepseek-v4-flash',
     }),
   };
   const grader = new LlmJudgeGrader(mockJudge);
@@ -754,7 +754,7 @@ test('llm-judge: passes with mock judge', async () => {
   assert.equal(r.score, 1);
   assert.equal(r.meta?.dimension, 'faithfulness');
   assert.equal(r.meta?.profile, 'default');
-  assert.equal(r.meta?.model, 'gpt-4.1-mini');
+  assert.equal(r.meta?.model, 'deepseek-v4-flash');
 });
 
 test('llm-judge: uses passThreshold against averaged assertion score', async () => {
@@ -776,7 +776,7 @@ test('llm-judge: uses passThreshold against averaged assertion score', async () 
         },
       ],
       profile: 'strict',
-      model: 'claude-3-7-sonnet-latest',
+      model: 'deepseek-v4-flash',
     }),
   };
   const grader = new LlmJudgeGrader(mockJudge);
@@ -792,7 +792,7 @@ test('llm-judge: uses passThreshold against averaged assertion score', async () 
   assert.equal(r.pass, false);
   assert.equal(r.score, 0.5);
   assert.equal(r.meta?.profile, 'strict');
-  assert.equal(r.meta?.model, 'claude-3-7-sonnet-latest');
+  assert.equal(r.meta?.model, 'deepseek-v4-flash');
   assert.deepEqual(r.meta?.assertions, [
     {
       assertion: 'The answer addresses the request.',
@@ -824,7 +824,7 @@ test('llm-judge: resolves contextFrom path', async () => {
           },
         ],
         profile: 'default',
-        model: 'gpt-4.1-mini',
+        model: 'deepseek-v4-flash',
       };
     },
   };
@@ -857,7 +857,7 @@ test('llm-judge: missing dimension fails', async () => {
       reason: 'ok',
       assertions: [],
       profile: 'default',
-      model: 'gpt-4.1-mini',
+      model: 'deepseek-v4-flash',
     }),
   };
   const grader = new LlmJudgeGrader(mockJudge);
@@ -881,7 +881,7 @@ test('llm-judge: missing rubric fails', async () => {
       reason: 'ok',
       assertions: [],
       profile: 'default',
-      model: 'gpt-4.1-mini',
+      model: 'deepseek-v4-flash',
     }),
   };
   const grader = new LlmJudgeGrader(mockJudge);
@@ -905,7 +905,7 @@ test('llm-judge: missing assertions fails', async () => {
       reason: 'ok',
       assertions: [],
       profile: 'default',
-      model: 'gpt-4.1-mini',
+      model: 'deepseek-v4-flash',
     }),
   });
 
@@ -930,7 +930,7 @@ test('llm-judge: empty assertions fail', async () => {
       reason: 'ok',
       assertions: [],
       profile: 'default',
-      model: 'gpt-4.1-mini',
+      model: 'deepseek-v4-flash',
     }),
   });
 
@@ -956,7 +956,7 @@ test('llm-judge: missing passThreshold fails', async () => {
       reason: 'ok',
       assertions: [],
       profile: 'default',
-      model: 'gpt-4.1-mini',
+      model: 'deepseek-v4-flash',
     }),
   });
 
@@ -981,7 +981,7 @@ test('llm-judge: invalid passThreshold fails', async () => {
       reason: 'ok',
       assertions: [],
       profile: 'default',
-      model: 'gpt-4.1-mini',
+      model: 'deepseek-v4-flash',
     }),
   });
 
@@ -1017,7 +1017,7 @@ test('llm-judge: legacy provider/model fields fail', async () => {
     passThreshold: 1,
     judge: {
       provider: 'aihubmix',
-      model: 'gpt-4.1-mini',
+      model: 'deepseek-v4-flash',
     },
   });
 
@@ -1069,7 +1069,7 @@ test('llm-judge is registered explicitly on the GraderRegistry', () => {
           reason: 'ok',
           assertions: [],
           profile: 'default',
-          model: 'gpt-4.1-mini',
+          model: 'deepseek-v4-flash',
         }),
       }).grade(result, layer),
   });

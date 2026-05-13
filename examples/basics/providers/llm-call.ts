@@ -33,12 +33,12 @@ export class BasicLlmProvider implements Provider {
 
   async execute(ctx: TaskContext, run: Run): Promise<ExecutionResultInput> {
     const params = run.params;
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
-      return toSystemError('Missing OPENAI_API_KEY environment variable.');
+      return toSystemError('Missing DEEPSEEK_API_KEY environment variable.');
     }
 
-    const model = getStringParam(params, 'model') ?? 'gpt-4o-mini';
+    const model = getStringParam(params, 'model') ?? 'deepseek-v4-flash';
     const systemPrompt = getStringParam(params, 'systemPrompt');
     const userPrompt = getStringParam(params, 'prompt');
     const temperature = getNumberParam(params, 'temperature') ?? 0;
@@ -51,11 +51,12 @@ export class BasicLlmProvider implements Provider {
 
     const openai = createOpenAI({
       apiKey,
+      baseURL: 'https://api.deepseek.com',
     });
 
     try {
       const response = await generateText({
-        model: openai(model),
+        model: openai.chat(model),
         system: systemPrompt,
         prompt: userPrompt,
         temperature,

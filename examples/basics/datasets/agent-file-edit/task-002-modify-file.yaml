@@ -10,25 +10,25 @@ tags: ["smoke", "file-modify", "read-before-write", "outcome"]
 provider:
   id: "file-edit-agent"
   runs:
-    - name: "gpt-4o-mini"
+    - name: "test1"
       params:
-        model: "gpt-4o-mini"
+        model: "deepseek-v4-flash"
         task: "In greeting.txt, replace the word 'World' with 'Agent'. Do not change anything else."
         setup:
           "greeting.txt": "Hello World"
         outcomePaths:
           - "greeting.txt"
-    - name: "gpt-5-mini"
+    - name: "test2"
       params:
-        model: "gpt-5-mini"
+        model: "deepseek-v4-flash"
         task: "In greeting.txt, replace the word 'World' with 'Agent'. Do not change anything else."
         setup:
           "greeting.txt": "Hello World"
         outcomePaths:
           - "greeting.txt"
-    - name: "gpt-5-nano"
+    - name: "test3"
       params:
-        model: "gpt-5-nano"
+        model: "deepseek-v4-flash"
         task: "In greeting.txt, replace the word 'World' with 'Agent'. Do not change anything else."
         setup:
           "greeting.txt": "Hello World"

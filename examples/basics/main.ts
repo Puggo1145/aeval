@@ -13,7 +13,7 @@ import { BasicLlmProvider, FileEditAgentProvider } from './providers/index.ts';
 const currentDir = dirname(fileURLToPath(import.meta.url));
 
 function tryLoadEnvFile(): void {
-  if (process.env.OPENAI_API_KEY) return;
+  if (process.env.DEEPSEEK_API_KEY) return;
   const envPath = resolve(currentDir, '.env');
   if (!existsSync(envPath)) return;
   try {
@@ -27,8 +27,8 @@ function tryLoadEnvFile(): void {
 async function main(): Promise<void> {
   tryLoadEnvFile();
   const openai = createOpenAI({
-    baseURL: 'https://aihubmix.com/v1',
-    apiKey: process.env.AIHUBMIX_API_KEY,
+    baseURL: 'https://api.deepseek.com',
+    apiKey: process.env.DEEPSEEK_API_KEY,
   });
 
   const graders = new Graders();
@@ -36,7 +36,7 @@ async function main(): Promise<void> {
   graders.register(
     new BuiltinLlmJudgeGrader({
       profiles: {
-        default: openai('gpt-5.4'),
+        default: openai.chat('deepseek-v4-flash'),
       },
     }),
   );

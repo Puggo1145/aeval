@@ -10,23 +10,23 @@ tags: ["smoke", "factual"]
 provider:
   id: "basic-llm"
   runs:
-    - name: "gpt-4o-mini"
+    - name: "test1"
       params:
         systemPrompt: "You are a helpful AI Assistant."
         prompt: "What is the capital of France? Answer with one word."
-        model: "gpt-4o-mini"
+        model: "deepseek-v4-flash"
         temperature: 0
-    - name: "gpt-5-mini"
+    - name: "test2"
       params:
         systemPrompt: "You are a helpful AI Assistant."
         prompt: "What is the capital of France? Answer with one word."
-        model: "gpt-5-mini"
+        model: "deepseek-v4-flash"
         temperature: 0
-    - name: "gpt-5-nano"
+    - name: "test3"
       params:
         systemPrompt: "You are a helpful AI Assistant."
         prompt: "What is the capital of France? Answer with one word."
-        model: "gpt-5-nano"
+        model: "deepseek-v4-flash"
         temperature: 0
 
 graders:

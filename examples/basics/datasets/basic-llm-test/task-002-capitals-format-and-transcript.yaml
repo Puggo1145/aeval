@@ -10,7 +10,7 @@ tags: ["regression", "multi-constraint", "format", "geography"]
 provider:
   id: "basic-llm"
   runs:
-    - name: "gpt-4o-mini"
+    - name: "test1"
       params:
         systemPrompt: "You are a precise assistant. Follow the required output format exactly."
         prompt: |
@@ -19,9 +19,9 @@ provider:
           1. France - <capital>
           2. Germany - <capital>
           3. Italy - <capital>
-        model: "gpt-4o-mini"
+        model: "deepseek-v4-flash"
         temperature: 0
-    - name: "gpt-5-mini"
+    - name: "test2"
       params:
         systemPrompt: "You are a precise assistant. Follow the required output format exactly."
         prompt: |
@@ -30,9 +30,9 @@ provider:
           1. France - <capital>
           2. Germany - <capital>
           3. Italy - <capital>
-        model: "gpt-5-mini"
+        model: "deepseek-v4-flash"
         temperature: 0
-    - name: "gpt-5-nano"
+    - name: "test3"
       params:
         systemPrompt: "You are a precise assistant. Follow the required output format exactly."
         prompt: |
@@ -41,7 +41,7 @@ provider:
           1. France - <capital>
           2. Germany - <capital>
           3. Italy - <capital>
-        model: "gpt-5-nano"
+        model: "deepseek-v4-flash"
         temperature: 0
 
 graders:

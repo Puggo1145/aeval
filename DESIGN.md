@@ -88,9 +88,9 @@ id: "chat-agent/smoke/capital-001"
 provider:
   id: "basic-llm"
   runs:
-    - name: "gpt-4o-mini"
+    - name: "deepseek-v4-flash"
       params:
-        model: "gpt-4o-mini"
+        model: "deepseek-v4-flash"
         prompt: "What is the capital of France?"
 
 graders:

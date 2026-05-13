@@ -6,7 +6,7 @@ import {
   createAiSdkJudgeProvider,
 } from '../packages/graders/src/llm/ai-sdk-judge-provider.js';
 
-function createMockModel(modelId = 'gpt-4.1-mini'): LanguageModel {
+function createMockModel(modelId = 'deepseek-v4-flash'): LanguageModel {
   return { modelId } as unknown as LanguageModel;
 }
 
@@ -32,7 +32,7 @@ function createDeps(
 
 test('createAiSdkJudgeProvider: selects model by judge profile', async () => {
   let capturedModel: unknown;
-  const defaultModel = createMockModel('gpt-4.1-mini');
+  const defaultModel = createMockModel('deepseek-v4-flash');
   const provider = createAiSdkJudgeProvider(
     {
       profiles: {
@@ -70,7 +70,7 @@ test('createAiSdkJudgeProvider: selects model by judge profile', async () => {
 
   assert.equal(capturedModel, defaultModel);
   assert.equal(result.profile, 'default');
-  assert.equal(result.model, 'gpt-4.1-mini');
+  assert.equal(result.model, 'deepseek-v4-flash');
   assert.equal(result.score, 1);
 });
 
@@ -80,7 +80,7 @@ test('createAiSdkJudgeProvider: supports custom systemPrompt and buildPrompt', a
   const provider = createAiSdkJudgeProvider(
     {
       profiles: {
-        strict: createMockModel('gpt-4.1-mini'),
+        strict: createMockModel('deepseek-v4-flash'),
       },
     },
     {
@@ -169,7 +169,7 @@ test('createAiSdkJudgeProvider: normalizes missing assertion results to failed a
   const provider = createAiSdkJudgeProvider(
     {
       profiles: {
-        default: createMockModel('gpt-4.1-mini'),
+        default: createMockModel('deepseek-v4-flash'),
       },
     },
     createDeps({
@@ -217,7 +217,7 @@ test('createAiSdkJudgeProvider: falls back to assertion order when texts do not 
   const provider = createAiSdkJudgeProvider(
     {
       profiles: {
-        research: createMockModel('gpt-5.4'),
+        research: createMockModel('deepseek-v4-flash'),
       },
     },
     createDeps({
@@ -276,7 +276,7 @@ test('createAiSdkJudgeProvider: prefers exact text matches before positional fal
   const provider = createAiSdkJudgeProvider(
     {
       profiles: {
-        research: createMockModel('gpt-5.4'),
+        research: createMockModel('deepseek-v4-flash'),
       },
     },
     createDeps({

@@ -327,7 +327,7 @@ test('formatRunSummaryDetails includes metrics for each trial', () => {
           output: 'ok',
           metrics: {
             latencyMs: 10,
-            model: 'gpt-5-mini',
+            model: 'deepseek-v4-flash',
           },
         },
         graderResults: [],
@@ -371,7 +371,7 @@ test('formatRunSummaryDetails includes metrics for each trial', () => {
   assert.match(output, /Avg Provider Latency:\s+20ms/);
   assert.match(output, /Metrics:/);
   assert.match(output, /Trial #0:/);
-  assert.match(output, /model: gpt-5-mini/);
+  assert.match(output, /model: deepseek-v4-flash/);
   assert.match(output, /Trial #1:/);
   assert.match(output, /tokenUsage\.output: 2/);
 });
