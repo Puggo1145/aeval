@@ -30,23 +30,23 @@ importers:
   examples/basics:
     dependencies:
       '@aeval/adapter-observer-console':
-        specifier: workspace:*
-        version: link:../../packages/adapter-observer-console
+        specifier: ^0.1.0
+        version: 0.1.0(@aeval/core@0.1.0)
       '@aeval/adapter-result-store-local':
-        specifier: workspace:*
-        version: link:../../packages/adapter-result-store-local
+        specifier: ^0.1.0
+        version: 0.1.0(@aeval/core@0.1.0)
       '@aeval/adapter-task-source-local':
-        specifier: workspace:*
-        version: link:../../packages/adapter-task-source-local
+        specifier: ^0.1.0
+        version: 0.1.0(@aeval/core@0.1.0)
       '@aeval/core':
-        specifier: workspace:*
-        version: link:../../packages/core
+        specifier: ^0.1.0
+        version: 0.1.0
       '@aeval/graders':
-        specifier: workspace:*
-        version: link:../../packages/graders
+        specifier: ^0.1.0
+        version: 0.1.0(@aeval/core@0.1.0)
       '@aeval/interface-tui':
-        specifier: workspace:*
-        version: link:../../packages/interface-tui
+        specifier: ^0.1.0
+        version: 0.1.0(@aeval/core@0.1.0)
       '@ai-sdk/openai':
         specifier: ^3.0.39
         version: 3.0.39(zod@4.3.6)
@@ -128,6 +128,34 @@ importers:
         version: link:../core
 
 packages:
+
+  '@aeval/adapter-observer-console@0.1.0':
+    resolution: {integrity: sha512-wK2lMKCBZYCDxrOPAlCaaDi+Ta97UBJJh59kaaC/8SUhHOb2+S6yN0XXjrHacO3CTm5O8XAQ5oy4qd5s2eZ+9g==}
+    peerDependencies:
+      '@aeval/core': ^0.1.0
+
+  '@aeval/adapter-result-store-local@0.1.0':
+    resolution: {integrity: sha512-c+b+/NA9Iskm6ioT+1CXlgsczfHQKMcpDxAxcN6w7ouGoHN1snXmhhrvv61nQGCkZedaFjLLS46XiJpBWqsi+Q==}
+    peerDependencies:
+      '@aeval/core': ^0.1.0
+
+  '@aeval/adapter-task-source-local@0.1.0':
+    resolution: {integrity: sha512-ehoNaRyEJn/PMJPV46CqKHJ/vYyF8PKO24rVl8uBZnYydzwUxdW9hnlHJcSRow4+PR8AAWdptc2NrbZ4pDIBew==}
+    peerDependencies:
+      '@aeval/core': ^0.1.0
+
+  '@aeval/core@0.1.0':
+    resolution: {integrity: sha512-t2lMoLCb3ytnqOqphKkgz0JOFnyTqZkntog7cveg2tD6fPGLAact6z/wrWksHOHbs7+lsLvS2p+ypmrzuVx+3A==}
+
+  '@aeval/graders@0.1.0':
+    resolution: {integrity: sha512-t294QUcQ7z1EIZIxjGkr4WPjQ0LvxS2s+EfSHRLfxWbJT51xEsJnOpXPnEIdp4RaOOed8LOq1I46+WPtth4flA==}
+    peerDependencies:
+      '@aeval/core': ^0.1.0
+
+  '@aeval/interface-tui@0.1.0':
+    resolution: {integrity: sha512-epgdtEXGwMak1lgopaqCG3Xz1D0r134ObAlOV3dIoHG844ZFjScaGSTrhsnzl2jP+XM3RCt3uRKq8GPABcM+7g==}
+    peerDependencies:
+      '@aeval/core': ^0.1.0
 
   '@ai-sdk/gateway@3.0.63':
     resolution: {integrity: sha512-0jwdkN3elC4Q9aT2ALxjXtGGVoye15zYgof6GfvuH1a9QKx9Rj4Wi2vy6SyyLvtSA/lB786dTZgC+cGwe6vzmA==}
@@ -454,6 +482,37 @@ packages:
     resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
 
 snapshots:
+
+  '@aeval/adapter-observer-console@0.1.0(@aeval/core@0.1.0)':
+    dependencies:
+      '@aeval/core': 0.1.0
+
+  '@aeval/adapter-result-store-local@0.1.0(@aeval/core@0.1.0)':
+    dependencies:
+      '@aeval/core': 0.1.0
+
+  '@aeval/adapter-task-source-local@0.1.0(@aeval/core@0.1.0)':
+    dependencies:
+      '@aeval/core': 0.1.0
+      canonicalize: 2.1.0
+      yaml: 2.8.2
+
+  '@aeval/core@0.1.0':
+    dependencies:
+      canonicalize: 2.1.0
+      zod: 4.3.6
+
+  '@aeval/graders@0.1.0(@aeval/core@0.1.0)':
+    dependencies:
+      '@aeval/core': 0.1.0
+      ai: 6.0.111(zod@4.3.6)
+      ajv: 8.18.0
+      zod: 4.3.6
+
+  '@aeval/interface-tui@0.1.0(@aeval/core@0.1.0)':
+    dependencies:
+      '@aeval/core': 0.1.0
+      '@clack/prompts': 1.1.0
 
   '@ai-sdk/gateway@3.0.63(zod@4.3.6)':
     dependencies:
