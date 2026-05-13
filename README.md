@@ -1,72 +1,213 @@
 # AEval
 
-AEval 是一个基于 Anthropic Agent 评测理念的 Agent 评测框架
+AEval is an agent evaluation framework. It runs evaluation tasks, executes one or
+more provider runs, grades the outputs, and stores trial results.
 
-v1 的核心模型是：
+The core model is:
 
-1. `suite`：声明任务发现范围。
-2. `task`：声明一个评测场景。
-3. `task.provider.runs[]`：声明这个场景要跑的参数组。
-4. `trial`：同一个 run 的单次执行尝试。对抗模型输出的不稳定性
+1. `suite`: a discovery scope for tasks.
+2. `task`: one evaluation scenario.
+3. `task.provider.runs[]`: one or more named parameter sets for the provider.
+4. `trial`: one execution attempt for a run.
 
-## 先理解执行模型
+## Install
 
-一次完整执行的顺序是：
+For a normal local evaluation setup with YAML tasks, local result storage, built-in
+graders, and the TUI, install:
 
-1. 选择一个 `suite`
-2. 选择一个 `task`
-3. Core 读取这个 task
-4. 顺序执行这个 task 下的每个 `provider.runs[]`
-5. 每个 run 内再按 `trialsPerTask` 执行一个或多个 `trial`
+```bash
+pnpm add @aeval/core @aeval/graders \
+  @aeval/adapter-task-source-local \
+  @aeval/adapter-result-store-local \
+  @aeval/adapter-observer-console \
+  @aeval/interface-tui
+```
 
-## 快速开始
+If you only want to embed the runtime and provide your own task source, result
+store, UI, and graders, start with:
 
-### 前置条件
+```bash
+pnpm add @aeval/core
+```
 
-- Node.js >= 20
-- pnpm
+Optional packages:
 
-### 安装
+- `@aeval/graders`: built-in graders such as `contains`, `regex`, `json-schema`,
+  `token-budget`, and `llm-judge`.
+- `@aeval/adapter-task-source-local`: load `suite.v1` and `task.v1` YAML files from
+  disk.
+- `@aeval/adapter-result-store-local`: persist run manifests, summaries, and trials
+  to local files.
+- `@aeval/adapter-observer-console`: print run events to the console.
+- `@aeval/interface-tui`: run a local interactive task picker.
+
+## Minimal Example
+
+This is the smallest useful local setup: one provider, one YAML suite, one YAML
+task, built-in graders, local results, and the TUI.
+
+Project layout:
+
+```text
+my-evals/
+  main.ts
+  datasets/
+    basic-llm-test/
+      suite.yaml
+      task-001-capital-france.yaml
+```
+
+`main.ts`:
+
+```ts
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { ConsoleObserver } from '@aeval/adapter-observer-console';
+import { LocalStore } from '@aeval/adapter-result-store-local';
+import { LocalTask } from '@aeval/adapter-task-source-local';
+import {
+  Core,
+  Graders,
+  Providers,
+  type ExecutionResultInput,
+  type Provider,
+  type Run,
+  type TaskContext,
+} from '@aeval/core';
+import { registerBuiltinGraders } from '@aeval/graders';
+import { runTui } from '@aeval/interface-tui';
+
+const currentDir = dirname(fileURLToPath(import.meta.url));
+
+class BasicProvider implements Provider {
+  readonly id = 'basic-llm';
+
+  async execute(_ctx: TaskContext, run: Run): Promise<ExecutionResultInput> {
+    const prompt = run.params.prompt;
+    if (typeof prompt !== 'string' || prompt.length === 0) {
+      throw new Error("Provider param 'prompt' must be a non-empty string.");
+    }
+
+    return {
+      output: 'Paris',
+      trace: {
+        turns: [
+          { role: 'user', content: prompt },
+          { role: 'assistant', content: 'Paris' },
+        ],
+      },
+      metrics: {
+        latencyMs: 1,
+      },
+    };
+  }
+}
+
+async function main(): Promise<void> {
+  const providers = new Providers();
+  providers.register(new BasicProvider());
+
+  const graders = new Graders();
+  registerBuiltinGraders(graders);
+
+  const core = new Core({
+    tasks: new LocalTask({ rootDir: currentDir }),
+    stores: new LocalStore({ rootDir: resolve(currentDir, 'results') }),
+    providers,
+    graders,
+    observers: [new ConsoleObserver()],
+  });
+
+  await runTui(core);
+}
+
+void main();
+```
+
+`datasets/basic-llm-test/suite.yaml`:
+
+```yaml
+schemaVersion: "suite.v1"
+id: "basic-llm"
+name: "Basic LLM Example"
+discover:
+  - "datasets/basic-llm-test/**/*.yaml"
+```
+
+`datasets/basic-llm-test/task-001-capital-france.yaml`:
+
+```yaml
+schemaVersion: "task.v1"
+id: "basic-llm/smoke/capital-france-001"
+
+provider:
+  id: "basic-llm"
+  runs:
+    - name: "default"
+      params:
+        prompt: "What is the capital of France?"
+
+graders:
+  strategy: "ALL"
+  layers:
+    - name: "must contain Paris"
+      type: "contains"
+      config:
+        mustInclude:
+          - pattern: "Paris"
+            caseSensitive: false
+
+execution:
+  timeoutMs: 30000
+  retryOnError: 0
+  trialsPerTask: 1
+  maxConcurrency: 1
+```
+
+Run it:
+
+```bash
+pnpm tsx main.ts
+```
+
+The TUI will let you choose the suite and task, run the provider, grade the
+output, and write result files under `results/`.
+
+## Real Provider Example
+
+The repository includes a fuller example in
+`examples/basics/main.ts`. It wires:
+
+- `BasicLlmProvider`, which calls a real LLM through the AI SDK.
+- `FileEditAgentProvider`, which evaluates a simple file-editing agent.
+- `BuiltinLlmJudgeGrader`, which uses a configured judge model for `llm-judge`
+  grading layers.
+
+Run the repository example:
 
 ```bash
 pnpm install
 pnpm build
-pnpm test
-```
-
-## 公开入口与边界
-
-外部实现只应依赖这些公开入口：
-
-- `@aeval/core`：评测框架核心（Core API、contracts、runtime registry）
-- `@aeval/core/tools`：可选 parser / schema 工具能力（DSL 预校验、导入检查、CI lint）
-- `@aeval/graders`：内置 graders 与 `registerBuiltinGraders(...)`
-- `@aeval/adapter-task-source-local`：本地 YAML 任务源适配器 `LocalTask`
-- `@aeval/adapter-result-store-local`：本地结果存储适配器 `LocalStore`
-- `@aeval/adapter-observer-console`：控制台观察器 `ConsoleObserver`
-- `@aeval/interface-tui`：预置本地交互 TUI
-
-### Tips
-- 内置 adapters / graders / TUI 现在按包独立发布，按需安装即可；不应直接依赖 `core/domain/*`、`core/runtime/*`、`core/utils/*` 这类内部实现路径。
-- 运行时接入路径默认不依赖 parser。`Tasks` adapter 返回 raw document，Core 自己在加载 suite/task 时完成解析与校验；如果调用方想在任务录入前做预检查，可按需从 `@aeval/core/tools` 使用 `parseSuiteDocument(...)`、`parseTaskDocument(...)` 等工具函数。
-
-## Basics 示例
-
-仓库保留一个本地可运行的通用示例：
-
-- `examples/basics/main.ts`
-- `examples/basics/providers/`
-- `examples/basics/datasets/`
-
-启动方式：
-
-```bash
-pnpm build
-pnpm --filter @aeval/example-basics start
-```
-
-也可以使用根脚本：
-
-```bash
 pnpm example:basics
 ```
+
+The real LLM example expects a `.env` file under `examples/basics/` with:
+
+```dotenv
+DEEPSEEK_API_KEY=...
+```
+
+## Public Surfaces
+
+Application code should import from public package entrypoints only:
+
+- `@aeval/core`
+- `@aeval/core/tools`
+- `@aeval/graders`
+- `@aeval/adapter-task-source-local`
+- `@aeval/adapter-result-store-local`
+- `@aeval/adapter-observer-console`
+- `@aeval/interface-tui`
+
+Do not import internal paths such as `core/domain/*`, `core/runtime/*`,
+`core/utils/*`, or `core/validation/*`.
