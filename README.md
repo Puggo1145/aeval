@@ -67,14 +67,12 @@ import { LocalStore } from '@aeval/adapter-result-store-local';
 import { LocalTask } from '@aeval/adapter-task-source-local';
 import {
   Core,
-  Graders,
-  Providers,
   type ExecutionResultInput,
   type Provider,
   type Run,
   type TaskContext,
 } from '@aeval/core';
-import { registerBuiltinGraders } from '@aeval/graders';
+import { builtinGraders } from '@aeval/graders';
 import { runTui } from '@aeval/interface-tui';
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
@@ -104,17 +102,11 @@ class BasicProvider implements Provider {
 }
 
 async function main(): Promise<void> {
-  const providers = new Providers();
-  providers.register(new BasicProvider());
-
-  const graders = new Graders();
-  registerBuiltinGraders(graders);
-
   const core = new Core({
     tasks: new LocalTask({ rootDir: currentDir }),
     stores: new LocalStore({ rootDir: resolve(currentDir, 'results') }),
-    providers,
-    graders,
+    providers: [new BasicProvider()],
+    graders: [...builtinGraders],
     observers: [new ConsoleObserver()],
   });
 

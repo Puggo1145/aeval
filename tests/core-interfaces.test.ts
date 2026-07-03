@@ -884,6 +884,34 @@ test('results.list preserves store-provided runId order', async () => {
   );
 });
 
+test('Core accepts plain provider/grader arrays and registers them internally', async () => {
+  const core = new Core({
+    tasks: createTasks(),
+    stores: new InMemoryStore(),
+    providers: [new MockProvider()],
+    graders: [new AlwaysPassGrader()],
+  });
+
+  const suite = await core.suites.load('basic-llm');
+  const summaries = await suite.runTask('basic-llm/task-001');
+
+  assert.equal(summaries.length, 2);
+  assert.ok(summaries.every((summary) => summary.passRate === 1));
+});
+
+test('Core rejects duplicate provider ids passed as an array', () => {
+  assert.throws(
+    () =>
+      new Core({
+        tasks: createTasks(),
+        stores: new InMemoryStore(),
+        providers: [new MockProvider(), new MockProvider()],
+        graders: [new AlwaysPassGrader()],
+      }),
+    /already registered/,
+  );
+});
+
 test('loadSuites rejects when called without inputs', async () => {
   const core = createTestCore();
 

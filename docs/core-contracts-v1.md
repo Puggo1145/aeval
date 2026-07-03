@@ -182,6 +182,7 @@ Rules:
 1. events are emitted in time order
 2. `run:completed` is the last event for one run
 3. `loadedSuite.streamTask(taskId)` emits one run lifecycle for each `provider.runs[]` entry
+4. observers receive every emitted event best-effort; observer failures or slowness never fail or stall the run
 
 ## 4. Tasks
 
@@ -225,8 +226,8 @@ core.results.clearByRunIds(runIds): Promise<ClearedResultEntry[]>
 core.baseline.compare(currentRunId, options): Promise<BaselineComparison>
 
 loadedSuite.listTasks(): Promise<TaskIndex[]>
-loadedSuite.runTask(taskId): Promise<RunSummaryData[]>
-loadedSuite.streamTask(taskId): AsyncIterable<RunEvent>
+loadedSuite.runTask(taskId, options?): Promise<RunSummaryData[]>
+loadedSuite.streamTask(taskId, options?): AsyncIterable<RunEvent>
 ```
 
 `Suite` is the pure suite definition/value object. `LoadedSuite` is the only
@@ -238,6 +239,9 @@ Rules:
 2. `runTask(taskId)` executes all runs defined by the task
 3. runs are serial across `provider.runs[]`
 4. trials may run concurrently within one run
+5. `new Core({ providers, graders, ... })` accepts prebuilt registries or plain `Provider[]` / `Grader[]` arrays
+6. `runTask` / `streamTask` accept an optional `{ signal }` for cooperative cancellation
+7. a `LoadedSuite` caches resolved suite metadata and tasks for its lifetime; reload the suite to pick up task-source changes
 
 Baseline rules:
 

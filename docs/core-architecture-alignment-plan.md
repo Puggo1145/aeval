@@ -356,7 +356,7 @@ Exit criteria:
 
 ### Phase 7: Dead and Weak Abstraction Cleanup
 
-Status: untoched
+Status: finished
 
 Primary goal:
 

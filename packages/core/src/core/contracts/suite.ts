@@ -17,13 +17,12 @@ export const SuiteDocumentSchema = z
 export type SuiteDocument = z.infer<typeof SuiteDocumentSchema>;
 
 export function parseSuiteDocument(input: unknown): SuiteDocument {
-  // 1. 先看是否可以解析为 object
+  // Reject non-object input first so field-level errors read consistently.
   const rawResult = documentInputSchema.safeParse(input);
   if (!rawResult.success) {
     throwFirstZodValidationError(rawResult.error, 'suite');
   }
 
-  // 2. 再看是否符合 suite 的 schema
   const suiteResult = SuiteDocumentSchema.safeParse(rawResult.data);
   if (!suiteResult.success) {
     throwFirstZodValidationError(suiteResult.error, 'suite');

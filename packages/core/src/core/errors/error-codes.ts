@@ -1,26 +1,15 @@
 export const ERROR_CODES = {
-  // 违反 contracts。例如注册同名的 grader/provider。属于编程错误
+  // Contract violations are programming errors, e.g. registering a duplicate grader/provider.
   CONTRACT_VIOLATION: 'CONTRACT_VIOLATION',
   VALIDATION_INVALID_INPUT: 'VALIDATION_INVALID_INPUT',
-  VALIDATION_UNKNOWN_COMMAND: 'VALIDATION_UNKNOWN_COMMAND',
-  RUNTIME_DEPENDENCY_MISSING: 'RUNTIME_DEPENDENCY_MISSING',
-  // 运行时依赖不唯一
-  RUNTIME_DEPENDENCY_AMBIGUOUS: 'RUNTIME_DEPENDENCY_AMBIGUOUS',
-  RUNTIME_NOT_IMPLEMENTED: 'RUNTIME_NOT_IMPLEMENTED',
   RUNTIME_UNEXPECTED: 'RUNTIME_UNEXPECTED',
   STORE_FAILURE: 'STORE_FAILURE',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
 export type ContractErrorCode = typeof ERROR_CODES.CONTRACT_VIOLATION;
-export type ValidationErrorCode =
-  | typeof ERROR_CODES.VALIDATION_INVALID_INPUT
-  | typeof ERROR_CODES.VALIDATION_UNKNOWN_COMMAND;
-export type RuntimeErrorCode =
-  | typeof ERROR_CODES.RUNTIME_DEPENDENCY_MISSING
-  | typeof ERROR_CODES.RUNTIME_DEPENDENCY_AMBIGUOUS
-  | typeof ERROR_CODES.RUNTIME_NOT_IMPLEMENTED
-  | typeof ERROR_CODES.RUNTIME_UNEXPECTED;
+export type ValidationErrorCode = typeof ERROR_CODES.VALIDATION_INVALID_INPUT;
+export type RuntimeErrorCode = typeof ERROR_CODES.RUNTIME_UNEXPECTED;
 export type StoreErrorCode = typeof ERROR_CODES.STORE_FAILURE;
 
 export const ERROR_CATEGORIES = {

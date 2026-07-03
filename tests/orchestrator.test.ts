@@ -10,9 +10,9 @@ import { SCHEMA_VERSIONS } from '../packages/core/src/core/contracts/index.js';
 import type { RunManifestRecord } from '../packages/core/src/core/contracts/run-manifest.js';
 import type { RunSummaryRecord } from '../packages/core/src/core/contracts/run-summary.js';
 import type { RunEvent } from '../packages/core/src/core/contracts/runtime.js';
+import type { TrialResultRecord } from '../packages/core/src/core/contracts/trial.js';
 import { Suite } from '../packages/core/src/core/domain/suite.js';
 import { Task } from '../packages/core/src/core/domain/task.js';
-import type { Trial } from '../packages/core/src/core/domain/trial.js';
 import { TaskRunOrchestrator } from '../packages/core/src/core/orchestrator/run-orchestrator.js';
 import { Graders, Providers } from '../packages/core/src/core/runtime/index.js';
 import { resolveExecutionPolicy } from '../packages/core/src/core/runtime/task-execution.js';
@@ -21,7 +21,7 @@ import { computeSha256 } from '../packages/core/src/core/utils/hash.js';
 class InMemoryStore implements Stores {
   readonly runManifests = new Map<string, RunManifestRecord>();
   readonly runSummaries = new Map<string, RunSummaryRecord>();
-  readonly trialRecords = new Map<string, { runId: string; trial: Trial['trial'] }[]>();
+  readonly trialRecords = new Map<string, TrialResultRecord[]>();
 
   async saveRunManifest(input: RunManifestRecord): Promise<void> {
     this.runManifests.set(input.runId, input);
@@ -29,7 +29,7 @@ class InMemoryStore implements Stores {
   async saveRunSummary(input: RunSummaryRecord): Promise<void> {
     this.runSummaries.set(input.runId, input);
   }
-  async saveTrial(input: { runId: string; trial: Trial['trial'] }): Promise<void> {
+  async saveTrial(input: TrialResultRecord): Promise<void> {
     const current = this.trialRecords.get(input.runId) ?? [];
     current.push(input);
     this.trialRecords.set(input.runId, current);
@@ -40,7 +40,7 @@ class InMemoryStore implements Stores {
   async getRunSummary(runId: string): Promise<RunSummaryRecord | null> {
     return this.runSummaries.get(runId) ?? null;
   }
-  async listTrials(runId: string): Promise<{ runId: string; trial: Trial['trial'] }[]> {
+  async listTrials(runId: string): Promise<TrialResultRecord[]> {
     return this.trialRecords.get(runId) ?? [];
   }
   async listRunIds(): Promise<string[]> {
@@ -217,6 +217,56 @@ test('TaskRunOrchestrator persists manifest, trials, and summary for one task ru
   assert.equal(summaryRecord?.summary.totalTrials, 2);
   assert.equal(summaryRecord?.summary.passRate, 1);
   assert.equal(stores.trialRecords.size, 1);
+});
+
+test('TaskRunOrchestrator notifies observers for every event type including trial:started', async () => {
+  const { deps, providers, runtimeDefaults } = createDeps();
+  const observedTypes: string[] = [];
+  const depsWithObserver = {
+    ...deps,
+    observers: [
+      {
+        onEvent(event: RunEvent) {
+          observedTypes.push(event.type);
+        },
+      },
+    ],
+  };
+
+  providers.register({
+    id: 'mock-provider',
+    async execute(): Promise<ExecutionResult> {
+      return { output: 'ok' };
+    },
+  });
+
+  const task = createTask({
+    execution: {
+      timeoutMs: 1000,
+      retryOnError: 0,
+      trialsPerTask: 1,
+      maxConcurrency: 1,
+    },
+  });
+
+  await collectEvents(
+    new TaskRunOrchestrator(
+      {
+        suite: createSuite(),
+        task,
+        run: task.runs[0]!,
+        execution: resolveExecutionPolicy(task, runtimeDefaults),
+      },
+      depsWithObserver,
+    ).run(),
+  );
+
+  assert.deepEqual(observedTypes, [
+    'run:started',
+    'trial:started',
+    'trial:completed',
+    'run:completed',
+  ]);
 });
 
 test('TaskRunOrchestrator leaves manifest incomplete when the input signal aborts', async () => {

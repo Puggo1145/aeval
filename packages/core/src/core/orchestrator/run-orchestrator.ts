@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Observer } from '../adapters/observer-adapter.js';
 import type { Stores } from '../adapters/result-store-adapter.js';
 import { SYSTEM_ERROR_CODES } from '../contracts/execution.js';
-import { type Graders, type Providers, type RunEvent, RunEvents } from '../contracts/runtime.js';
+import type { Graders, Providers, RunEvent } from '../contracts/runtime.js';
 import type { Run } from '../domain/run.js';
 import { RunManifest } from '../domain/run-manifest.js';
 import { RunSummary } from '../domain/run-summary.js';
@@ -12,7 +12,7 @@ import type { Task } from '../domain/task.js';
 import type { Trial } from '../domain/trial.js';
 import { isStreamClosedError, StreamClosedError } from '../runtime/abort-reasons.js';
 import type { ExecutionPolicy } from '../runtime/task-execution.js';
-import { createBoundedAsyncChannel } from './bounded-async-channel.js';
+import { BoundedAsyncChannel } from './bounded-async-channel.js';
 import { TrialExecutor } from './trial-engine.js';
 
 export interface TaskRunOrchestratorInput {
@@ -24,34 +24,36 @@ export interface TaskRunOrchestratorInput {
 }
 
 const OBSERVER_NOTIFY_TIMEOUT_MS = 300;
+
 export class TaskRunOrchestrator {
   constructor(
     private readonly input: TaskRunOrchestratorInput,
     private readonly deps: {
       stores: Stores;
-      observers: Observer[];
+      observers: readonly Observer[];
       providers: Providers;
       graders: Graders;
     },
   ) {}
 
   async *run(): AsyncGenerator<RunEvent> {
+    const { task, run, execution } = this.input;
     const runId = randomUUID();
     let manifest = RunManifest.create({
       runId,
       suite: this.input.suite,
-      task: this.input.task,
-      run: this.input.run,
-      execution: this.input.execution,
+      task,
+      run,
+      execution,
     });
-    const totalTrials = this.input.execution.trialsPerTask;
+    const totalTrials = execution.trialsPerTask;
     const completedTrials: Trial[] = [];
     const runAbortController = new AbortController();
-    const trialIndices = Array.from({ length: totalTrials }, (_, index) => index);
-    const trialIterator = trialIndices[Symbol.iterator]();
-    const activeWorkers: Promise<void>[] = [];
-    const eventChannel = createBoundedAsyncChannel<RunEvent>(
-      Math.max(this.input.execution.maxConcurrency * 4, 32),
+    const trialIterator = Array.from({ length: totalTrials }, (_, index) => index)[
+      Symbol.iterator
+    ]();
+    const eventChannel = new BoundedAsyncChannel<RunEvent>(
+      Math.max(execution.maxConcurrency * 4, 32),
     );
     const executor = new TrialExecutor({
       providers: this.deps.providers,
@@ -70,14 +72,17 @@ export class TaskRunOrchestrator {
     };
     await this.deps.stores.saveRunManifest(manifest.toRecord());
 
-    const runStartedEvent = RunEvents.started(
+    const notify = (event: RunEvent): Promise<void> => notifyObservers(this.deps.observers, event);
+
+    const runStartedEvent: RunEvent = {
+      type: 'run:started',
       runId,
-      this.input.task.id,
-      this.input.run.name,
+      taskId: task.id,
+      runName: run.name,
       totalTrials,
-    );
+    };
     yield runStartedEvent;
-    await notifyObservers(this.deps.observers, runStartedEvent);
+    await notify(runStartedEvent);
 
     if (this.input.signal) {
       if (this.input.signal.aborted) {
@@ -90,11 +95,14 @@ export class TaskRunOrchestrator {
       }
     }
 
-    const pushEvent = async (event: RunEvent): Promise<void> => {
+    // Single emission path for worker events: stream consumers read from the
+    // channel while observers are notified best-effort with a timeout.
+    const emit = async (event: RunEvent): Promise<void> => {
       if (runAbortController.signal.aborted) {
         return;
       }
       await eventChannel.push(event);
+      await notify(event);
     };
 
     const runWorker = async (): Promise<void> => {
@@ -111,16 +119,20 @@ export class TaskRunOrchestrator {
         const trialIndex = next.value;
 
         try {
-          await pushEvent(
-            RunEvents.trialStarted(this.input.task.id, runId, this.input.run.name, trialIndex),
-          );
+          await emit({
+            type: 'trial:started',
+            taskId: task.id,
+            runId,
+            runName: run.name,
+            trialIndex,
+          });
 
           let result = await executor.execute({
-            task: this.input.task,
-            run: this.input.run,
+            task,
+            run,
             trialIndex,
             runId,
-            timeoutMs: this.input.execution.timeoutMs,
+            timeoutMs: execution.timeoutMs,
             parentSignal: runAbortController.signal,
           });
 
@@ -128,15 +140,15 @@ export class TaskRunOrchestrator {
           while (
             !runAbortController.signal.aborted &&
             isRetryableSystemError(result) &&
-            retryCount < this.input.execution.retryOnError
+            retryCount < execution.retryOnError
           ) {
             retryCount++;
             result = await executor.execute({
-              task: this.input.task,
-              run: this.input.run,
+              task,
+              run,
               trialIndex,
               runId,
-              timeoutMs: this.input.execution.timeoutMs,
+              timeoutMs: execution.timeoutMs,
               parentSignal: runAbortController.signal,
             });
           }
@@ -149,27 +161,25 @@ export class TaskRunOrchestrator {
           await this.deps.stores.saveTrial({ runId, trial: result.toRecord() });
 
           if (result.execution.error) {
-            const event = RunEvents.trialError(
-              this.input.task.id,
+            await emit({
+              type: 'trial:error',
+              taskId: task.id,
               runId,
-              this.input.run.name,
+              runName: run.name,
               trialIndex,
-              result.execution.error.type,
-              result.execution.error.message,
-            );
-            await pushEvent(event);
-            await notifyObservers(this.deps.observers, event);
+              errorType: result.execution.error.type,
+              message: result.execution.error.message,
+            });
           } else {
-            const event = RunEvents.trialCompleted(
-              this.input.task.id,
+            await emit({
+              type: 'trial:completed',
+              taskId: task.id,
               runId,
-              this.input.run.name,
+              runName: run.name,
               trialIndex,
-              result.aggregate.pass,
-              result.timings.durationMs,
-            );
-            await pushEvent(event);
-            await notifyObservers(this.deps.observers, event);
+              pass: result.aggregate.pass,
+              durationMs: result.timings.durationMs,
+            });
           }
         } catch (error: unknown) {
           fatalWorkerError = fatalWorkerError ?? error;
@@ -182,7 +192,8 @@ export class TaskRunOrchestrator {
     };
 
     try {
-      const workerCount = Math.min(this.input.execution.maxConcurrency, trialIndices.length);
+      const workerCount = Math.min(execution.maxConcurrency, totalTrials);
+      const activeWorkers: Promise<void>[] = [];
       for (let index = 0; index < workerCount; index++) {
         activeWorkers.push(runWorker());
       }
@@ -204,20 +215,15 @@ export class TaskRunOrchestrator {
         throw fatalWorkerError;
       }
 
-      const summary = RunSummary.fromTrials(
-        runId,
-        this.input.task.id,
-        this.input.run.name,
-        completedTrials,
-      );
+      const summary = RunSummary.fromTrials(runId, task.id, run.name, completedTrials);
       await this.deps.stores.saveRunSummary({ runId, summary: summary.toRecord() });
 
       manifest = manifest.complete();
       await this.deps.stores.saveRunManifest(manifest.toRecord());
 
-      const completedEvent = RunEvents.completed(summary.toRecord());
+      const completedEvent: RunEvent = { type: 'run:completed', summary: summary.toRecord() };
       yield completedEvent;
-      await notifyObservers(this.deps.observers, completedEvent);
+      await notify(completedEvent);
     } finally {
       removeInputAbortListener?.();
 
@@ -250,7 +256,7 @@ function isRetryableSystemError(result: Trial): boolean {
   return true;
 }
 
-async function notifyObservers(observers: Observer[], event: RunEvent): Promise<void> {
+async function notifyObservers(observers: readonly Observer[], event: RunEvent): Promise<void> {
   if (observers.length === 0) {
     return;
   }
@@ -258,6 +264,7 @@ async function notifyObservers(observers: Observer[], event: RunEvent): Promise<
   await Promise.all(observers.map((observer) => notifyObserverWithTimeout(observer, event)));
 }
 
+// Observers are best-effort: a slow or throwing observer must not stall the run.
 async function notifyObserverWithTimeout(observer: Observer, event: RunEvent): Promise<void> {
   await new Promise<void>((resolve) => {
     let completed = false;

@@ -17,6 +17,5 @@ export interface RunManifestRecord {
   taskHash: string;
   configHash: string;
   startedAt: string;
-  gitSha?: string;
   completedAt?: string;
 }

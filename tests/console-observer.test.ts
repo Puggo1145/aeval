@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { ConsoleObserver } from '../packages/adapter-observer-console/src/console-observer.js';
-import { RunEvents } from '../packages/core/src/core/contracts/runtime.js';
 
 test('console observer logs run:started with task and trial counts', () => {
   const observer = new ConsoleObserver();
@@ -13,7 +12,13 @@ test('console observer logs run:started with task and trial counts', () => {
   };
 
   try {
-    observer.onEvent(RunEvents.started('run-1', 'task-001', 'mini', 3));
+    observer.onEvent({
+      type: 'run:started',
+      runId: 'run-1',
+      taskId: 'task-001',
+      runName: 'mini',
+      totalTrials: 3,
+    });
   } finally {
     console.log = originalLog;
   }
@@ -31,7 +36,15 @@ test('console observer logs trial:error with runName', () => {
   };
 
   try {
-    observer.onEvent(RunEvents.trialError('task-001', 'run-1', 'mini', 1, 'system', 'timeout'));
+    observer.onEvent({
+      type: 'trial:error',
+      taskId: 'task-001',
+      runId: 'run-1',
+      runName: 'mini',
+      trialIndex: 1,
+      errorType: 'system',
+      message: 'timeout',
+    });
   } finally {
     console.error = originalError;
   }
@@ -49,16 +62,17 @@ test('console observer logs run:completed using task-run summary fields', () => 
   };
 
   try {
-    observer.onEvent(
-      RunEvents.completed({
+    observer.onEvent({
+      type: 'run:completed',
+      summary: {
         schemaVersion: 'run-summary.v1',
         runId: 'run-1',
         taskId: 'task-001',
         runName: 'mini',
         totalTrials: 2,
         passRate: 1,
-      }),
-    );
+      },
+    });
   } finally {
     console.log = originalLog;
   }

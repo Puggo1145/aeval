@@ -1,5 +1,6 @@
 /**
- * 定义当前各个 contracts schema 所使用的版本号，应对未来做版本兼容和迁移
+ * Version tags for every contract schema, reserved for future compatibility
+ * checks and migrations.
  */
 export const SCHEMA_VERSIONS = {
   SUITE: 'suite.v1',

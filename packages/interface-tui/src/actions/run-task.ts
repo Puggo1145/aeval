@@ -305,7 +305,7 @@ export async function runTask(core: CoreApi): Promise<void> {
   for (const record of completedRuns) {
     if (!metadata.has(record.runId)) {
       metadata.set(record.runId, {
-        suiteName: loadedSuite.definition.name,
+        suiteName: loadedSuite.name,
         taskId: selectedTask.id,
       } satisfies RunMetadata);
     }

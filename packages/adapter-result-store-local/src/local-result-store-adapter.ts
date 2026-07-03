@@ -9,6 +9,7 @@ import type {
   Stores,
   TrialResultRecord,
 } from '@aeval/core';
+import { StoreError, ValidationError } from '@aeval/core';
 
 const MANIFEST_FILE = 'manifest.json';
 const SUMMARY_FILE = 'summary.json';
@@ -16,20 +17,6 @@ const TRIALS_DIR = 'trials';
 
 export interface LocalStoreOptions {
   rootDir: string;
-}
-
-class ValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ValidationError';
-  }
-}
-
-class StoreError extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
-    super(message, options);
-    this.name = 'StoreError';
-  }
 }
 
 function ensureNonEmptyString(value: string, field: string): string {

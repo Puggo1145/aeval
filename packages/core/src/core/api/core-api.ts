@@ -15,7 +15,9 @@ import type { RunSummaryData } from '../contracts/run-summary.js';
 import type {
   BaselineComparison,
   BaselineThresholds,
+  Grader,
   Graders,
+  Provider,
   Providers,
   RunEvent,
   RuntimeDefaults,
@@ -27,6 +29,8 @@ import { Suite } from '../domain/suite.js';
 import { Task } from '../domain/task.js';
 import { ERROR_CODES, RuntimeError, ValidationError } from '../errors/index.js';
 import { TaskRunOrchestrator } from '../orchestrator/run-orchestrator.js';
+import { Graders as GraderRegistry } from '../runtime/grader-registry.js';
+import { Providers as ProviderRegistry } from '../runtime/provider-registry.js';
 import { resolveExecutionPolicy, validateTaskRuntime } from '../runtime/task-execution.js';
 import { ensureNonEmptyString } from '../validation/helpers.js';
 import { normalizeRuntimeDefaults } from '../validation/runtime-defaults.js';
@@ -38,6 +42,10 @@ import {
 
 export type LoadSuiteInput = string | SuiteInput | Promise<SuiteInput>;
 
+export interface RunTaskOptions {
+  signal?: AbortSignal;
+}
+
 export interface CompareBaselineOptions {
   baselineRunId: string;
   thresholds?: BaselineThresholds;
@@ -47,8 +55,10 @@ export interface CompareBaselineOptions {
 export interface CoreDependencies {
   tasks: Tasks;
   stores: Stores;
-  providers: Providers;
-  graders: Graders;
+  /** A prebuilt registry, or a plain array registered into one internally. */
+  providers: Providers | Provider[];
+  /** A prebuilt registry, or a plain array registered into one internally. */
+  graders: Graders | Grader[];
   observers?: Observer[];
   runtimeDefaults?: RuntimeDefaults;
 }
@@ -78,54 +88,162 @@ export interface CoreApi {
   readonly baseline: CoreBaselineApi;
 }
 
-export interface LoadedSuiteInit {
-  getSuite(): Suite;
-  listTasks(): Promise<TaskIndex[]>;
-  runTask(taskId: string): Promise<RunSummaryData[]>;
-  streamTask(taskId: string, options?: { signal?: AbortSignal }): AsyncIterable<RunEvent>;
-}
-
+/**
+ * Public execution handle for one loaded suite. It binds the pure `Suite`
+ * definition to task discovery and execution, caching resolved suite metadata
+ * and tasks for the lifetime of the handle.
+ */
 export class LoadedSuite {
-  constructor(private readonly input: LoadedSuiteInit) {}
+  private suite: Suite;
+  private resolvedSuitePromise?: Promise<ResolvedSuite>;
+  private taskIndexesPromise?: Promise<TaskIndex[]>;
+  private resolvedTaskIndexes?: TaskIndex[];
+  private readonly taskCache = new Map<string, Task>();
+
+  constructor(
+    private readonly core: Core,
+    suite: Suite,
+    preloadedResolvedSuite?: ResolvedSuite,
+  ) {
+    this.suite = suite;
+    if (preloadedResolvedSuite) {
+      this.resolvedSuitePromise = Promise.resolve(preloadedResolvedSuite);
+    }
+  }
 
   get schemaVersion(): Suite['schemaVersion'] {
-    return this.input.getSuite().schemaVersion;
+    return this.suite.schemaVersion;
   }
 
   get id(): string {
-    return this.input.getSuite().id;
+    return this.suite.id;
   }
 
   get name(): string {
-    return this.input.getSuite().name;
+    return this.suite.name;
   }
 
   get discover(): readonly string[] {
-    return this.input.getSuite().discover;
+    return this.suite.discover;
   }
 
   get source(): Suite['source'] {
-    return this.input.getSuite().source;
+    return this.suite.source;
   }
 
+  /** Task indexes resolved so far; `undefined` until `listTasks()` completes. */
   get taskIndexes(): readonly TaskIndex[] | undefined {
-    return this.input.getSuite().taskIndexes;
+    return this.resolvedTaskIndexes;
   }
 
   get definition(): SuiteDocument {
-    return this.input.getSuite().definition;
+    return this.suite.toDocument();
   }
 
   async listTasks(): Promise<TaskIndex[]> {
-    return this.input.listTasks();
+    if (!this.taskIndexesPromise) {
+      this.taskIndexesPromise = this.buildTaskIndexes();
+    }
+    return this.taskIndexesPromise;
   }
 
-  async runTask(taskId: string): Promise<RunSummaryData[]> {
-    return this.input.runTask(taskId);
+  async runTask(taskId: string, options?: RunTaskOptions): Promise<RunSummaryData[]> {
+    const summaries: RunSummaryData[] = [];
+    for await (const event of this.streamTask(taskId, options)) {
+      if (event.type === 'run:completed') {
+        summaries.push(event.summary);
+      }
+    }
+    return summaries;
   }
 
-  streamTask(taskId: string, options?: { signal?: AbortSignal }): AsyncIterable<RunEvent> {
-    return this.input.streamTask(taskId, options);
+  async *streamTask(taskId: string, options?: RunTaskOptions): AsyncIterable<RunEvent> {
+    const task = await this.resolveTaskById(taskId);
+    validateTaskRuntime(task, {
+      providers: this.core.providers,
+      graders: this.core.graders,
+    });
+    const execution = resolveExecutionPolicy(task, this.core.runtimeDefaults);
+
+    for (const run of task.runs) {
+      if (options?.signal?.aborted) {
+        return;
+      }
+
+      yield* new TaskRunOrchestrator(
+        {
+          suite: this.suite,
+          task,
+          run,
+          execution,
+          signal: options?.signal,
+        },
+        {
+          stores: this.core.stores,
+          observers: this.core.observers,
+          providers: this.core.providers,
+          graders: this.core.graders,
+        },
+      ).run();
+    }
+  }
+
+  private resolveSuiteData(): Promise<ResolvedSuite> {
+    if (!this.resolvedSuitePromise) {
+      this.resolvedSuitePromise = this.core.tasks.resolveSuite(this.suite.id).then((resolved) => {
+        // Adopt adapter-resolved metadata (name, source) for bare suite inputs.
+        this.suite = toInternalSuite(resolved);
+        return resolved;
+      });
+    }
+    return this.resolvedSuitePromise;
+  }
+
+  private async buildTaskIndexes(): Promise<TaskIndex[]> {
+    const resolved = await this.resolveSuiteData();
+    const taskIndexes: TaskIndex[] = [];
+
+    for (const taskRef of resolved.taskRefs) {
+      const task = toInternalTask(await this.core.tasks.resolveTask(taskRef));
+      if (this.taskCache.has(task.id)) {
+        throw new RuntimeError(`Task id '${task.id}' must be unique within suite '${this.id}'.`, {
+          code: ERROR_CODES.RUNTIME_UNEXPECTED,
+          details: {
+            suiteId: this.id,
+            taskId: task.id,
+            taskRef: taskRef.ref,
+          },
+        });
+      }
+
+      this.taskCache.set(task.id, task);
+      taskIndexes.push(taskIndexFromDomainTask(task, taskRef));
+    }
+
+    this.resolvedTaskIndexes = taskIndexes;
+    return taskIndexes;
+  }
+
+  private async resolveTaskById(taskId: string): Promise<Task> {
+    const normalizedTaskId = ensureNonEmptyString(taskId, 'taskId');
+    await this.listTasks();
+
+    const task = this.taskCache.get(normalizedTaskId);
+    if (!task) {
+      throw new ValidationError(
+        `Task '${normalizedTaskId}' is not defined in suite '${this.id}'.`,
+        {
+          details: {
+            field: 'taskId',
+            suiteId: this.id,
+            taskId: normalizedTaskId,
+            knownTaskIds: [...this.taskCache.keys()],
+          },
+        },
+      );
+    }
+
+    return task;
   }
 }
 
@@ -143,28 +261,28 @@ function taskIndexFromDomainTask(task: Task, taskRef: TaskRef): TaskIndex {
   };
 }
 
-function validateBaselineTaskMatch(input: {
-  currentRunId: string;
-  currentTaskId: string;
-  baselineRunId: string;
-  baselineTaskId: string;
-}): string {
-  if (input.currentTaskId === input.baselineTaskId) {
-    return input.currentTaskId;
+function toProviders(input: Providers | Provider[]): Providers {
+  if (!Array.isArray(input)) {
+    return input;
   }
 
-  throw new ValidationError(
-    `Baseline compare requires runs from the same task. Current run '${input.currentRunId}' belongs to '${input.currentTaskId}' while baseline run '${input.baselineRunId}' belongs to '${input.baselineTaskId}'.`,
-    {
-      details: {
-        field: 'taskId',
-        currentRunId: input.currentRunId,
-        currentTaskId: input.currentTaskId,
-        baselineRunId: input.baselineRunId,
-        baselineTaskId: input.baselineTaskId,
-      },
-    },
-  );
+  const registry = new ProviderRegistry();
+  for (const provider of input) {
+    registry.register(provider);
+  }
+  return registry;
+}
+
+function toGraders(input: Graders | Grader[]): Graders {
+  if (!Array.isArray(input)) {
+    return input;
+  }
+
+  const registry = new GraderRegistry();
+  for (const grader of input) {
+    registry.register(grader);
+  }
+  return registry;
 }
 
 export class Core implements CoreApi {
@@ -181,12 +299,12 @@ export class Core implements CoreApi {
   constructor(input: CoreDependencies) {
     this.tasks = input.tasks;
     this.stores = input.stores;
-    this.providers = input.providers;
-    this.graders = input.graders;
+    this.providers = toProviders(input.providers);
+    this.graders = toGraders(input.graders);
     this.observers = Object.freeze([...(input.observers ?? [])]);
     this.runtimeDefaults = normalizeRuntimeDefaults(input.runtimeDefaults);
     this.suites = Object.freeze({
-      list: () => this.listSuitesFromTasks(),
+      list: () => this.tasks.listSuites(),
       load: (suite: LoadSuiteInput) => this.loadSuiteHandle(suite),
       loadMany: (...inputs: LoadSuiteInput[]) => this.loadSuiteHandles(...inputs),
     });
@@ -195,8 +313,8 @@ export class Core implements CoreApi {
       getManifest: (runId: string) => this.getRunManifestRecord(runId),
       getSummary: (runId: string) => this.getRunSummaryData(runId),
       listTrials: (runId: string) => this.listTrialRecords(runId),
-      clearAll: () => this.clearAllRunResults(),
-      clearByRunIds: (runIds: string[]) => this.clearRunResultsById(runIds),
+      clearAll: () => this.stores.clearAllResults(),
+      clearByRunIds: (runIds: string[]) => this.stores.clearResultsByRunIds(runIds),
     });
     this.baseline = Object.freeze({
       compare: (currentRunId: string, options: CompareBaselineOptions) =>
@@ -204,20 +322,15 @@ export class Core implements CoreApi {
     });
   }
 
-  private async listSuitesFromTasks(): Promise<SuiteDescriptor[]> {
-    return this.tasks.listSuites();
-  }
-
   private async loadSuiteHandle(input: LoadSuiteInput): Promise<LoadedSuite> {
     if (typeof input === 'string') {
       const suiteId = ensureNonEmptyString(input, 'suiteId');
       const resolvedSuite = await this.tasks.resolveSuite(suiteId);
-      const suite = toInternalSuite(resolvedSuite);
-      return this.bindSuite(suite, resolvedSuite);
+      return new LoadedSuite(this, toInternalSuite(resolvedSuite), resolvedSuite);
     }
 
     const raw = await input;
-    return this.bindSuite(Suite.fromDocument(raw));
+    return new LoadedSuite(this, Suite.fromDocument(raw));
   }
 
   private async loadSuiteHandles(...inputs: LoadSuiteInput[]): Promise<LoadedSuite[]> {
@@ -267,27 +380,23 @@ export class Core implements CoreApi {
     const baselineRunId = ensureNonEmptyString(options.baselineRunId, 'baselineRunId');
     validateBaselineThresholds(options.thresholds);
 
-    const currentRecord = await this.stores.getRunSummary(normalizedCurrentRunId);
-    if (!currentRecord) {
-      throw new ValidationError(`Run summary for '${normalizedCurrentRunId}' was not found.`, {
-        details: { field: 'currentRunId', runId: normalizedCurrentRunId },
-      });
-    }
-    const currentSummary = RunSummary.fromRecord(currentRecord.summary);
+    const currentSummary = await this.requireRunSummary(normalizedCurrentRunId, 'currentRunId');
+    const baselineSummary = await this.requireRunSummary(baselineRunId, 'baselineRunId');
 
-    const baselineRecord = await this.stores.getRunSummary(baselineRunId);
-    if (!baselineRecord) {
-      throw new ValidationError(`Run summary for '${baselineRunId}' was not found.`, {
-        details: { field: 'baselineRunId', runId: baselineRunId },
-      });
+    if (currentSummary.taskId !== baselineSummary.taskId) {
+      throw new ValidationError(
+        `Baseline compare requires runs from the same task. Current run '${normalizedCurrentRunId}' belongs to '${currentSummary.taskId}' while baseline run '${baselineRunId}' belongs to '${baselineSummary.taskId}'.`,
+        {
+          details: {
+            field: 'taskId',
+            currentRunId: normalizedCurrentRunId,
+            currentTaskId: currentSummary.taskId,
+            baselineRunId,
+            baselineTaskId: baselineSummary.taskId,
+          },
+        },
+      );
     }
-    const baselineSummary = RunSummary.fromRecord(baselineRecord.summary);
-    const taskId = validateBaselineTaskMatch({
-      currentRunId: normalizedCurrentRunId,
-      currentTaskId: currentSummary.taskId,
-      baselineRunId,
-      baselineTaskId: baselineSummary.taskId,
-    });
 
     const passRateDelta = currentSummary.passRate - baselineSummary.passRate;
     const passHatKDelta =
@@ -306,35 +415,36 @@ export class Core implements CoreApi {
       'runSummary.avgLatencyMs',
     );
 
-    const comparison: BaselineComparison = {
-      taskId,
+    return {
+      taskId: currentSummary.taskId,
       baselineRunId,
       currentRunId: normalizedCurrentRunId,
       passRateDelta,
-      verdict: 'pass',
+      ...(passHatKDelta !== undefined ? { passHatKDelta } : {}),
+      ...(avgLatencyDelta !== undefined ? { avgLatencyDelta } : {}),
+      ...(options.tokenBudgetBreached !== undefined
+        ? { tokenBudgetBreached: options.tokenBudgetBreached }
+        : {}),
+      verdict: computeVerdict(
+        {
+          passRateDelta,
+          passHatKDelta,
+          avgLatencyDelta,
+          tokenBudgetBreached: options.tokenBudgetBreached,
+        },
+        options.thresholds,
+      ),
     };
+  }
 
-    if (passHatKDelta !== undefined) {
-      comparison.passHatKDelta = passHatKDelta;
+  private async requireRunSummary(runId: string, field: string): Promise<RunSummary> {
+    const record = await this.stores.getRunSummary(runId);
+    if (!record) {
+      throw new ValidationError(`Run summary for '${runId}' was not found.`, {
+        details: { field, runId },
+      });
     }
-    if (avgLatencyDelta !== undefined) {
-      comparison.avgLatencyDelta = avgLatencyDelta;
-    }
-    if (options.tokenBudgetBreached !== undefined) {
-      comparison.tokenBudgetBreached = options.tokenBudgetBreached;
-    }
-
-    comparison.verdict = computeVerdict(
-      {
-        passRateDelta: comparison.passRateDelta,
-        passHatKDelta: comparison.passHatKDelta,
-        avgLatencyDelta: comparison.avgLatencyDelta,
-        tokenBudgetBreached: comparison.tokenBudgetBreached,
-      },
-      options.thresholds,
-    );
-
-    return comparison;
+    return RunSummary.fromRecord(record.summary);
   }
 
   private async listRunRecords(): Promise<RunRecord[]> {
@@ -356,160 +466,6 @@ export class Core implements CoreApi {
 
     return records;
   }
-
-  private async clearAllRunResults(): Promise<ClearedResultEntry[]> {
-    return this.stores.clearAllResults();
-  }
-
-  private async clearRunResultsById(runIds: string[]): Promise<ClearedResultEntry[]> {
-    return this.stores.clearResultsByRunIds(runIds);
-  }
-
-  private bindSuite(suite: Suite, preloadedResolvedSuite?: ResolvedSuite): LoadedSuite {
-    const suiteCore = this;
-    let currentSuite = suite;
-    let resolvedSuitePromise: Promise<ResolvedSuite> | undefined;
-    let taskIndexesPromise: Promise<TaskIndex[]> | undefined;
-
-    if (preloadedResolvedSuite) {
-      resolvedSuitePromise = Promise.resolve(preloadedResolvedSuite);
-    }
-
-    const resolveSuiteData = async (): Promise<ResolvedSuite> => {
-      if (!resolvedSuitePromise) {
-        resolvedSuitePromise = this.tasks.resolveSuite(suite.id);
-      }
-
-      const resolved = await resolvedSuitePromise;
-      currentSuite = mergeSuiteMetadata(currentSuite, toInternalSuite(resolved));
-      return resolved;
-    };
-
-    const resolveTaskIndexes = async (): Promise<TaskIndex[]> => {
-      if (!taskIndexesPromise) {
-        taskIndexesPromise = resolveSuiteData().then(async (resolved) => {
-          const taskIndexes: TaskIndex[] = [];
-          const seenTaskIds = new Set<string>();
-
-          for (const taskRef of resolved.taskRefs) {
-            const task = toInternalTask(await this.tasks.resolveTask(taskRef));
-            if (seenTaskIds.has(task.id)) {
-              throw new RuntimeError(
-                `Task id '${task.id}' must be unique within suite '${suite.id}'.`,
-                {
-                  code: ERROR_CODES.RUNTIME_UNEXPECTED,
-                  details: {
-                    suiteId: suite.id,
-                    taskId: task.id,
-                    taskRef: taskRef.ref,
-                  },
-                },
-              );
-            }
-
-            seenTaskIds.add(task.id);
-            taskIndexes.push(taskIndexFromDomainTask(task, taskRef));
-          }
-
-          currentSuite = mergeSuiteMetadata(currentSuite, currentSuite, taskIndexes);
-          return taskIndexes;
-        });
-      }
-
-      return taskIndexesPromise;
-    };
-
-    const resolveTaskById = async (taskId: string): Promise<Task> => {
-      const normalizedTaskId = ensureNonEmptyString(taskId, 'taskId');
-      await resolveSuiteData();
-      const taskIndexes = await resolveTaskIndexes();
-      const taskIndex = taskIndexes.find((task) => task.id === normalizedTaskId);
-      if (!taskIndex) {
-        throw new ValidationError(
-          `Task '${normalizedTaskId}' is not defined in suite '${suite.id}'.`,
-          {
-            details: {
-              field: 'taskId',
-              suiteId: suite.id,
-              taskId: normalizedTaskId,
-              knownTaskIds: taskIndexes.map((task) => task.id),
-            },
-          },
-        );
-      }
-
-      const task = toInternalTask(await this.tasks.resolveTask(taskIndex.taskRef));
-      if (task.id !== normalizedTaskId) {
-        throw new RuntimeError(
-          `Task source resolved '${task.id}' for requested task '${normalizedTaskId}'.`,
-          {
-            code: ERROR_CODES.RUNTIME_UNEXPECTED,
-            details: {
-              requestedTaskId: normalizedTaskId,
-              resolvedTaskId: task.id,
-              suiteId: suite.id,
-            },
-          },
-        );
-      }
-
-      return task;
-    };
-    const listTasks = async (): Promise<TaskIndex[]> => {
-      return resolveTaskIndexes();
-    };
-
-    const streamTask = async function* (
-      taskId: string,
-      options?: { signal?: AbortSignal },
-    ): AsyncIterable<RunEvent> {
-      const task = await resolveTaskById(taskId);
-      validateTaskRuntime(task, {
-        providers: suiteCore.providers,
-        graders: suiteCore.graders,
-      });
-      const execution = resolveExecutionPolicy(task, suiteCore.runtimeDefaults);
-
-      for (const run of task.runs) {
-        if (options?.signal?.aborted) {
-          return;
-        }
-
-        yield* new TaskRunOrchestrator(
-          {
-            suite: currentSuite,
-            task,
-            run,
-            execution,
-            signal: options?.signal,
-          },
-          {
-            stores: suiteCore.stores,
-            observers: [...suiteCore.observers],
-            providers: suiteCore.providers,
-            graders: suiteCore.graders,
-          },
-        ).run();
-      }
-    };
-
-    const runTask = async (taskId: string): Promise<RunSummaryData[]> => {
-      const summaries: RunSummaryData[] = [];
-      for await (const event of streamTask(taskId)) {
-        if (event.type === 'run:completed') {
-          summaries.push(event.summary);
-        }
-      }
-      return summaries;
-    };
-
-    return new LoadedSuite({
-      getSuite: () => currentSuite,
-      listTasks,
-      runTask,
-      streamTask,
-    });
-  }
 }
 
 function toInternalSuite(input: ResolvedSuite): Suite {
@@ -520,17 +476,4 @@ function toInternalSuite(input: ResolvedSuite): Suite {
 
 function toInternalTask(input: ResolvedTask): Task {
   return Task.fromDocument(input.document, input.source);
-}
-
-function mergeSuiteMetadata(base: Suite, next: Suite, taskIndexes?: TaskIndex[]): Suite {
-  return Suite.fromDocument(next.definition, {
-    ...(next.source ? { source: next.source } : base.source ? { source: base.source } : {}),
-    ...(taskIndexes
-      ? { taskIndexes }
-      : next.taskIndexes
-        ? { taskIndexes: [...next.taskIndexes] }
-        : base.taskIndexes
-          ? { taskIndexes: [...base.taskIndexes] }
-          : {}),
-  });
 }

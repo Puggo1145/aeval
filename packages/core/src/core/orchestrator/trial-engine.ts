@@ -166,12 +166,6 @@ export class TrialExecutor {
 
       execution = await Promise.race([providerPromise, timeoutPromise, abortPromise]);
     } catch (error: unknown) {
-      if (timeoutId !== undefined) {
-        clearTimeout(timeoutId);
-      }
-      removeParentAbortListener?.();
-      removeAbortListener?.();
-
       return this.buildFailedTrial(input, startedAt, startMs, {
         output: '',
         error: {
@@ -179,13 +173,13 @@ export class TrialExecutor {
           ...classifySystemError(error, input.timeoutMs, abortController.signal),
         },
       });
+    } finally {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+      removeParentAbortListener?.();
+      removeAbortListener?.();
     }
-
-    if (timeoutId !== undefined) {
-      clearTimeout(timeoutId);
-    }
-    removeParentAbortListener?.();
-    removeAbortListener?.();
 
     if (execution.error) {
       return this.buildFailedTrial(input, startedAt, startMs, execution);

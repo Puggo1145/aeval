@@ -15,8 +15,8 @@ export interface TaskRuntimeValidationDeps {
 }
 
 /**
- * 运行前校验 Task 对当前 runtime 的依赖是否可解析。
- * 这里只做 runtime 绑定相关的预检，不承担执行策略归一化。
+ * Pre-run check that the task's provider and graders resolve against the
+ * current runtime. Execution policy normalization is handled separately.
  */
 export function validateTaskRuntime(task: Task, deps: TaskRuntimeValidationDeps): void {
   deps.providers.require(task.providerId);
@@ -39,7 +39,8 @@ export function validateTaskRuntime(task: Task, deps: TaskRuntimeValidationDeps)
 }
 
 /**
- * 将 Task 的声明式 execution 配置与 runtime 默认值合成为最终执行策略。
+ * Merge the task's declared execution config with runtime defaults into the
+ * effective execution policy.
  */
 export function resolveExecutionPolicy(
   task: Task,

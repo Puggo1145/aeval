@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { ConsoleObserver } from '@aeval/adapter-observer-console';
 import { LocalStore } from '@aeval/adapter-result-store-local';
 import { LocalTask } from '@aeval/adapter-task-source-local';
-import { Core, Graders, Providers } from '@aeval/core';
-import { BuiltinLlmJudgeGrader, registerBuiltinGraders } from '@aeval/graders';
+import { Core } from '@aeval/core';
+import { BuiltinLlmJudgeGrader, builtinGraders } from '@aeval/graders';
 import { runTui } from '@aeval/interface-tui';
 import { createOpenAI } from '@ai-sdk/openai';
 import { BasicLlmProvider, FileEditAgentProvider } from './providers/index.ts';
@@ -31,25 +31,18 @@ async function main(): Promise<void> {
     apiKey: process.env.DEEPSEEK_API_KEY,
   });
 
-  const graders = new Graders();
-  registerBuiltinGraders(graders);
-  graders.register(
-    new BuiltinLlmJudgeGrader({
-      profiles: {
-        default: openai.chat('deepseek-v4-flash'),
-      },
-    }),
-  );
-
-  const providers = new Providers();
-  providers.register(new FileEditAgentProvider());
-  providers.register(new BasicLlmProvider());
-
   const core = new Core({
     tasks: new LocalTask({ rootDir: currentDir }),
     stores: new LocalStore({ rootDir: resolve(currentDir, 'results') }),
-    providers,
-    graders,
+    providers: [new FileEditAgentProvider(), new BasicLlmProvider()],
+    graders: [
+      ...builtinGraders,
+      new BuiltinLlmJudgeGrader({
+        profiles: {
+          default: openai.chat('deepseek-v4-flash'),
+        },
+      }),
+    ],
     observers: [new ConsoleObserver()],
   });
 

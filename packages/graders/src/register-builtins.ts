@@ -1,4 +1,4 @@
-import type { Graders } from '@aeval/core';
+import type { Grader, Graders } from '@aeval/core';
 import { contains } from './builtins/contains.js';
 import { exactMatch } from './builtins/exact-match.js';
 import { jsonSchema } from './builtins/json-schema.js';
@@ -11,25 +11,31 @@ import { toolCalls } from './builtins/tool-calls.js';
 import { transcript } from './builtins/transcript.js';
 
 /**
- * Registers all built-in graders into the given registry.
- *
- * Built-in graders registered:
+ * All built-in graders that need no extra runtime wiring:
  *   exact-match, contains, regex, json-schema, length-check,
  *   tool-calls, transcript, outcome-check, latency-threshold, token-budget
  *
- * Note: `llm-judge` is registered explicitly by the caller so the judge
- * provider wiring stays opt-in. `custom` graders are also registered
- * directly via `graders.register(...)`.
+ * `llm-judge` is excluded so judge provider wiring stays opt-in; register it
+ * explicitly via `new BuiltinLlmJudgeGrader(...)` or `new LlmJudgeGrader(...)`.
+ *
+ * Compose directly: `new Core({ graders: [...builtinGraders], ... })`.
  */
+export const builtinGraders: readonly Grader[] = Object.freeze([
+  exactMatch,
+  contains,
+  regex,
+  jsonSchema,
+  lengthCheck,
+  toolCalls,
+  transcript,
+  outcomeCheck,
+  latencyThreshold,
+  tokenBudget,
+]);
+
+/** Registers all built-in graders into an existing registry. */
 export function registerBuiltinGraders(graders: Graders): void {
-  graders.register(exactMatch);
-  graders.register(contains);
-  graders.register(regex);
-  graders.register(jsonSchema);
-  graders.register(lengthCheck);
-  graders.register(toolCalls);
-  graders.register(transcript);
-  graders.register(outcomeCheck);
-  graders.register(latencyThreshold);
-  graders.register(tokenBudget);
+  for (const grader of builtinGraders) {
+    graders.register(grader);
+  }
 }

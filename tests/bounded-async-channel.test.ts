@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createBoundedAsyncChannel } from '../packages/core/src/core/orchestrator/bounded-async-channel.js';
+import { BoundedAsyncChannel } from '../packages/core/src/core/orchestrator/bounded-async-channel.js';
 
 test('bounded channel supports basic push/next flow', async () => {
-  const channel = createBoundedAsyncChannel<number>(2);
+  const channel = new BoundedAsyncChannel<number>(2);
 
   assert.equal(await channel.push(1), true);
   assert.equal(await channel.push(2), true);
@@ -14,7 +14,7 @@ test('bounded channel supports basic push/next flow', async () => {
 });
 
 test('bounded channel applies backpressure when full', async () => {
-  const channel = createBoundedAsyncChannel<number>(1);
+  const channel = new BoundedAsyncChannel<number>(1);
   assert.equal(await channel.push(1), true);
 
   let secondPushResolved = false;
@@ -32,7 +32,7 @@ test('bounded channel applies backpressure when full', async () => {
 });
 
 test('bounded channel close wakes pending producers and rejects late pushes', async () => {
-  const channel = createBoundedAsyncChannel<number>(1);
+  const channel = new BoundedAsyncChannel<number>(1);
   assert.equal(await channel.push(1), true);
 
   const blockedPushPromise = channel.push(2);
@@ -45,7 +45,7 @@ test('bounded channel close wakes pending producers and rejects late pushes', as
 });
 
 test('bounded channel drains queued items then ends async iteration after close', async () => {
-  const channel = createBoundedAsyncChannel<number>(4);
+  const channel = new BoundedAsyncChannel<number>(4);
   assert.equal(await channel.push(10), true);
   assert.equal(await channel.push(20), true);
   channel.close();

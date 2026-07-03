@@ -19,8 +19,8 @@ export {
   type CoreResultsApi,
   type CoreSuitesApi,
   LoadedSuite,
-  type LoadedSuiteInit,
   type LoadSuiteInput,
+  type RunTaskOptions,
 } from './core/api/index.js';
 export {
   type ExecutionError,
@@ -39,26 +39,24 @@ export {
 export type { RunManifestRecord, RunManifestSourceRecord } from './core/contracts/run-manifest.js';
 export type { RunRecord } from './core/contracts/run-record.js';
 export type { RunSummaryData, RunSummaryRecord } from './core/contracts/run-summary.js';
-export {
-  type BaselineComparison,
-  type BaselineThresholds,
-  type Grader,
-  type GraderLayer,
-  type Graders as GradersContract,
-  type GraderValidationResult,
-  type Provider,
-  type Providers as ProvidersContract,
-  type Run,
-  type RunCompletedEvent,
-  type RunEvent,
-  RunEvents,
-  type RunStartedEvent,
-  type RuntimeDefaults,
-  type TaskContext,
-  type TaskRunEvent,
-  type TrialCompletedEvent,
-  type TrialErrorEvent,
-  type TrialStartedEvent,
+export type {
+  BaselineComparison,
+  BaselineThresholds,
+  Grader,
+  GraderLayer,
+  Graders as GradersContract,
+  GraderValidationResult,
+  Provider,
+  Providers as ProvidersContract,
+  Run,
+  RunCompletedEvent,
+  RunEvent,
+  RunStartedEvent,
+  RuntimeDefaults,
+  TaskContext,
+  TrialCompletedEvent,
+  TrialErrorEvent,
+  TrialStartedEvent,
 } from './core/contracts/runtime.js';
 export {
   type AnySchemaVersion,
@@ -88,5 +86,16 @@ export type {
   TrialRecord,
   TrialResultRecord,
 } from './core/contracts/trial.js';
+export {
+  BaseAEvalError,
+  ContractError,
+  ERROR_CATEGORIES,
+  ERROR_CODES,
+  type ErrorCategory,
+  type ErrorCode,
+  RuntimeError,
+  StoreError,
+  ValidationError,
+} from './core/errors/index.js';
 export { Graders } from './core/runtime/grader-registry.js';
 export { Providers } from './core/runtime/provider-registry.js';

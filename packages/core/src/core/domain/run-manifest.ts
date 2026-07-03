@@ -25,7 +25,6 @@ export class RunManifest {
   readonly taskHash: string;
   readonly configHash: string;
   readonly startedAt: string;
-  readonly gitSha?: string;
   readonly completedAt?: string;
 
   constructor(record: RunManifestRecord) {
@@ -38,9 +37,6 @@ export class RunManifest {
     this.taskHash = record.taskHash;
     this.configHash = record.configHash;
     this.startedAt = record.startedAt;
-    if (record.gitSha !== undefined) {
-      this.gitSha = record.gitSha;
-    }
     if (record.completedAt !== undefined) {
       this.completedAt = record.completedAt;
     }
@@ -75,10 +71,6 @@ export class RunManifest {
     });
   }
 
-  static fromRecord(record: RunManifestRecord): RunManifest {
-    return new RunManifest(record);
-  }
-
   complete(completedAt: string = new Date().toISOString()): RunManifest {
     return new RunManifest({
       ...this.toRecord(),
@@ -98,7 +90,6 @@ export class RunManifest {
       taskHash: this.taskHash,
       configHash: this.configHash,
       startedAt: this.startedAt,
-      ...(this.gitSha !== undefined ? { gitSha: this.gitSha } : {}),
       ...(this.completedAt !== undefined ? { completedAt: this.completedAt } : {}),
     };
   }

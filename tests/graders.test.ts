@@ -24,7 +24,10 @@ import type {
   JudgeProviderResult,
 } from '../packages/graders/src/llm/judge-provider.js';
 import { LlmJudgeGrader } from '../packages/graders/src/llm/llm-judge.js';
-import { registerBuiltinGraders } from '../packages/graders/src/register-builtins.js';
+import {
+  builtinGraders,
+  registerBuiltinGraders,
+} from '../packages/graders/src/register-builtins.js';
 
 // --- Test helpers ---
 
@@ -1047,6 +1050,15 @@ test('registerBuiltinGraders: registers all 10 non-llm built-in graders', () => 
     assert.ok(list.includes(name), `Missing grader: ${name}`);
   }
   assert.equal(list.length, 10);
+});
+
+test('builtinGraders exposes the same 10 graders as a frozen array', () => {
+  assert.equal(builtinGraders.length, 10);
+  assert.ok(Object.isFrozen(builtinGraders));
+
+  const registry = new Graders();
+  registerBuiltinGraders(registry as unknown as Parameters<typeof registerBuiltinGraders>[0]);
+  assert.deepEqual(builtinGraders.map((grader) => grader.type).sort(), registry.list().sort());
 });
 
 test('llm-judge is registered explicitly on the GraderRegistry', () => {

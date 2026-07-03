@@ -46,8 +46,8 @@ export class Task {
     );
     this.execution = Object.freeze({
       timeoutMs: document.execution.timeoutMs,
-      // 以下可选配置在运行时通过 execution policy 归一化函数补齐默认值。
-      // Task 应该反映的是用户实际配置了什么，在这里承担默认值逻辑会让 Task 偏离用户的真实配置表达。
+      // Optional fields stay unset here; defaults are applied later by
+      // resolveExecutionPolicy so Task reflects exactly what the user declared.
       ...(document.execution.retryOnError !== undefined
         ? { retryOnError: document.execution.retryOnError }
         : {}),

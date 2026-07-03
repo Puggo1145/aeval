@@ -43,7 +43,7 @@ Adapters
 
 1. Core owns evaluation semantics.
 2. Adapters implement IO boundaries only.
-3. Providers and graders are resolved through containers injected into Core.
+3. Providers and graders are resolved through containers injected into Core. `new Core({...})` accepts either prebuilt `Providers`/`Graders` registries or plain arrays, which Core registers internally.
 4. Interfaces consumes Core APIs only.
 5. `contracts` own suite/task schemas; `Suite` and `Task` domain factories call those parsers internally and remain the only legal construction path for runtime suite/task objects.
 6. Built-in adapters, graders, and TUI (interface) are treated like external modules for boundary control.
@@ -151,12 +151,16 @@ core-measured wall-clock duration for the full trial lifecycle.
 
 Built-in graders may depend on extra runtime wiring. `llm-judge` is wired
 explicitly by the caller: register `new BuiltinLlmJudgeGrader(...)` on
-`graders`. `registerBuiltinGraders(...)` only registers the pure built-in
-graders that need no extra runtime dependencies. Custom judge providers are
-still registered directly through `new LlmJudgeGrader(customJudgeProvider)`.
+`graders`. The pure built-in graders that need no extra runtime dependencies
+are exposed both as the `builtinGraders` array (for array-based composition)
+and through `registerBuiltinGraders(...)` (for registry-based composition).
+Custom judge providers are still registered directly through
+`new LlmJudgeGrader(customJudgeProvider)`.
 
 `RunEvent` is also an internal protocol type. Runtime streams emit plain
-discriminated-union event objects rather than domain classes.
+discriminated-union event objects rather than domain classes. Observers
+receive every emitted run event best-effort; a slow or throwing observer never
+stalls the run.
 
 ### 5.2 Concurrency and Timeout
 
@@ -225,9 +229,12 @@ core.results.clearByRunIds(runIds): Promise<ClearedResultEntry[]>
 core.baseline.compare(currentRunId, options): Promise<BaselineComparison>
 
 loadedSuite.listTasks(): Promise<TaskIndex[]>
-loadedSuite.runTask(taskId): Promise<RunSummaryData[]>
-loadedSuite.streamTask(taskId): AsyncIterable<RunEvent>
+loadedSuite.runTask(taskId, options?): Promise<RunSummaryData[]>
+loadedSuite.streamTask(taskId, options?): AsyncIterable<RunEvent>
 ```
+
+`runTask` and `streamTask` accept an optional `{ signal }` for cooperative
+cancellation.
 
 `Suite` is the pure suite definition/value object inside Core. `LoadedSuite` is
 the public execution handle returned by `core.suites.load(...)`; it binds suite

@@ -1,14 +1,6 @@
-import {
-  type ExecutionResult,
-  fromExecutionResultData,
-  toExecutionResultData,
-} from '../contracts/execution.js';
+import { type ExecutionResult, toExecutionResultData } from '../contracts/execution.js';
 import { SCHEMA_VERSIONS } from '../contracts/schema-versions.js';
-import type {
-  TrialGraderResultRecord,
-  TrialRecord,
-  TrialResultRecord,
-} from '../contracts/trial.js';
+import type { TrialGraderResultRecord, TrialRecord } from '../contracts/trial.js';
 import { cloneAndFreeze } from '../utils/immutability.js';
 
 export interface TrialInit {
@@ -49,30 +41,6 @@ export class Trial {
     this.graderResults = cloneAndFreeze(input.graderResults);
     this.aggregate = cloneAndFreeze(input.aggregate);
     this.timings = cloneAndFreeze(input.timings);
-  }
-
-  get trial(): TrialRecord {
-    return this.toRecord();
-  }
-
-  get record(): TrialResultRecord {
-    return {
-      runId: this.runId,
-      trial: this.toRecord(),
-    };
-  }
-
-  static fromRecord(record: TrialRecord): Trial {
-    return new Trial({
-      taskId: record.taskId,
-      runId: record.runId,
-      runName: record.runName,
-      trialIndex: record.trialIndex,
-      execution: fromExecutionResultData(record.execution),
-      graderResults: record.graderResults,
-      aggregate: record.aggregate,
-      timings: record.timings,
-    });
   }
 
   toRecord(): TrialRecord {

@@ -12,7 +12,8 @@ import { CancelError } from './utils.js';
 type Action = (core: CoreApi) => Promise<void>;
 const TUI_TITLE = 'AEval — Interactive Mode';
 const ACTION_CANCELLED_MESSAGE = 'Action cancelled.';
-// 取消后短暂等待，避免残留的 ESC 按键被下一个 clack prompt 误读为取消操作
+// Brief pause after a cancel so a lingering ESC keypress is not misread as
+// cancelling the next clack prompt.
 const CARRY_OVER_CANCEL_WINDOW_MS = 200;
 
 const ACTIONS: Record<string, Action> = {
