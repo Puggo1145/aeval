@@ -28,12 +28,17 @@ import { RunSummary } from '../domain/run-summary.js';
 import { Suite } from '../domain/suite.js';
 import { Task } from '../domain/task.js';
 import { ERROR_CODES, RuntimeError, ValidationError } from '../errors/index.js';
+import { mergeAsyncIterables } from '../orchestrator/merge-streams.js';
 import { TaskRunOrchestrator } from '../orchestrator/run-orchestrator.js';
+import { Semaphore } from '../orchestrator/semaphore.js';
 import { Graders as GraderRegistry } from '../runtime/grader-registry.js';
 import { Providers as ProviderRegistry } from '../runtime/provider-registry.js';
 import { resolveExecutionPolicy, validateTaskRuntime } from '../runtime/task-execution.js';
 import { ensureNonEmptyString } from '../validation/helpers.js';
-import { normalizeRuntimeDefaults } from '../validation/runtime-defaults.js';
+import {
+  normalizeRuntimeDefaults,
+  type ResolvedRuntimeDefaults,
+} from '../validation/runtime-defaults.js';
 import {
   computeVerdict,
   validateBaselineThresholds,
@@ -44,6 +49,14 @@ export type LoadSuiteInput = string | SuiteInput | Promise<SuiteInput>;
 
 export interface RunTaskOptions {
   signal?: AbortSignal;
+}
+
+export interface RunTasksOptions extends RunTaskOptions {
+  /**
+   * Max tasks executing concurrently. Defaults to all requested tasks; each
+   * task's trial concurrency is still capped by `runtimeDefaults.trialConcurrency`.
+   */
+  taskConcurrency?: number;
 }
 
 export interface CompareBaselineOptions {
@@ -157,6 +170,11 @@ export class LoadedSuite {
     return summaries;
   }
 
+  /**
+   * Execute one task: all of its runs proceed in parallel, sharing
+   * `runtimeDefaults.trialConcurrency` as a single trial budget. Events from
+   * different runs interleave; each carries `runId`/`runName` for correlation.
+   */
   async *streamTask(taskId: string, options?: RunTaskOptions): AsyncIterable<RunEvent> {
     const task = await this.resolveTaskById(taskId);
     validateTaskRuntime(task, {
@@ -164,28 +182,94 @@ export class LoadedSuite {
       graders: this.core.graders,
     });
     const execution = resolveExecutionPolicy(task, this.core.runtimeDefaults);
+    const trialPermits = new Semaphore(execution.trialConcurrency);
 
-    for (const run of task.runs) {
-      if (options?.signal?.aborted) {
-        return;
-      }
-
-      yield* new TaskRunOrchestrator(
-        {
-          suite: this.suite,
-          task,
-          run,
-          execution,
-          signal: options?.signal,
-        },
-        {
-          stores: this.core.stores,
-          observers: this.core.observers,
-          providers: this.core.providers,
-          graders: this.core.graders,
-        },
-      ).run();
+    if (options?.signal?.aborted) {
+      return;
     }
+
+    const runStreams = task.runs.map(
+      (run) => () =>
+        new TaskRunOrchestrator(
+          {
+            suite: this.suite,
+            task,
+            run,
+            execution,
+            signal: options?.signal,
+            trialPermits,
+          },
+          {
+            stores: this.core.stores,
+            observers: this.core.observers,
+            providers: this.core.providers,
+            graders: this.core.graders,
+          },
+        ).run(),
+    );
+
+    yield* mergeAsyncIterables(runStreams);
+  }
+
+  async runTasks(taskIds: string[], options?: RunTasksOptions): Promise<RunSummaryData[]> {
+    const summaries: RunSummaryData[] = [];
+    for await (const event of this.streamTasks(taskIds, options)) {
+      if (event.type === 'run:completed') {
+        summaries.push(event.summary);
+      }
+    }
+    return summaries;
+  }
+
+  /**
+   * Execute several tasks concurrently (all at once unless `taskConcurrency`
+   * bounds it), merging their event streams into one.
+   */
+  async *streamTasks(taskIds: string[], options?: RunTasksOptions): AsyncIterable<RunEvent> {
+    if (taskIds.length === 0) {
+      throw new ValidationError('At least one taskId is required.', {
+        details: { field: 'taskIds' },
+      });
+    }
+
+    const uniqueTaskIds = new Set(taskIds.map((taskId) => ensureNonEmptyString(taskId, 'taskIds')));
+    if (uniqueTaskIds.size !== taskIds.length) {
+      throw new ValidationError("Field 'taskIds' must not contain duplicates.", {
+        details: { field: 'taskIds', taskIds },
+      });
+    }
+
+    if (
+      options?.taskConcurrency !== undefined &&
+      (!Number.isInteger(options.taskConcurrency) || options.taskConcurrency <= 0)
+    ) {
+      throw new ValidationError("Field 'taskConcurrency' must be a positive integer.", {
+        details: { field: 'taskConcurrency', taskConcurrency: options.taskConcurrency },
+      });
+    }
+
+    // Resolve every task upfront so configuration errors surface before any
+    // trial executes.
+    for (const taskId of taskIds) {
+      const task = await this.resolveTaskById(taskId);
+      validateTaskRuntime(task, {
+        providers: this.core.providers,
+        graders: this.core.graders,
+      });
+    }
+
+    const taskStreams = taskIds.map(
+      (taskId) => () =>
+        this.streamTask(taskId, options?.signal ? { signal: options.signal } : undefined),
+    );
+
+    // Per-call `taskConcurrency` wins; otherwise fall back to the runtime
+    // default, and finally to unbounded (all tasks at once).
+    const taskConcurrency = options?.taskConcurrency ?? this.core.runtimeDefaults.taskConcurrency;
+
+    yield* mergeAsyncIterables(taskStreams, {
+      ...(taskConcurrency !== undefined ? { concurrency: taskConcurrency } : {}),
+    });
   }
 
   private resolveSuiteData(): Promise<ResolvedSuite> {
@@ -291,7 +375,7 @@ export class Core implements CoreApi {
   readonly providers: Providers;
   readonly graders: Graders;
   readonly observers: readonly Observer[];
-  readonly runtimeDefaults: Required<RuntimeDefaults>;
+  readonly runtimeDefaults: ResolvedRuntimeDefaults;
   readonly suites: CoreSuitesApi;
   readonly results: CoreResultsApi;
   readonly baseline: CoreBaselineApi;

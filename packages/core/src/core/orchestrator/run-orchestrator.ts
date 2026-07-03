@@ -13,6 +13,7 @@ import type { Trial } from '../domain/trial.js';
 import { isStreamClosedError, StreamClosedError } from '../runtime/abort-reasons.js';
 import type { ExecutionPolicy } from '../runtime/task-execution.js';
 import { BoundedAsyncChannel } from './bounded-async-channel.js';
+import type { Semaphore } from './semaphore.js';
 import { TrialExecutor } from './trial-engine.js';
 
 export interface TaskRunOrchestratorInput {
@@ -21,6 +22,12 @@ export interface TaskRunOrchestratorInput {
   run: Run;
   execution: ExecutionPolicy;
   signal?: AbortSignal;
+  /**
+   * Shared trial-concurrency budget. When runs of a task execute in parallel
+   * they draw permits from the same semaphore, so `trialConcurrency` caps
+   * concurrent trials across all of them rather than per run.
+   */
+  trialPermits?: Semaphore;
 }
 
 const OBSERVER_NOTIFY_TIMEOUT_MS = 300;
@@ -53,7 +60,7 @@ export class TaskRunOrchestrator {
       Symbol.iterator
     ]();
     const eventChannel = new BoundedAsyncChannel<RunEvent>(
-      Math.max(execution.maxConcurrency * 4, 32),
+      Math.max(execution.trialConcurrency * 4, 32),
     );
     const executor = new TrialExecutor({
       providers: this.deps.providers,
@@ -117,6 +124,12 @@ export class TaskRunOrchestrator {
         }
 
         const trialIndex = next.value;
+        const releasePermit = await this.input.trialPermits?.acquire();
+
+        if (runAbortController.signal.aborted) {
+          releasePermit?.();
+          break;
+        }
 
         try {
           await emit({
@@ -187,12 +200,14 @@ export class TaskRunOrchestrator {
             runAbortController.abort(error);
           }
           break;
+        } finally {
+          releasePermit?.();
         }
       }
     };
 
     try {
-      const workerCount = Math.min(execution.maxConcurrency, totalTrials);
+      const workerCount = Math.min(execution.trialConcurrency, totalTrials);
       const activeWorkers: Promise<void>[] = [];
       for (let index = 0; index < workerCount; index++) {
         activeWorkers.push(runWorker());

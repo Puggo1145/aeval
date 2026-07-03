@@ -124,10 +124,7 @@ test('E2E smoke: full chain from suite discovery to result-store readback', asyn
       )
       .map((event) => event.summary);
 
-    assert.deepEqual(
-      summaries.map((summary) => summary.runName),
-      ['mini', 'nano'],
-    );
+    assert.deepEqual(summaries.map((summary) => summary.runName).sort(), ['mini', 'nano']);
     assert.ok(summaries.every((summary) => summary.passRate === 1));
 
     const runs = await core.results.list();

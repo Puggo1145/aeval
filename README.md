@@ -153,7 +153,6 @@ execution:
   timeoutMs: 30000
   retryOnError: 0
   trialsPerTask: 1
-  maxConcurrency: 1
 ```
 
 Run it:

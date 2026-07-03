@@ -107,7 +107,6 @@ export const TaskExecutionDocumentSchema = z
     timeoutMs: z.number().int().gt(0),
     retryOnError: z.number().int().min(0).optional(),
     trialsPerTask: z.number().int().gt(0).optional(),
-    maxConcurrency: z.number().int().gt(0).optional(),
   })
   .strict();
 export type TaskExecutionDocument = z.infer<typeof TaskExecutionDocumentSchema>;

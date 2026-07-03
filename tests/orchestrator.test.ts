@@ -88,7 +88,6 @@ function createTask(overrides: Partial<ReturnType<Task['toDocument']>> = {}): Ta
         timeoutMs: 1000,
         retryOnError: 0,
         trialsPerTask: 2,
-        maxConcurrency: 2,
       },
       ...overrides,
     } as ReturnType<Task['toDocument']>,
@@ -121,7 +120,7 @@ function createDeps(stores = new InMemoryStore()) {
     graders,
     stores,
     runtimeDefaults: {
-      maxConcurrency: 5,
+      trialConcurrency: 5,
     },
   };
 }
@@ -137,7 +136,7 @@ async function collectEvents(events: AsyncIterable<RunEvent>): Promise<RunEvent[
 test('configHash is deterministic and changes on run params/execution changes', () => {
   const baseTask = createTask();
   const run = baseTask.runs[0]!;
-  const execution = resolveExecutionPolicy(baseTask, { maxConcurrency: 5 });
+  const execution = resolveExecutionPolicy(baseTask, { trialConcurrency: 5 });
 
   const hash1 = computeSha256({
     taskId: baseTask.id,
@@ -204,13 +203,18 @@ test('TaskRunOrchestrator persists manifest, trials, and summary for one task ru
   assert.equal(manifest?.runName, 'mini');
   assert.ok(manifest?.completedAt);
   assert.equal(manifest?.taskHash, computeSha256(task.toDocument()));
+  const resolvedExecution = resolveExecutionPolicy(task, runtimeDefaults);
   assert.equal(
     manifest?.configHash,
     computeSha256({
       taskId: task.id,
       providerId: task.providerId,
       run: run.toDocument(),
-      execution: resolveExecutionPolicy(task, runtimeDefaults),
+      execution: {
+        timeoutMs: resolvedExecution.timeoutMs,
+        retryOnError: resolvedExecution.retryOnError,
+        trialsPerTask: resolvedExecution.trialsPerTask,
+      },
     }),
   );
   assert.equal(summaryRecord?.summary.taskId, 'basic-llm/task-001');
@@ -245,7 +249,6 @@ test('TaskRunOrchestrator notifies observers for every event type including tria
       timeoutMs: 1000,
       retryOnError: 0,
       trialsPerTask: 1,
-      maxConcurrency: 1,
     },
   });
 
@@ -290,7 +293,6 @@ test('TaskRunOrchestrator leaves manifest incomplete when the input signal abort
       timeoutMs: 1000,
       retryOnError: 0,
       trialsPerTask: 1,
-      maxConcurrency: 1,
     },
   });
 
@@ -340,7 +342,6 @@ test('TaskRunOrchestrator leaves manifest incomplete on fatal persistence errors
       timeoutMs: 1000,
       retryOnError: 0,
       trialsPerTask: 1,
-      maxConcurrency: 1,
     },
   });
 
@@ -382,7 +383,6 @@ test('TaskRunOrchestrator computes passRate as passedTrials divided by totalTria
       timeoutMs: 1000,
       retryOnError: 0,
       trialsPerTask: 2,
-      maxConcurrency: 1,
     },
     graders: {
       strategy: 'ALL',
@@ -423,8 +423,8 @@ test('TaskRunOrchestrator computes passRate as passedTrials divided by totalTria
   assert.equal(summaryRecord?.summary.passHatK, 0);
 });
 
-test('TaskRunOrchestrator respects task.execution.maxConcurrency for trials', async () => {
-  const { deps, providers, runtimeDefaults } = createDeps();
+test('TaskRunOrchestrator respects runtimeDefaults.trialConcurrency for trials', async () => {
+  const { deps, providers } = createDeps();
   let active = 0;
   let peak = 0;
 
@@ -446,7 +446,6 @@ test('TaskRunOrchestrator respects task.execution.maxConcurrency for trials', as
       timeoutMs: 1000,
       retryOnError: 0,
       trialsPerTask: 4,
-      maxConcurrency: 2,
     },
   });
 
@@ -456,13 +455,47 @@ test('TaskRunOrchestrator respects task.execution.maxConcurrency for trials', as
         suite: createSuite(),
         task,
         run: task.runs[0]!,
-        execution: resolveExecutionPolicy(task, runtimeDefaults),
+        execution: resolveExecutionPolicy(task, { trialConcurrency: 2 }),
       },
       deps,
     ).run(),
   );
 
   assert.equal(peak, 2);
+});
+
+test('configHash ignores trialConcurrency', () => {
+  const task = createTask();
+  const run = task.runs[0]!;
+
+  const hashLow = computeSha256({
+    taskId: task.id,
+    providerId: task.providerId,
+    run: run.toDocument(),
+    execution: (() => {
+      const execution = resolveExecutionPolicy(task, { trialConcurrency: 1 });
+      return {
+        timeoutMs: execution.timeoutMs,
+        retryOnError: execution.retryOnError,
+        trialsPerTask: execution.trialsPerTask,
+      };
+    })(),
+  });
+  const hashHigh = computeSha256({
+    taskId: task.id,
+    providerId: task.providerId,
+    run: run.toDocument(),
+    execution: (() => {
+      const execution = resolveExecutionPolicy(task, { trialConcurrency: 16 });
+      return {
+        timeoutMs: execution.timeoutMs,
+        retryOnError: execution.retryOnError,
+        trialsPerTask: execution.trialsPerTask,
+      };
+    })(),
+  });
+
+  assert.equal(hashLow, hashHigh);
 });
 
 test('Run params stay frozen before provider execution', async () => {

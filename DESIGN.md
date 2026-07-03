@@ -107,7 +107,6 @@ execution:
   timeoutMs: 30000
   retryOnError: 0
   trialsPerTask: 2
-  maxConcurrency: 3
 ```
 
 Rules:
@@ -164,11 +163,19 @@ stalls the run.
 
 ### 5.2 Concurrency and Timeout
 
-1. `maxConcurrency` counts concurrent trials.
-2. Effective priority is `task.execution.maxConcurrency > core.runtimeDefaults.maxConcurrency > 5`.
-3. `timeoutMs` is task-scoped.
-4. `retryOnError` is task-scoped.
-5. Timeout is treated as a `system` error and is not retried by default.
+1. Concurrency is operational and is configured only via `core.runtimeDefaults`,
+   never in the task document.
+2. `runtimeDefaults.trialConcurrency` (default 5) caps concurrent trials for one
+   task; all runs of the task execute in parallel and draw from this single
+   trial budget.
+3. `runTasks` / `streamTasks` execute several tasks concurrently. Each task
+   keeps its own trial budget; the number of tasks run at once is bounded by
+   the call's `taskConcurrency`, else `core.runtimeDefaults.taskConcurrency`,
+   else unbounded (all requested tasks at once).
+4. Concurrency knobs never affect results or a run's `configHash`.
+5. `timeoutMs` is task-scoped.
+6. `retryOnError` is task-scoped.
+7. Timeout is treated as a `system` error and is not retried by default.
 
 ### 5.3 Result Model
 
@@ -231,10 +238,15 @@ core.baseline.compare(currentRunId, options): Promise<BaselineComparison>
 loadedSuite.listTasks(): Promise<TaskIndex[]>
 loadedSuite.runTask(taskId, options?): Promise<RunSummaryData[]>
 loadedSuite.streamTask(taskId, options?): AsyncIterable<RunEvent>
+loadedSuite.runTasks(taskIds, options?): Promise<RunSummaryData[]>
+loadedSuite.streamTasks(taskIds, options?): AsyncIterable<RunEvent>
 ```
 
-`runTask` and `streamTask` accept an optional `{ signal }` for cooperative
-cancellation.
+All execution methods accept an optional `{ signal }` for cooperative
+cancellation. `runTasks` / `streamTasks` additionally accept
+`{ taskConcurrency }` to bound how many tasks execute in parallel. Events from
+parallel runs and tasks interleave in one stream; consumers correlate them by
+`runId` / `runName` / `taskId`.
 
 `Suite` is the pure suite definition/value object inside Core. `LoadedSuite` is
 the public execution handle returned by `core.suites.load(...)`; it binds suite

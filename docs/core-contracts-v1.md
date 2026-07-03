@@ -181,7 +181,7 @@ Rules:
 
 1. events are emitted in time order
 2. `run:completed` is the last event for one run
-3. `loadedSuite.streamTask(taskId)` emits one run lifecycle for each `provider.runs[]` entry
+3. `loadedSuite.streamTask(taskId)` emits one run lifecycle for each `provider.runs[]` entry; runs execute in parallel, so events from different runs interleave and must be correlated by `runId`/`runName`
 4. observers receive every emitted event best-effort; observer failures or slowness never fail or stall the run
 
 ## 4. Tasks
@@ -228,6 +228,8 @@ core.baseline.compare(currentRunId, options): Promise<BaselineComparison>
 loadedSuite.listTasks(): Promise<TaskIndex[]>
 loadedSuite.runTask(taskId, options?): Promise<RunSummaryData[]>
 loadedSuite.streamTask(taskId, options?): AsyncIterable<RunEvent>
+loadedSuite.runTasks(taskIds, options?): Promise<RunSummaryData[]>
+loadedSuite.streamTasks(taskIds, options?): AsyncIterable<RunEvent>
 ```
 
 `Suite` is the pure suite definition/value object. `LoadedSuite` is the only
@@ -237,10 +239,10 @@ Rules:
 
 1. `core.suites.load(input)` accepts a discovered suite id or a bare suite input object/promise
 2. `runTask(taskId)` executes all runs defined by the task
-3. runs are serial across `provider.runs[]`
-4. trials may run concurrently within one run
+3. runs across `provider.runs[]` execute in parallel, sharing the task's `maxConcurrency` as one trial budget
+4. `runTasks` / `streamTasks` execute several tasks concurrently; parallel tasks are bounded by the call's `{ taskConcurrency }`, else `core.runtimeDefaults.taskConcurrency`, else all at once. `taskIds` must be non-empty without duplicates
 5. `new Core({ providers, graders, ... })` accepts prebuilt registries or plain `Provider[]` / `Grader[]` arrays
-6. `runTask` / `streamTask` accept an optional `{ signal }` for cooperative cancellation
+6. `runTask` / `streamTask` / `runTasks` / `streamTasks` accept an optional `{ signal }` for cooperative cancellation
 7. a `LoadedSuite` caches resolved suite metadata and tasks for its lifetime; reload the suite to pick up task-source changes
 
 Baseline rules:

@@ -54,9 +54,6 @@ export class Task {
       ...(document.execution.trialsPerTask !== undefined
         ? { trialsPerTask: document.execution.trialsPerTask }
         : {}),
-      ...(document.execution.maxConcurrency !== undefined
-        ? { maxConcurrency: document.execution.maxConcurrency }
-        : {}),
     });
 
     if (document.desc !== undefined) {

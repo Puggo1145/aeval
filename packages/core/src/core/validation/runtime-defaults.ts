@@ -4,12 +4,23 @@ import type { RuntimeDefaults } from '../contracts/runtime.js';
 import { ValidationError } from '../errors/index.js';
 
 export const RuntimeDefaultsSchema = z.object({
-  maxConcurrency: z.number().int().gt(0).optional(),
+  trialConcurrency: z.number().int().gt(0).optional(),
+  taskConcurrency: z.number().int().gt(0).optional(),
 });
+
+/**
+ * Normalized runtime defaults. `trialConcurrency` always resolves to a concrete
+ * value; `taskConcurrency` stays optional, where `undefined` means "run all
+ * requested tasks at once".
+ */
+export interface ResolvedRuntimeDefaults {
+  trialConcurrency: number;
+  taskConcurrency?: number;
+}
 
 export function normalizeRuntimeDefaults(
   runtimeDefaults: RuntimeDefaults | undefined,
-): Required<RuntimeDefaults> {
+): ResolvedRuntimeDefaults {
   const result = RuntimeDefaultsSchema.safeParse(runtimeDefaults ?? {});
   if (!result.success) {
     const issue = result.error.issues[0];
@@ -25,6 +36,9 @@ export function normalizeRuntimeDefaults(
   }
 
   return {
-    maxConcurrency: result.data.maxConcurrency ?? 5,
+    trialConcurrency: result.data.trialConcurrency ?? 5,
+    ...(result.data.taskConcurrency !== undefined
+      ? { taskConcurrency: result.data.taskConcurrency }
+      : {}),
   };
 }

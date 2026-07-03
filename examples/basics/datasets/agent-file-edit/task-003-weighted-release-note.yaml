@@ -84,4 +84,3 @@ execution:
   timeoutMs: 60000
   retryOnError: 0
   trialsPerTask: 2
-  maxConcurrency: 2

@@ -40,7 +40,17 @@ export interface Providers {
 }
 
 export interface RuntimeDefaults {
-  maxConcurrency?: number;
+  /**
+   * Concurrent trials within one task (across its runs x trials). This is an
+   * operational knob only; it never affects results or a run's `configHash`.
+   * Defaults to 5.
+   */
+  trialConcurrency?: number;
+  /**
+   * Number of tasks executed in parallel by `runTasks`/`streamTasks` when the
+   * call omits `taskConcurrency`. Unset means unbounded (all at once).
+   */
+  taskConcurrency?: number;
 }
 
 export interface GraderValidationResult {

@@ -61,11 +61,17 @@ export class RunManifest {
         revision: source.revision,
       },
       taskHash: computeSha256(input.task.toDocument()),
+      // Only definitional execution config is hashed. Concurrency is
+      // operational and must not change a run's config identity.
       configHash: computeSha256({
         taskId: input.task.id,
         providerId: input.task.providerId,
         run: input.run.toDocument(),
-        execution: input.execution,
+        execution: {
+          timeoutMs: input.execution.timeoutMs,
+          retryOnError: input.execution.retryOnError,
+          trialsPerTask: input.execution.trialsPerTask,
+        },
       }),
       startedAt: new Date().toISOString(),
     });

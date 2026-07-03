@@ -1,12 +1,14 @@
-import type { Graders, Providers, RuntimeDefaults } from '../contracts/runtime.js';
+import type { Graders, Providers } from '../contracts/runtime.js';
 import type { Task } from '../domain/task.js';
 import { ValidationError } from '../errors/index.js';
+import type { ResolvedRuntimeDefaults } from '../validation/runtime-defaults.js';
 
 export interface ExecutionPolicy {
   readonly timeoutMs: number;
   readonly retryOnError: number;
   readonly trialsPerTask: number;
-  readonly maxConcurrency: number;
+  /** Operational trial concurrency; excluded from `configHash`. */
+  readonly trialConcurrency: number;
 }
 
 export interface TaskRuntimeValidationDeps {
@@ -44,12 +46,14 @@ export function validateTaskRuntime(task: Task, deps: TaskRuntimeValidationDeps)
  */
 export function resolveExecutionPolicy(
   task: Task,
-  runtimeDefaults: Required<RuntimeDefaults>,
+  runtimeDefaults: ResolvedRuntimeDefaults,
 ): ExecutionPolicy {
   return Object.freeze({
     timeoutMs: task.execution.timeoutMs,
     retryOnError: task.execution.retryOnError ?? 0,
     trialsPerTask: task.execution.trialsPerTask ?? 1,
-    maxConcurrency: task.execution.maxConcurrency ?? runtimeDefaults.maxConcurrency,
+    // Concurrency is operational and comes only from runtime defaults, never
+    // from the task document.
+    trialConcurrency: runtimeDefaults.trialConcurrency,
   });
 }

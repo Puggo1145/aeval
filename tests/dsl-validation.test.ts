@@ -53,7 +53,6 @@ function createValidTaskInput(): any {
       timeoutMs: 1000,
       retryOnError: 0,
       trialsPerTask: 2,
-      maxConcurrency: 3,
     },
   };
 }
@@ -85,12 +84,22 @@ test('parseSuiteDocument accepts empty discover patterns', () => {
   assert.deepEqual(suite.discover, []);
 });
 
-test('parseTaskDocument accepts provider runs and execution.maxConcurrency', () => {
+test('parseTaskDocument accepts provider runs and execution config', () => {
   const task = parseTaskDocument(createValidTaskInput());
 
   assert.equal(task.provider.runs.length, 1);
   assert.equal(task.provider.runs[0]?.name, 'mini');
-  assert.equal(task.execution.maxConcurrency, 3);
+  assert.equal(task.execution.trialsPerTask, 2);
+});
+
+test('parseTaskDocument rejects unknown execution fields such as maxConcurrency', async () => {
+  const input = createValidTaskInput();
+  input.execution.maxConcurrency = 3;
+
+  await assert.rejects(
+    async () => parseTaskDocument(input),
+    (error: unknown) => expectValidationField(error, 'task'),
+  );
 });
 
 test('parseTaskDocument rejects duplicate provider run names', async () => {
@@ -121,13 +130,13 @@ test('parseTaskDocument rejects non-object run params', async () => {
   );
 });
 
-test('parseTaskDocument rejects invalid execution.maxConcurrency', async () => {
+test('parseTaskDocument rejects invalid execution.trialsPerTask', async () => {
   const input = createValidTaskInput();
-  input.execution.maxConcurrency = 0;
+  input.execution.trialsPerTask = 0;
 
   await assert.rejects(
     async () => parseTaskDocument(input),
-    (error: unknown) => expectValidationField(error, 'task.execution.maxConcurrency'),
+    (error: unknown) => expectValidationField(error, 'task.execution.trialsPerTask'),
   );
 });
 

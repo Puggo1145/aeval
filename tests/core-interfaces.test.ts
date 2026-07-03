@@ -483,10 +483,7 @@ test('loadSuite by id and runTask executes all provider runs', async () => {
   const summaries = await suite.runTask('basic-llm/task-001');
 
   assert.equal(summaries.length, 2);
-  assert.deepEqual(
-    summaries.map((summary) => summary.runName),
-    ['mini', 'nano'],
-  );
+  assert.deepEqual(summaries.map((summary) => summary.runName).sort(), ['mini', 'nano']);
   assert.ok(summaries.every((summary) => summary.taskId === 'basic-llm/task-001'));
   assert.ok(summaries.every((summary) => summary.totalTrials === 2));
 });
@@ -776,13 +773,13 @@ test('validateTaskRuntime and resolveExecutionPolicy cover task runtime prep', (
     graders,
   });
   const execution = resolveExecutionPolicy(task, {
-    maxConcurrency: 7,
+    trialConcurrency: 7,
   });
 
   assert.equal(execution.timeoutMs, 1000);
   assert.equal(execution.retryOnError, 0);
   assert.equal(execution.trialsPerTask, 1);
-  assert.equal(execution.maxConcurrency, 7);
+  assert.equal(execution.trialConcurrency, 7);
 });
 
 test('streamTask emits run lifecycle events for each provider run', async () => {
@@ -799,7 +796,7 @@ test('streamTask emits run lifecycle events for each provider run', async () => 
     }
   }
 
-  assert.deepEqual(startedRuns, ['mini', 'nano']);
+  assert.deepEqual(startedRuns.sort(), ['mini', 'nano']);
   assert.equal(eventTypes.filter((type) => type === 'run:completed').length, 2);
 });
 
@@ -918,7 +915,261 @@ test('loadSuites rejects when called without inputs', async () => {
   await assert.rejects(() => core.suites.loadMany(), /At least one suite input is required/);
 });
 
-test('Core rejects invalid runtimeDefaults.maxConcurrency', () => {
+test('streamTask executes all provider runs in parallel under one trial budget', async () => {
+  // Barrier provider: every trial blocks until all 4 trials (2 runs x 2
+  // trials) have started. Sequential runs would deadlock here.
+  const expectedTrials = 4;
+  let startedCount = 0;
+  let releaseAll!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    releaseAll = resolve;
+  });
+
+  const barrierProvider = {
+    id: 'mock-provider',
+    async execute(): Promise<ExecutionResult> {
+      startedCount += 1;
+      if (startedCount === expectedTrials) {
+        releaseAll();
+      }
+      await gate;
+      return { output: 'ok' };
+    },
+  };
+
+  const core = new Core({
+    tasks: createTasks(),
+    stores: new InMemoryStore(),
+    providers: [barrierProvider],
+    graders: [new AlwaysPassGrader()],
+  });
+
+  const suite = await core.suites.load('basic-llm');
+  const summaries = await suite.runTask('basic-llm/task-001');
+
+  assert.equal(startedCount, expectedTrials);
+  assert.equal(summaries.length, 2);
+  assert.ok(summaries.every((summary) => summary.passRate === 1));
+});
+
+test('runtimeDefaults.trialConcurrency caps concurrent trials across parallel runs of a task', async () => {
+  let active = 0;
+  let maxActive = 0;
+
+  const trackingProvider = {
+    id: 'mock-provider',
+    async execute(): Promise<ExecutionResult> {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      active -= 1;
+      return { output: 'ok' };
+    },
+  };
+
+  const taskDocument: TaskDocument = {
+    ...createTaskDocument(),
+    execution: {
+      timeoutMs: 1000,
+      trialsPerTask: 2,
+    },
+  };
+  const task = Task.fromDocument(taskDocument, {
+    adapter: 'memory',
+    ref: 'datasets/task-001.yaml',
+    revision: 'sha256-task-001',
+  });
+  const tasks: Tasks = {
+    ...createTasks(),
+    async resolveTask(): Promise<ResolvedTask> {
+      return { document: task.toDocument(), source: task.source! };
+    },
+  };
+
+  const core = new Core({
+    tasks,
+    stores: new InMemoryStore(),
+    providers: [trackingProvider],
+    graders: [new AlwaysPassGrader()],
+    runtimeDefaults: { trialConcurrency: 1 },
+  });
+
+  const suite = await core.suites.load('basic-llm');
+  const summaries = await suite.runTask('basic-llm/task-001');
+
+  assert.equal(summaries.length, 2);
+  assert.equal(maxActive, 1);
+});
+
+function createTwoTaskSource(): Tasks {
+  const taskDocuments = ['basic-llm/task-001', 'basic-llm/task-002'].map((taskId) => ({
+    ...createTaskDocument(),
+    id: taskId,
+    provider: {
+      id: 'mock-provider',
+      runs: [{ name: 'mini', params: { prompt: `${taskId}-prompt` } }],
+    },
+    execution: {
+      timeoutMs: 1000,
+      trialsPerTask: 1,
+    },
+  }));
+
+  return {
+    async listSuites(): Promise<SuiteDescriptor[]> {
+      return [{ id: 'basic-llm', name: 'Basic LLM', ref: 'suites/basic.yaml' }];
+    },
+    async resolveSuite(suiteId: string): Promise<ResolvedSuite> {
+      return {
+        document: createSuiteDocument(),
+        source: { adapter: 'memory', ref: 'suites/basic.yaml' },
+        taskRefs: taskDocuments.map((doc) => ({ suiteId, ref: `datasets/${doc.id}.yaml` })),
+      };
+    },
+    async resolveTask(taskRef: TaskRef): Promise<ResolvedTask> {
+      const document = taskDocuments.find((doc) => taskRef.ref === `datasets/${doc.id}.yaml`);
+      assert.ok(document);
+      return {
+        document,
+        source: { adapter: 'memory', ref: taskRef.ref, revision: `sha256-${document.id}` },
+      };
+    },
+  };
+}
+
+test('streamTasks executes multiple tasks concurrently', async () => {
+  // Barrier across tasks: each task has a single trial that blocks until both
+  // tasks have started executing. Sequential task execution would deadlock.
+  const expectedTrials = 2;
+  let startedCount = 0;
+  let releaseAll!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    releaseAll = resolve;
+  });
+
+  const barrierProvider = {
+    id: 'mock-provider',
+    async execute(): Promise<ExecutionResult> {
+      startedCount += 1;
+      if (startedCount === expectedTrials) {
+        releaseAll();
+      }
+      await gate;
+      return { output: 'ok' };
+    },
+  };
+
+  const core = new Core({
+    tasks: createTwoTaskSource(),
+    stores: new InMemoryStore(),
+    providers: [barrierProvider],
+    graders: [new AlwaysPassGrader()],
+  });
+
+  const suite = await core.suites.load('basic-llm');
+  const summaries = await suite.runTasks(['basic-llm/task-001', 'basic-llm/task-002']);
+
+  assert.equal(summaries.length, 2);
+  assert.deepEqual(summaries.map((summary) => summary.taskId).sort(), [
+    'basic-llm/task-001',
+    'basic-llm/task-002',
+  ]);
+});
+
+test('streamTasks honors taskConcurrency as an upper bound on parallel tasks', async () => {
+  let active = 0;
+  let maxActive = 0;
+
+  const trackingProvider = {
+    id: 'mock-provider',
+    async execute(): Promise<ExecutionResult> {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      active -= 1;
+      return { output: 'ok' };
+    },
+  };
+
+  const core = new Core({
+    tasks: createTwoTaskSource(),
+    stores: new InMemoryStore(),
+    providers: [trackingProvider],
+    graders: [new AlwaysPassGrader()],
+  });
+
+  const suite = await core.suites.load('basic-llm');
+  const summaries = await suite.runTasks(['basic-llm/task-001', 'basic-llm/task-002'], {
+    taskConcurrency: 1,
+  });
+
+  assert.equal(summaries.length, 2);
+  assert.equal(maxActive, 1);
+});
+
+test('runtimeDefaults.taskConcurrency bounds parallel tasks when the call omits it', async () => {
+  let active = 0;
+  let maxActive = 0;
+
+  const trackingProvider = {
+    id: 'mock-provider',
+    async execute(): Promise<ExecutionResult> {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      active -= 1;
+      return { output: 'ok' };
+    },
+  };
+
+  const core = new Core({
+    tasks: createTwoTaskSource(),
+    stores: new InMemoryStore(),
+    providers: [trackingProvider],
+    graders: [new AlwaysPassGrader()],
+    runtimeDefaults: { taskConcurrency: 1 },
+  });
+
+  const suite = await core.suites.load('basic-llm');
+  const summaries = await suite.runTasks(['basic-llm/task-001', 'basic-llm/task-002']);
+
+  assert.equal(summaries.length, 2);
+  assert.equal(maxActive, 1);
+});
+
+test('per-call taskConcurrency overrides runtimeDefaults.taskConcurrency', async () => {
+  let active = 0;
+  let maxActive = 0;
+
+  const trackingProvider = {
+    id: 'mock-provider',
+    async execute(): Promise<ExecutionResult> {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      active -= 1;
+      return { output: 'ok' };
+    },
+  };
+
+  const core = new Core({
+    tasks: createTwoTaskSource(),
+    stores: new InMemoryStore(),
+    providers: [trackingProvider],
+    graders: [new AlwaysPassGrader()],
+    runtimeDefaults: { taskConcurrency: 1 },
+  });
+
+  const suite = await core.suites.load('basic-llm');
+  const summaries = await suite.runTasks(['basic-llm/task-001', 'basic-llm/task-002'], {
+    taskConcurrency: 2,
+  });
+
+  assert.equal(summaries.length, 2);
+  assert.equal(maxActive, 2);
+});
+
+test('Core rejects invalid runtimeDefaults.taskConcurrency', () => {
   assert.throws(
     () =>
       new Core({
@@ -927,7 +1178,7 @@ test('Core rejects invalid runtimeDefaults.maxConcurrency', () => {
         providers: new Providers(),
         graders: new Graders(),
         runtimeDefaults: {
-          maxConcurrency: 0,
+          taskConcurrency: 0,
         },
       }),
     (error: unknown) => {
@@ -936,7 +1187,48 @@ test('Core rejects invalid runtimeDefaults.maxConcurrency', () => {
         'details' in error && typeof error.details === 'object'
           ? (error.details as { field?: unknown })
           : {};
-      assert.equal(details.field, 'runtimeDefaults.maxConcurrency');
+      assert.equal(details.field, 'runtimeDefaults.taskConcurrency');
+      return true;
+    },
+  );
+});
+
+test('streamTasks rejects empty and duplicate taskId lists', async () => {
+  const core = createTestCore();
+  const suite = await core.suites.load('basic-llm');
+
+  await assert.rejects(async () => {
+    for await (const _event of suite.streamTasks([])) {
+      // Unreachable: validation rejects before any event is produced.
+    }
+  }, /At least one taskId is required/);
+
+  await assert.rejects(async () => {
+    for await (const _event of suite.streamTasks(['basic-llm/task-001', 'basic-llm/task-001'])) {
+      // Unreachable: validation rejects before any event is produced.
+    }
+  }, /must not contain duplicates/);
+});
+
+test('Core rejects invalid runtimeDefaults.trialConcurrency', () => {
+  assert.throws(
+    () =>
+      new Core({
+        tasks: createTasks(),
+        stores: new InMemoryStore(),
+        providers: new Providers(),
+        graders: new Graders(),
+        runtimeDefaults: {
+          trialConcurrency: 0,
+        },
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      const details =
+        'details' in error && typeof error.details === 'object'
+          ? (error.details as { field?: unknown })
+          : {};
+      assert.equal(details.field, 'runtimeDefaults.trialConcurrency');
       return true;
     },
   );

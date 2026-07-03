@@ -21,6 +21,7 @@ export {
   LoadedSuite,
   type LoadSuiteInput,
   type RunTaskOptions,
+  type RunTasksOptions,
 } from './core/api/index.js';
 export {
   type ExecutionError,
